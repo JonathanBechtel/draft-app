@@ -16,17 +16,26 @@ import pytest
 
 from app.schemas.summer_league import SummerLeaguePlayerGameLog
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.summer_league_environment_registry import (
+    METRIC_DEFINITIONS,
+    MetricUnit,
+    filterable_metric_keys,
+    sortable_metric_keys,
+)
 from app.services.summer_league_explorer_service import (
     PLAYER_COLUMN_CATALOG,
     ExplorerColumn,
     MetricFilter,
     _career_metric_having,
+    _COMPETITION_FILTERABLE_KEYS,
+    _COMPETITION_SORT_KEYS,
     _FILTERABLE_KEYS,
     _per_comp_metric_where,
     _per_game_metric_where,
     _PLAYER_ADVANCED_COLUMNS,
     _PLAYER_STAT_COLUMNS,
     _SORT_KEYS_BY_SUBJECT,
+    competition_columns,
 )
 
 # --------------------------------------------------------------------------- #
@@ -325,3 +334,58 @@ def test_metric_filter_builders_honor_operator(op: str) -> None:
     assert _career_metric_having(f, SummerLeaguePlayerSeason) is not None
     assert _per_comp_metric_where(f, SummerLeaguePlayerSeason) is not None
     assert _per_game_metric_where(f, SummerLeaguePlayerGameLog) is not None
+
+
+# --------------------------------------------------------------------------- #
+# Competition Context columns (subject="competitions", ticket #607) — the
+# catalog is generated from the shared registry rather than hand-duplicated,
+# so these tests assert the *generation*, not a second copy of the registry.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("scope_kind", ["season_all_competitions", "competition"])
+def test_competition_columns_no_duplicate_keys(scope_kind: str) -> None:
+    cols = competition_columns(scope_kind)
+    keys = [c.key for c in cols]
+    assert len(keys) == len(set(keys)), f"duplicate column keys for {scope_kind}: {keys}"
+
+
+@pytest.mark.parametrize("scope_kind", ["season_all_competitions", "competition"])
+def test_competition_columns_include_every_registry_metric(scope_kind: str) -> None:
+    """Every registry metric key appears as a competitions column (never a second,
+    hand-duplicated definition of label/formula in the Explorer layer).
+    """
+    cols = {c.key for c in competition_columns(scope_kind)}
+    for definition in METRIC_DEFINITIONS:
+        assert definition.key in cols, f"registry metric {definition.key!r} missing"
+
+
+def test_competition_filterable_keys_mirror_registry() -> None:
+    assert _COMPETITION_FILTERABLE_KEYS == frozenset(filterable_metric_keys())
+
+
+def test_competition_sort_keys_superset_of_registry_sortable() -> None:
+    """Sort keys include every registry-sortable metric plus the fixed identity
+    columns (year, included_competitions, final_games, appeared_players).
+    """
+    assert frozenset(sortable_metric_keys()) <= _COMPETITION_SORT_KEYS
+    assert "year" in _COMPETITION_SORT_KEYS
+
+
+def test_competition_columns_fmt_matches_unit() -> None:
+    """RATIO-unit registry metrics render as 'pct'; others use their rounding."""
+    cols_by_key = {c.key: c for c in competition_columns("competition")}
+    for definition in METRIC_DEFINITIONS:
+        col = cols_by_key[definition.key]
+        if definition.unit is MetricUnit.RATIO:
+            assert col.fmt == "pct", f"{definition.key} expected pct fmt, got {col.fmt}"
+        else:
+            assert col.fmt in ("int", f"f{definition.rounding}")
+
+
+def test_competition_columns_sortable_filterable_mirror_registry_flags() -> None:
+    cols_by_key = {c.key: c for c in competition_columns("competition")}
+    for definition in METRIC_DEFINITIONS:
+        col = cols_by_key[definition.key]
+        assert col.sortable == definition.sortable
+        assert col.filterable == definition.filterable

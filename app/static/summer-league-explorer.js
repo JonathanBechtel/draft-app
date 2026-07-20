@@ -122,6 +122,14 @@
         // Keep the viewport anchored to the results, not jumped to top.
         var fresh = document.getElementById(RESULTS_ID);
         if (fresh) fresh.scrollIntoView({ block: "nearest" });
+        // If this swap opened a Competition Context profile, move focus to the
+        // detail heading so keyboard/screen-reader users land on the new content.
+        if (/[?&](detail_year|competition_id)=/.test(url)) {
+          var detailEl = document.getElementById("comp-detail");
+          if (detailEl && typeof detailEl.focus === "function") {
+            detailEl.focus({ preventScroll: true });
+          }
+        }
       })
       .catch(function () {
         // Network/parse failure — fall back to a real navigation.
@@ -154,6 +162,37 @@
       window.location.assign(form.action + "?" + clean.toString());
     });
   }
+
+  // Competition Context: the profile-scope toggle (seasons vs individual
+  // competitions) changes which controls are meaningful — the venue filter only
+  // exists for individual competitions — so it must re-render the persistent
+  // form, not AJAX-swap only the results. Navigate normally with a clean URL.
+  form.addEventListener("change", function (e) {
+    var t = e.target;
+    if (!t || t.name !== "profile_scope") return;
+    var clean = new URLSearchParams();
+    new URLSearchParams(new FormData(form)).forEach(function (v, k) {
+      // Drop the opposite scope's venue and any detail selection so the scope
+      // switch starts from a clean, canonical URL (server also canonicalizes).
+      if (v === "" || k === "venue" || k === "detail_year" || k === "competition_id") return;
+      clean.append(k, v);
+    });
+    window.location.assign(form.action + "?" + clean.toString());
+  });
+
+  // Competition Context trend-metric picker lives inside the swapped results
+  // fragment, so delegate its change and re-run via AJAX (keeps scope/filters).
+  main.addEventListener("change", function (e) {
+    var t = e.target;
+    if (!t || t.id !== "comp-trend-metric") return;
+    var tf = t.form;
+    if (!tf) return;
+    var clean = new URLSearchParams();
+    new URLSearchParams(new FormData(tf)).forEach(function (v, k) {
+      if (v !== "") clean.append(k, v);
+    });
+    load("/stats/summer-league/explorer?" + clean.toString(), true);
+  });
 
   // Mode segmented toggle: switching the view mode re-runs the query immediately
   // (the checked radio is part of the form, so the submit handler picks it up).

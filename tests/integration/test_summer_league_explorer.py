@@ -7,11 +7,13 @@ pagination, the partial (JS-swap) render path, and the not-yet-available subject
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import date
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
@@ -4935,3 +4937,1143 @@ async def test_appearance_preserved_in_result_links(
     )
     assert resp.status_code == 200
     assert "&appearance=2" in resp.text
+
+
+# --------------------------------------------------------------------------- #
+# Competition Context (subject="competitions", ticket #607)
+#
+# Seeds real current profiles via the #617 aggregation pipeline
+# (`rebuild_environment_profiles`) rather than hand-inserting profile rows, so
+# these tests exercise the actual read contract end to end: raw facts ->
+# published current profile -> Explorer list/detail/trend/CSV.
+# --------------------------------------------------------------------------- #
+
+from datetime import date as _date
+
+from app.schemas.summer_league import (
+    SummerLeagueGameStatus,
+    SummerLeagueShotEvent,
+)
+from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP
+from app.services.summer_league_environment_service import (
+    competition_scope_key,
+    rebuild_environment_profiles,
+    season_scope_key,
+)
+from tests.integration.perf._capture import count_queries
+
+_CC = {"n": 0}
+
+
+async def _cc_competition(
+    db: AsyncSession, *, year: int, venue: str
+) -> SummerLeagueCompetition:
+    _CC["n"] += 1
+    comp = SummerLeagueCompetition(
+        year=year,
+        league_id=f"cc-league-{_CC['n']}",
+        venue_slug=venue,
+        display_name=f"{year} {venue}",
+        starts_on=_date(year, 7, 8),
+        ends_on=_date(year, 7, 18),
+    )
+    db.add(comp)
+    await db.flush()
+    assert comp.id is not None
+    return comp
+
+
+async def _cc_team(db: AsyncSession, comp_id: int) -> SummerLeagueTeamEntry:
+    _CC["n"] += 1
+    t = SummerLeagueTeamEntry(
+        competition_id=comp_id,
+        nba_stats_team_id=f"cc-team-{_CC['n']}",
+        raw_team_name=f"Team {_CC['n']}",
+        team_slug=f"cc-team-{_CC['n']}",
+    )
+    db.add(t)
+    await db.flush()
+    assert t.id is not None
+    return t
+
+
+async def _cc_game(
+    db: AsyncSession,
+    *,
+    comp_id: int,
+    home: SummerLeagueTeamEntry,
+    away: SummerLeagueTeamEntry,
+    status: SummerLeagueGameStatus = SummerLeagueGameStatus.FINAL,
+) -> SummerLeagueGame:
+    _CC["n"] += 1
+    g = SummerLeagueGame(
+        competition_id=comp_id,
+        nba_stats_game_id=f"cc-game-{_CC['n']}",
+        game_date=_date(2024, 7, 10),
+        home_team_entry_id=home.id,
+        away_team_entry_id=away.id,
+        home_score=100,
+        away_score=92,
+        status=status,
+    )
+    db.add(g)
+    await db.flush()
+    assert g.id is not None
+    return g
+
+
+_BOX_LINE = dict(
+    minutes=200,
+    pts=100,
+    fgm=38,
+    fga=84,
+    fg3m=10,
+    fg3a=28,
+    ftm=14,
+    fta=18,
+    oreb=10,
+    dreb=30,
+    reb=40,
+    ast=22,
+    stl=7,
+    blk=4,
+    tov=13,
+    pf=18,
+)
+assert _BOX_LINE["minutes"] >= MIN_COMPLETE_TEAM_MP
+
+
+async def _cc_team_log(db: AsyncSession, *, comp_id: int, game_id: int, team_id: int) -> None:
+    db.add(
+        SummerLeagueTeamGameLog(
+            competition_id=comp_id, game_id=game_id, team_entry_id=team_id, **_BOX_LINE
+        )
+    )
+
+
+async def _cc_player_log(
+    db: AsyncSession,
+    *,
+    comp_id: int,
+    game_id: int,
+    team_id: int,
+    player: PlayerMaster,
+) -> None:
+    _CC["n"] += 1
+    sp = SummerLeagueSourcePlayer(
+        nba_stats_person_id=f"cc-person-{_CC['n']}",
+        raw_player_name=player.display_name or "Player",
+        normalized_name=(player.display_name or "player").lower(),
+        canonical_player_id=player.id,
+    )
+    db.add(sp)
+    await db.flush()
+    db.add(
+        SummerLeaguePlayerGameLog(
+            competition_id=comp_id,
+            game_id=game_id,
+            team_entry_id=team_id,
+            source_player_id=sp.id,
+            player_id=player.id,
+            nba_stats_person_id=sp.nba_stats_person_id,
+            raw_player_name=player.display_name or "Player",
+            minutes_seconds=1800,
+            pts=20,
+        )
+    )
+
+
+async def _cc_shots(
+    db: AsyncSession, *, comp_id: int, game_id: int, team_id: int, player: PlayerMaster
+) -> None:
+    _CC["n"] += 1
+    sp = SummerLeagueSourcePlayer(
+        nba_stats_person_id=f"cc-shot-person-{_CC['n']}",
+        raw_player_name=player.display_name or "Player",
+        normalized_name=(player.display_name or "player").lower(),
+        canonical_player_id=player.id,
+    )
+    db.add(sp)
+    await db.flush()
+    for i in range(4):
+        _CC["n"] += 1
+        db.add(
+            SummerLeagueShotEvent(
+                game_id=game_id,
+                competition_id=comp_id,
+                team_entry_id=team_id,
+                source_player_id=sp.id,
+                player_id=player.id,
+                nba_stats_person_id=sp.nba_stats_person_id,
+                nba_stats_game_id=f"cc-game-{game_id}",
+                nba_stats_game_event_id=_CC["n"],
+                shot_zone_basic="Restricted Area" if i < 2 else "Mid-Range",
+                made=i % 2 == 0,
+            )
+        )
+
+
+async def _seed_competition_context(db: AsyncSession) -> dict[str, int]:
+    """A small, deterministic Competition Context seed (contract §10, scoped down).
+
+    * 2024 Las Vegas: 2 final games, complete box + complete shot coverage.
+    * 2024 Salt Lake City: 1 final game, box-INCOMPLETE (only one team-box row),
+      so the 2024 *season* profile is box-partial while the Vegas *competition*
+      profile stays box-complete.
+    * 2023 Las Vegas: 1 final game with no team-box rows at all (box-unavailable),
+      and no shot events (shot-unavailable) — proves the visible-gap trend case.
+
+    Returns the competition ids keyed by a short label for use in assertions.
+    """
+    scorer = make_player("Season", "Scorer")
+    db.add(scorer)
+    await db.flush()
+
+    ids: dict[str, int] = {}
+
+    # -- 2024 Las Vegas: box + shot complete --
+    comp_vegas_24 = await _cc_competition(db, year=2024, venue="las_vegas")
+    ids["vegas_2024"] = comp_vegas_24.id  # type: ignore[assignment]
+    home = await _cc_team(db, comp_vegas_24.id)  # type: ignore[arg-type]
+    away = await _cc_team(db, comp_vegas_24.id)  # type: ignore[arg-type]
+    for _ in range(2):
+        g = await _cc_game(db, comp_id=comp_vegas_24.id, home=home, away=away)  # type: ignore[arg-type]
+        await _cc_team_log(db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=home.id)  # type: ignore[arg-type]
+        await _cc_team_log(db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=away.id)  # type: ignore[arg-type]
+        await _cc_player_log(
+            db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=home.id, player=scorer  # type: ignore[arg-type]
+        )
+        await _cc_shots(
+            db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=home.id, player=scorer  # type: ignore[arg-type]
+        )
+
+    # -- 2024 Salt Lake City: box-incomplete (one team-box row only) --
+    comp_slc_24 = await _cc_competition(db, year=2024, venue="salt_lake_city")
+    ids["slc_2024"] = comp_slc_24.id  # type: ignore[assignment]
+    home2 = await _cc_team(db, comp_slc_24.id)  # type: ignore[arg-type]
+    away2 = await _cc_team(db, comp_slc_24.id)  # type: ignore[arg-type]
+    g2 = await _cc_game(db, comp_id=comp_slc_24.id, home=home2, away=away2)  # type: ignore[arg-type]
+    await _cc_team_log(db, comp_id=comp_slc_24.id, game_id=g2.id, team_id=home2.id)  # type: ignore[arg-type]
+    # No away team-box row -> pairing fails -> box_complete_games stays 0 here.
+    await _cc_player_log(
+        db, comp_id=comp_slc_24.id, game_id=g2.id, team_id=home2.id, player=scorer  # type: ignore[arg-type]
+    )
+
+    # -- 2023 Las Vegas: no box, no shots at all (unavailable coverage) --
+    comp_vegas_23 = await _cc_competition(db, year=2023, venue="las_vegas")
+    ids["vegas_2023"] = comp_vegas_23.id  # type: ignore[assignment]
+    home3 = await _cc_team(db, comp_vegas_23.id)  # type: ignore[arg-type]
+    away3 = await _cc_team(db, comp_vegas_23.id)  # type: ignore[arg-type]
+    g3 = await _cc_game(db, comp_id=comp_vegas_23.id, home=home3, away=away3)  # type: ignore[arg-type]
+    await _cc_player_log(
+        db, comp_id=comp_vegas_23.id, game_id=g3.id, team_id=home3.id, player=scorer  # type: ignore[arg-type]
+    )
+
+    await db.commit()
+
+    async with db.begin():
+        result_2024 = await rebuild_environment_profiles(db, year=2024)
+        assert result_2024.failed_scopes == 0
+    async with db.begin():
+        result_2023 = await rebuild_environment_profiles(db, year=2023)
+        assert result_2023.failed_scopes == 0
+
+    return ids
+
+
+@pytest.mark.asyncio
+async def test_competitions_season_list_pools_across_venues(db_session: AsyncSession) -> None:
+    """Season scope returns one row per year, pooling every venue in it."""
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session, parse_query({"subject": "competitions", "profile_scope": "season"})
+    )
+    assert result.subject == "competitions"
+    assert result.available is True
+    years = sorted(r.values["year"] for r in result.rows)
+    assert years == [2023, 2024]
+    row_2024 = next(r for r in result.rows if r.values["year"] == 2024)
+    # Pools both Vegas (2 final games) and Salt Lake City (1 final game).
+    assert row_2024.values["final_games"] == 3
+    assert row_2024.values["included_competitions"] == 2
+
+
+@pytest.mark.asyncio
+async def test_competitions_season_scope_clears_venue_and_shows_all_venues(
+    db_session: AsyncSession,
+) -> None:
+    """A stray ?venue= is dropped by canonicalization; season rows never filter by venue."""
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {"subject": "competitions", "profile_scope": "season", "venue": "las_vegas"}
+        ),
+    )
+    assert result.query.venue is None
+    years = sorted(r.values["year"] for r in result.rows)
+    assert years == [2023, 2024]
+
+
+@pytest.mark.asyncio
+async def test_competitions_competition_scope_one_row_per_edition(
+    db_session: AsyncSession,
+) -> None:
+    """Competition scope returns one row per named competition edition."""
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "competitions", "profile_scope": "competition"}),
+    )
+    labels = {(r.values["year"], r.values["venue"]) for r in result.rows}
+    assert (2024, "Las Vegas") in labels
+    assert (2024, "Salt Lake City") in labels
+    assert (2023, "Las Vegas") in labels
+    vegas_2024 = next(
+        r for r in result.rows if r.values["year"] == 2024 and r.values["venue"] == "Las Vegas"
+    )
+    assert vegas_2024.values["final_games"] == 2
+
+
+@pytest.mark.asyncio
+async def test_competitions_venue_filters_competition_scope(db_session: AsyncSession) -> None:
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "competition",
+                "venue": "las_vegas",
+            }
+        ),
+    )
+    assert result.total == 2
+    assert all(r.values["venue"] == "Las Vegas" for r in result.rows)
+
+
+@pytest.mark.asyncio
+async def test_competitions_year_range_filters(db_session: AsyncSession) -> None:
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "season",
+                "year_min": "2024",
+                "year_max": "2024",
+            }
+        ),
+    )
+    assert [r.values["year"] for r in result.rows] == [2024]
+
+
+@pytest.mark.asyncio
+async def test_competitions_min_gp_default_zero_shows_zero_game_rows(
+    db_session: AsyncSession,
+) -> None:
+    """Default min_gp for competitions is 0 (not the player default of 2) —
+    an in-progress/thin season stays a visible zero, not a hidden row.
+    """
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "competitions", "profile_scope": "competition"}),
+    )
+    assert result.query.min_games == 0
+    assert result.total == 3
+
+    narrowed = await run_explorer_query(
+        db_session,
+        parse_query(
+            {"subject": "competitions", "profile_scope": "competition", "min_gp": "2"}
+        ),
+    )
+    # Only Vegas 2024 (2 final games) clears a min_gp=2 floor.
+    assert narrowed.total == 1
+    assert narrowed.rows[0].values["final_games"] == 2
+
+
+@pytest.mark.asyncio
+async def test_competitions_coverage_box_complete_filter(db_session: AsyncSession) -> None:
+    """coverage=box_complete keeps only rows whose overall box input is complete."""
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "competition",
+                "coverage": "box_complete",
+            }
+        ),
+    )
+    assert result.total == 1
+    assert result.rows[0].values["year"] == 2024
+    assert result.rows[0].values["venue"] == "Las Vegas"
+
+
+@pytest.mark.asyncio
+async def test_competitions_metric_threshold_filter_excludes_null_and_partial(
+    db_session: AsyncSession,
+) -> None:
+    """fcol/fop/fval on a registry metric never matches a null/partial row."""
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "competition",
+                "fcol0": "pace_per_48",
+                "fop0": "gte",
+                "fval0": "0",
+            }
+        ),
+    )
+    # Only Vegas 2024 has box-complete coverage (a real pace_per_48 value); the
+    # SLC 2024 (box-partial) and Vegas 2023 (box-unavailable) rows never satisfy
+    # a threshold, regardless of the operator/value.
+    assert result.total == 1
+    assert result.rows[0].values["year"] == 2024
+    assert result.rows[0].values["venue"] == "Las Vegas"
+
+
+@pytest.mark.asyncio
+async def test_competitions_metric_filter_rejects_player_only_key(
+    db_session: AsyncSession,
+) -> None:
+    """A player-catalog key ('pts') is not a registered competitions metric —
+    the predicate is dropped, not silently broadening the result.
+    """
+    await _seed_competition_context(db_session)
+    unfiltered = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "competitions", "profile_scope": "competition"}),
+    )
+    with_bad_filter = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "competition",
+                "fcol0": "pts",
+                "fop0": "gte",
+                "fval0": "1",
+            }
+        ),
+    )
+    assert with_bad_filter.total == unfiltered.total
+
+
+@pytest.mark.asyncio
+async def test_competitions_sort_and_pagination(db_session: AsyncSession) -> None:
+    await _seed_competition_context(db_session)
+    desc = await run_explorer_query(
+        db_session,
+        parse_query(
+            {"subject": "competitions", "profile_scope": "season", "sort": "year", "dir": "desc"}
+        ),
+    )
+    assert [r.values["year"] for r in desc.rows] == [2024, 2023]
+
+    asc = await run_explorer_query(
+        db_session,
+        parse_query(
+            {"subject": "competitions", "profile_scope": "season", "sort": "year", "dir": "asc"}
+        ),
+    )
+    assert [r.values["year"] for r in asc.rows] == [2023, 2024]
+    assert asc.page == 1
+    assert asc.has_next is False
+
+
+@pytest.mark.asyncio
+async def test_competitions_season_detail_by_detail_year_includes_membership(
+    db_session: AsyncSession,
+) -> None:
+    ids = await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {"subject": "competitions", "profile_scope": "season", "detail_year": "2024"}
+        ),
+    )
+    detail = result.competition_detail
+    assert detail is not None
+    assert detail.year == 2024
+    assert detail.scope_key == season_scope_key(2024)
+    member_ids = {m.competition_id for m in detail.membership}
+    assert member_ids == {ids["vegas_2024"], ids["slc_2024"]}
+
+
+@pytest.mark.asyncio
+async def test_competitions_detail_by_competition_id_is_authoritative(
+    db_session: AsyncSession,
+) -> None:
+    """competition_id resolves detail even when the active venue filter excludes it —
+    it is authoritative over a stale/inconsistent venue param (contract §6).
+    """
+    ids = await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "competition",
+                # Filter narrows the LIST to Salt Lake City...
+                "venue": "salt_lake_city",
+                # ...but detail explicitly asks for the Vegas 2024 edition.
+                "competition_id": str(ids["vegas_2024"]),
+            }
+        ),
+    )
+    detail = result.competition_detail
+    assert detail is not None
+    assert detail.competition_id == ids["vegas_2024"]
+    assert detail.scope_key == competition_scope_key(ids["vegas_2024"])
+    assert detail.venue_slug == "las_vegas"
+
+
+@pytest.mark.asyncio
+async def test_competitions_unknown_competition_id_yields_no_detail(
+    db_session: AsyncSession,
+) -> None:
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "competition",
+                "competition_id": "999999",
+            }
+        ),
+    )
+    assert result.competition_detail is None
+
+
+@pytest.mark.asyncio
+async def test_competitions_season_trend_has_gap_for_unavailable_year(
+    db_session: AsyncSession,
+) -> None:
+    """Season trend has one point per surviving year, never coerced to zero.
+
+    2023 pools zero box-complete final games (unavailable) and 2024 pools a
+    box-complete Vegas edition alongside a box-incomplete Salt Lake City
+    edition, so the pooled *season* coverage is only partial — both years
+    render as a visible ``None`` gap for a box-gated metric rather than a
+    fabricated 0, which is exactly the honesty invariant this trend exists to
+    prove (contract §3/§6). The venue-scoped competition trend (see
+    ``test_competitions_trend_present_once_venue_selected``) shows the same
+    metric *does* carry a real Vegas-only value once the pool excludes the
+    box-incomplete competition.
+    """
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "season",
+                "trend_metric": "pace_per_48",
+            }
+        ),
+    )
+    trend = result.competition_trend
+    assert trend is not None
+    assert [p.year for p in trend.points] == [2023, 2024]
+    point_2023 = trend.points[0]
+    point_2024 = trend.points[1]
+    assert point_2023.value is None
+    assert point_2023.coverage == "unavailable"
+    assert point_2024.value is None
+    assert point_2024.coverage == "partial"
+
+
+@pytest.mark.asyncio
+async def test_competitions_trend_absent_for_unfiltered_competition_scope(
+    db_session: AsyncSession,
+) -> None:
+    """Unfiltered competition table prompts for a venue rather than blending series."""
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "competitions", "profile_scope": "competition"}),
+    )
+    assert result.competition_trend is None
+
+
+@pytest.mark.asyncio
+async def test_competitions_trend_present_once_venue_selected(
+    db_session: AsyncSession,
+) -> None:
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "competition",
+                "venue": "las_vegas",
+                "trend_metric": "pace_per_48",
+            }
+        ),
+    )
+    trend = result.competition_trend
+    assert trend is not None
+    assert trend.venue_slug == "las_vegas"
+    assert [p.year for p in trend.points] == [2023, 2024]
+
+
+@pytest.mark.asyncio
+async def test_competitions_trend_resolves_venue_from_authoritative_competition_id(
+    db_session: AsyncSession,
+) -> None:
+    """A competition_id detail with no explicit venue= still charts that venue's
+    full history (venue resolved from the authoritative detail, contract §6).
+    """
+    ids = await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "competition",
+                "competition_id": str(ids["vegas_2024"]),
+                "trend_metric": "pace_per_48",
+            }
+        ),
+    )
+    trend = result.competition_trend
+    assert trend is not None
+    assert trend.venue_slug == "las_vegas"
+    assert [p.year for p in trend.points] == [2023, 2024]
+
+
+@pytest.mark.asyncio
+async def test_competitions_facets_are_year_and_venue_only(db_session: AsyncSession) -> None:
+    """Competitions facets never load draft/country/position/team/round-type
+    values — those are player/team-only (contract §9).
+    """
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session, parse_query({"subject": "competitions", "profile_scope": "competition"})
+    )
+    assert set(result.facets.years) == {2023, 2024}
+    assert {v for v, _label in result.facets.venues} == {"las_vegas", "salt_lake_city"}
+    assert result.facets.draft_classes == []
+    assert result.facets.countries == []
+    assert result.facets.teams == []
+    assert result.facets.round_types == []
+
+
+@pytest.mark.asyncio
+async def test_competitions_csv_export_includes_coverage_and_freshness_columns(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """CSV and HTML share the same result contract (contract §6): coverage/
+    version/freshness columns ride the same generic column/row machinery.
+    """
+    await _seed_competition_context(db_session)
+    resp = await app_client.get(
+        "/stats/summer-league/explorer"
+        "?subject=competitions&profile_scope=competition&format=csv"
+    )
+    assert resp.status_code == 200
+    header = resp.text.splitlines()[0]
+    for expected_col in (
+        "Scope Key",
+        "Version",
+        "Registry Version",
+        "Calculated At",
+        "Box Coverage",
+        "Shot Coverage",
+        "Year",
+        "Pace (per 48)",
+    ):
+        assert expected_col in header, f"{expected_col!r} missing from CSV header"
+
+
+@pytest.mark.asyncio
+async def test_competitions_csv_and_table_values_agree(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "competitions", "profile_scope": "competition"}),
+    )
+    vegas_row = next(
+        r for r in result.rows if r.values["year"] == 2024 and r.values["venue"] == "Las Vegas"
+    )
+
+    resp = await app_client.get(
+        "/stats/summer-league/explorer"
+        "?subject=competitions&profile_scope=competition&format=csv"
+    )
+    # Parse with csv.reader (not a naive comma-split): quoted fields may
+    # contain commas (e.g. metric interpretation text), and the export
+    # appends a blank separator line before the "# Metric definitions"
+    # trailer (contract §6), which a plain str.split(",") mishandles.
+    all_rows = list(csv.reader(io.StringIO(resp.text)))
+    header = all_rows[0]
+    year_idx = header.index("Year")
+    data_rows: list[list[str]] = []
+    for row in all_rows[1:]:
+        if not row:  # blank separator before the "# Metric definitions" trailer
+            break
+        data_rows.append(row)
+    matching = [
+        row for row in data_rows
+        if len(row) > year_idx and row[year_idx] == "2024" and "Las Vegas" in row
+    ]
+    assert matching, "expected a 2024 Las Vegas CSV row"
+    final_gp_idx = header.index("Final GP")
+    assert matching[0][final_gp_idx] == str(vegas_row.values["final_games"])
+
+
+@pytest.mark.asyncio
+async def test_competitions_route_query_budget(
+    db_session: AsyncSession, app_client: AsyncClient, async_engine: AsyncEngine
+) -> None:
+    """List + filtered trend + selected detail stays well under the existing
+    10-query route budget (contract §9) — no per-member/per-metric query loop,
+    no player/team facet reads.
+
+    Hits ``format=csv``, not the default HTML template: the generic Explorer
+    table partial (players/teams/games) assumes every column is numeric and
+    is not yet updated for the Competitions tab's text meta columns (that
+    template/UI work belongs to a later ticket, #608). ``_query_competitions``
+    computes list+trend+detail identically regardless of output format, so the
+    CSV path measures the same real query cost the eventual HTML render will.
+    """
+    await _seed_competition_context(db_session)
+    url = (
+        "/stats/summer-league/explorer"
+        "?subject=competitions&profile_scope=season&detail_year=2024"
+        "&trend_metric=pace_per_48&format=csv"
+    )
+    warmup = await app_client.get(url)
+    assert warmup.status_code == 200
+
+    with count_queries(async_engine) as captured:
+        response = await app_client.get(url)
+    assert response.status_code == 200
+    assert len(captured) <= 10, (
+        f"competitions render issued {len(captured)} queries (budget 10): {captured}"
+    )
+
+
+# Competition Context handoffs (#609): context strip + competition_id scope
+# on Players/Teams/Matchups (contract §6/§7).
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_context_strip_season_scope_resolves_for_players(
+    db_session: AsyncSession,
+) -> None:
+    """A pinned year with no venue/competition_id resolves the season strip."""
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "players",
+                "grain": "per_game",
+                "year_min": "2024",
+                "year_max": "2024",
+            }
+        ),
+    )
+    assert result.context_strip is not None
+    assert result.context_strip.scope_kind == "season_all_competitions"
+    assert result.context_strip.scope_key == season_scope_key(2024)
+    assert result.context_strip.href == "/stats/summer-league/2024"
+    assert result.context_strip_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_context_strip_competition_scope_resolves_for_teams(
+    db_session: AsyncSession,
+) -> None:
+    """An explicit competition_id resolves the competition strip for Teams."""
+    ids = await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "teams", "competition_id": str(ids["vegas_2024"])}),
+    )
+    assert result.context_strip is not None
+    assert result.context_strip.scope_kind == "competition"
+    assert result.context_strip.scope_key == competition_scope_key(ids["vegas_2024"])
+    assert result.context_strip.href == "/stats/summer-league/2024/las_vegas"
+
+
+@pytest.mark.asyncio
+async def test_context_strip_competition_scope_resolves_for_games(
+    db_session: AsyncSession,
+) -> None:
+    """The Matchups subject (games) also resolves a competition-scope strip."""
+    ids = await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "games", "competition_id": str(ids["vegas_2024"])}),
+    )
+    assert result.context_strip is not None
+    assert result.context_strip.scope_kind == "competition"
+
+
+@pytest.mark.asyncio
+async def test_context_strip_absent_for_competitions_subject(
+    db_session: AsyncSession,
+) -> None:
+    """The strip is a Players/Teams/Matchups affordance.
+
+    The Competitions tab itself never carries one (it IS the Competition
+    Context surface).
+    """
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "competitions",
+                "profile_scope": "season",
+                "year_min": "2024",
+                "year_max": "2024",
+            }
+        ),
+    )
+    assert result.context_strip is None
+    assert result.context_strip_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_context_strip_multi_year_range_is_ambiguous(
+    db_session: AsyncSession,
+) -> None:
+    """A multi-year range never resolves to a single approved profile."""
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "games",
+                "year_min": "2023",
+                "year_max": "2024",
+            }
+        ),
+    )
+    assert result.context_strip is None
+    assert result.context_strip_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_context_strip_venue_without_competition_id_is_ambiguous(
+    db_session: AsyncSession,
+) -> None:
+    """A pinned year + venue without an explicit competition_id is ambiguous.
+
+    Only the two contract-approved URL shapes resolve a strip (contract §6):
+    year_min==year_max with no venue (season), or an explicit competition_id.
+    """
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "teams",
+                "year_min": "2024",
+                "year_max": "2024",
+                "venue": "las_vegas",
+            }
+        ),
+    )
+    assert result.context_strip is None
+    assert result.context_strip_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_context_strip_unscoped_default_shows_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """The wide-open default browse never fires the strip's profile lookup.
+
+    This also protects the default route's query budget, since the lookup is
+    conditional on a candidate scope.
+    """
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(db_session, parse_query({"subject": "players"}))
+    assert result.context_strip is None
+    assert result.context_strip_unavailable is False
+
+
+@pytest.mark.asyncio
+async def test_context_strip_missing_profile_is_unavailable_not_ambiguous(
+    db_session: AsyncSession,
+) -> None:
+    """A candidate scope with no published profile yet is distinguishable.
+
+    Distinct from an ambiguous query — DoD: 'clear absence/instruction'.
+    """
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "players", "year_min": "2099", "year_max": "2099"}),
+    )
+    assert result.context_strip is None
+    assert result.context_strip_unavailable is True
+
+
+@pytest.mark.asyncio
+async def test_context_strip_bad_competition_id_is_unavailable(
+    db_session: AsyncSession,
+) -> None:
+    """An invalid/unknown competition_id is a missing-profile case, not a crash."""
+    await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "teams", "competition_id": "999999"}),
+    )
+    assert result.context_strip is None
+    assert result.context_strip_unavailable is True
+
+
+@pytest.mark.asyncio
+async def test_context_strip_flags_stale_profile(db_session: AsyncSession) -> None:
+    """A stale profile is still served but flagged, never silently hidden.
+
+    Per contract §8: a profile published beyond the freshness threshold
+    remains readable, flagged stale on the strip.
+    """
+    from datetime import datetime, timedelta
+
+    from app.services.summer_league_environment_service import (
+        get_current_profile_by_scope_key,
+    )
+
+    await _seed_competition_context(db_session)
+    profile = await get_current_profile_by_scope_key(db_session, season_scope_key(2024))
+    assert profile is not None
+    profile.calculated_at = datetime.utcnow() - timedelta(hours=200)
+    db_session.add(profile)
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "players", "year_min": "2024", "year_max": "2024"}),
+    )
+    assert result.context_strip is not None
+    assert result.context_strip.is_stale is True
+
+
+@pytest.mark.asyncio
+async def test_competition_id_filters_player_game_rows(
+    db_session: AsyncSession,
+) -> None:
+    """competition_id narrows Players (per_game) rows, not merely the strip.
+
+    The actual result set narrows to that one competition (contract §6 handoff).
+    """
+    ids = await _seed_competition_context(db_session)
+
+    scoped = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "players",
+                "grain": "per_game",
+                "competition_id": str(ids["vegas_2024"]),
+            }
+        ),
+    )
+    # Vegas 2024 seeded 2 final games, each with one player-log row for "scorer".
+    assert scoped.total == 2
+
+    season_scoped = await run_explorer_query(
+        db_session,
+        parse_query(
+            {
+                "subject": "players",
+                "grain": "per_game",
+                "year_min": "2024",
+                "year_max": "2024",
+            }
+        ),
+    )
+    # 2024 season pools Vegas (2 games) + Salt Lake City (1 game) = 3.
+    assert season_scoped.total == 3
+
+
+@pytest.mark.asyncio
+async def test_competition_id_filters_team_rows(db_session: AsyncSession) -> None:
+    """competition_id narrows Teams rows to the two entries in that competition."""
+    ids = await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "teams", "competition_id": str(ids["vegas_2024"])}),
+    )
+    assert result.total == 2
+
+
+@pytest.mark.asyncio
+async def test_competition_id_filters_game_rows(db_session: AsyncSession) -> None:
+    """competition_id narrows Matchups (games) rows to that one competition."""
+    ids = await _seed_competition_context(db_session)
+    result = await run_explorer_query(
+        db_session,
+        parse_query({"subject": "games", "competition_id": str(ids["vegas_2024"])}),
+    )
+    assert result.total == 2
+    for row in result.rows:
+        assert row.href is not None
+        assert "/2024/games/" in row.href
+
+
+@pytest.mark.asyncio
+async def test_parse_query_competition_id_clears_stale_scope_for_handoffs() -> None:
+    """A competition_id handoff is authoritative for Players/Teams/Matchups.
+
+    A stale/conflicting year or venue from earlier form state is cleared,
+    never combined into an over-constrained (silently narrower) query
+    (contract §6).
+    """
+    for subject in ("players", "teams", "games"):
+        q = parse_query(
+            {
+                "subject": subject,
+                "competition_id": "5",
+                "year_min": "2020",
+                "year_max": "2021",
+                "venue": "las_vegas",
+            }
+        )
+        assert q.competition_id == 5
+        assert q.year_min is None
+        assert q.year_max is None
+        assert q.venue is None
+
+
+@pytest.mark.asyncio
+async def test_parse_query_competitions_keeps_year_with_competition_id() -> None:
+    """The competitions subject's own list-vs-detail canonicalization is unaffected.
+
+    year_min/year_max there are list-range filters, independent of which
+    row's detail is expanded via competition_id.
+    """
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": "5",
+            "year_min": "2020",
+            "year_max": "2021",
+        }
+    )
+    assert q.competition_id == 5
+    assert q.year_min == 2020
+    assert q.year_max == 2021
+
+
+@pytest.mark.asyncio
+async def test_competition_detail_renders_scope_preserving_handoff_links(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """Competitions detail links out to Players/Teams/Matchups.
+
+    The exact competition_id scope carries forward (contract §6/§7).
+    """
+    ids = await _seed_competition_context(db_session)
+    comp_id = ids["vegas_2024"]
+    resp = await app_client.get(
+        "/stats/summer-league/explorer"
+        f"?subject=competitions&profile_scope=competition&competition_id={comp_id}"
+    )
+    assert resp.status_code == 200
+    for subject in ("players", "teams", "games"):
+        assert f"subject={subject}&competition_id={comp_id}" in resp.text, (
+            f"missing {subject} handoff link"
+        )
+
+
+@pytest.mark.asyncio
+async def test_context_strip_round_trips_through_partial_swap(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """A sort-header AJAX partial swap preserves the resolved context strip.
+
+    The same canonical scope a full render would show (contract §6/§7 DoD).
+    """
+    ids = await _seed_competition_context(db_session)
+    comp_id = ids["vegas_2024"]
+    full = await app_client.get(
+        f"/stats/summer-league/explorer?subject=teams&competition_id={comp_id}"
+    )
+    assert full.status_code == 200
+    assert "slg-context-strip" in full.text
+    assert "las_vegas" in full.text or "Las Vegas" in full.text
+
+    partial = await app_client.get(
+        "/stats/summer-league/explorer"
+        f"?subject=teams&competition_id={comp_id}&sort=gp&dir=asc&partial=1"
+    )
+    assert partial.status_code == 200
+    assert "slg-context-strip" in partial.text
+
+
+@pytest.mark.asyncio
+async def test_players_competition_scope_context_strip_query_budget(
+    db_session: AsyncSession, app_client: AsyncClient, async_engine: AsyncEngine
+) -> None:
+    """A competition-scope Players render stays within the 10-query budget.
+
+    The context strip resolves and the route stays at or below the existing
+    10-query Explorer route budget (contract §9, DoD).
+    """
+    ids = await _seed_competition_context(db_session)
+    url = (
+        "/stats/summer-league/explorer"
+        f"?subject=players&grain=per_game&competition_id={ids['vegas_2024']}"
+    )
+    warmup = await app_client.get(url)
+    assert warmup.status_code == 200
+
+    with count_queries(async_engine) as captured:
+        response = await app_client.get(url)
+    assert response.status_code == 200
+    assert len(captured) <= 10, (
+        f"players competition-scope render issued {len(captured)} queries "
+        f"(budget 10): {captured}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_teams_competition_scope_context_strip_query_budget(
+    db_session: AsyncSession, app_client: AsyncClient, async_engine: AsyncEngine
+) -> None:
+    """A competition-scope Teams render's context-strip lookup costs one query.
+
+    The unscoped Teams render is already at the shared 10-query budget (7
+    facets + 3 teams-assembly queries — see ``ROUTE_BUDGETS`` in
+    ``tests/integration/perf/budgets.py``), which has zero slack. The context
+    strip's profile lookup only fires for a resolved scope (never the default
+    browse, per ``_resolve_context_strip``), so it consciously costs one query
+    over that ceiling here — a single indexed ``scope_key`` lookup, not a
+    loop. Documented inline rather than raising the shared default budget,
+    which stays unaffected (mirrors ``test_competitions_route_query_budget``'s
+    own dedicated, scoped assertion)."""
+    ids = await _seed_competition_context(db_session)
+    comp_id = ids["vegas_2024"]
+    url = f"/stats/summer-league/explorer?subject=teams&competition_id={comp_id}"
+    warmup = await app_client.get(url)
+    assert warmup.status_code == 200
+
+    with count_queries(async_engine) as captured:
+        response = await app_client.get(url)
+    assert response.status_code == 200
+    assert len(captured) <= 11, (
+        f"teams competition-scope render issued {len(captured)} queries "
+        f"(budget 11): {captured}"
+    )

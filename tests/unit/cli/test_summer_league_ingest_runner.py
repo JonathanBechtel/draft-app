@@ -11,6 +11,15 @@ from app.cli import summer_league_ingest_runner as runner
 from app.schemas.summer_league import SummerLeagueCompetition
 
 
+@dataclass
+class _FakeEnvironmentRefreshOutcome:
+    """Minimal stand-in for `EnvironmentRefreshOutcome` used by fake refreshes."""
+
+    attempted: bool = True
+    succeeded: bool = True
+    built_scopes: int = 1
+
+
 @pytest.fixture(autouse=True)
 def _summer_league_writer_lock_available(
     monkeypatch: pytest.MonkeyPatch,
@@ -47,6 +56,11 @@ def _summer_league_writer_lock_available(
     async def _invalidate_batch_progress(_db: object, **_kwargs: object) -> None:
         return None
 
+    async def _fake_refresh_environment(
+        _db: object, *, year: int, telemetry: object | None = None
+    ) -> object:
+        return _FakeEnvironmentRefreshOutcome()
+
     monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _available)
     monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
     monkeypatch.setattr(runner, "full_reconciliation_is_pending", _pending)
@@ -57,6 +71,9 @@ def _summer_league_writer_lock_available(
     monkeypatch.setattr(runner, "count_pending_batch_games", _no_pending_batches)
     monkeypatch.setattr(runner, "record_batch_progress", _record_batch_progress)
     monkeypatch.setattr(runner, "invalidate_batch_progress", _invalidate_batch_progress)
+    monkeypatch.setattr(
+        runner, "refresh_environment_profiles_for_year", _fake_refresh_environment
+    )
 
 
 @dataclass
@@ -981,6 +998,133 @@ async def test_main_rebuild_failure_returns_one(
     assert events["rebuild_called"] is True
     assert events["snapshots_refreshed"] is False
     assert events["disposed"] is True
+
+
+# ---------------------------------------------------------------------------
+# Competition Context (#618): environment refresh wiring inside main()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_main_calls_environment_refresh_after_snapshots_when_any_games(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A venue with games -> environment refresh runs once for the configured year."""
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "15")
+    monkeypatch.setenv("SL_INGEST_YEAR", "2025")
+    events = _patch_main(monkeypatch, venue_results={"15": (True, False)})
+
+    calls: list[dict[str, object]] = []
+
+    async def _recording_refresh(
+        _db: object, *, year: int, telemetry: object | None = None
+    ) -> _FakeEnvironmentRefreshOutcome:
+        calls.append({"year": year, "telemetry": telemetry})
+        return _FakeEnvironmentRefreshOutcome()
+
+    monkeypatch.setattr(
+        runner, "refresh_environment_profiles_for_year", _recording_refresh
+    )
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["rebuild_called"] is True
+    assert events["snapshots_refreshed"] is True
+    assert calls == [{"year": 2025, "telemetry": calls[0]["telemetry"]}]
+    assert calls[0]["telemetry"] is not None
+
+
+@pytest.mark.asyncio
+async def test_main_skips_environment_refresh_when_no_games_and_nothing_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No games and no pending reconciliation -> environment refresh never runs.
+
+    Mirrors the metrics/snapshot phase's own gate: a quiet cycle should
+    leave the currently published Competition Context profiles untouched.
+    """
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "15")
+    events = _patch_main(monkeypatch, venue_results={"15": (False, False)})
+
+    calls: list[object] = []
+
+    async def _recording_refresh(_db: object, **_kwargs: object) -> object:
+        calls.append(_kwargs)
+        return _FakeEnvironmentRefreshOutcome()
+
+    monkeypatch.setattr(
+        runner, "refresh_environment_profiles_for_year", _recording_refresh
+    )
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["rebuild_called"] is False
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_main_environment_refresh_failure_does_not_fail_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unsuccessful (but non-raising) refresh outcome never flips the run to failed.
+
+    `refresh_environment_profiles_for_year` isolates its own failures
+    internally (never raises); this proves the runner doesn't second-guess
+    that isolation by inspecting `outcome.succeeded` and failing the whole
+    ingest run over it.
+    """
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "15")
+    events = _patch_main(monkeypatch, venue_results={"15": (True, False)})
+
+    async def _failed_refresh(
+        _db: object, *, year: int, telemetry: object | None = None
+    ) -> _FakeEnvironmentRefreshOutcome:
+        return _FakeEnvironmentRefreshOutcome(attempted=True, succeeded=False)
+
+    monkeypatch.setattr(
+        runner, "refresh_environment_profiles_for_year", _failed_refresh
+    )
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["rebuild_called"] is True
+    assert events["snapshots_refreshed"] is True
+
+
+@pytest.mark.asyncio
+async def test_main_drains_deferred_reconciliation_runs_environment_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A drained deferral (no new games this cycle) still triggers a refresh."""
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "15")
+    monkeypatch.setenv("SL_INGEST_YEAR", "2026")
+    events = _patch_main(monkeypatch, venue_results={"15": (False, False)})
+
+    async def _pending(_db: object) -> bool:
+        return True
+
+    monkeypatch.setattr(runner, "full_reconciliation_is_pending", _pending)
+
+    calls: list[dict[str, object]] = []
+
+    async def _recording_refresh(
+        _db: object, *, year: int, telemetry: object | None = None
+    ) -> _FakeEnvironmentRefreshOutcome:
+        calls.append({"year": year})
+        return _FakeEnvironmentRefreshOutcome()
+
+    monkeypatch.setattr(
+        runner, "refresh_environment_profiles_for_year", _recording_refresh
+    )
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["rebuild_called"] is True
+    assert calls == [{"year": 2026}]
 
 
 @pytest.mark.asyncio

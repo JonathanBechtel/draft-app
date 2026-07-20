@@ -1,0 +1,89 @@
+{# Competition Context (subject=competitions) shared macros.
+   Kept separate from the player explorer_qs macro because competition state
+   uses profile_scope / coverage / trend_metric / detail_year / competition_id
+   and never the player grain param (contract §6). #}
+
+{# Shared stale-profile badge: last good version is still served (never
+   silently replaced by request-time aggregation, contract §8), but flagged.
+   Used by the Explorer detail panel and the season/venue summary module so
+   the wording can never drift between the two surfaces. #}
+{%- macro stale_badge() -%}
+<span class="slg-comp-stale" role="status" title="Served from the last good version; a fresher rebuild has not published">⚠ Stale — last good version</span>
+{%- endmacro -%}
+
+{# Serialize competition query state to a querystring. Any of sort/direction/
+   page/detail_year/competition_id may be overridden; pass drop_detail=True to
+   clear both detail selectors (used by the "close profile" affordance and by
+   scope/filter links that should not carry a stale detail). #}
+{%- macro comp_qs(q, sort=none, direction=none, page=none, detail_year=none, competition_id=none, drop_detail=false) -%}
+?subject=competitions&profile_scope={{ q.profile_scope }}
+{%- if sort %}&sort={{ sort }}{% else %}&sort={{ q.sort }}{% endif %}
+{%- if direction %}&dir={{ direction }}{% else %}&dir={{ q.direction }}{% endif %}
+{%- if q.year_min %}&year_min={{ q.year_min }}{% endif %}
+{%- if q.year_max %}&year_max={{ q.year_max }}{% endif %}
+{%- if q.venue and q.profile_scope == 'competition' %}&venue={{ q.venue }}{% endif %}
+{%- if q.min_games %}&min_gp={{ q.min_games }}{% endif %}
+{%- if q.coverage and q.coverage != 'all' %}&coverage={{ q.coverage }}{% endif %}
+{%- if q.trend_metric %}&trend_metric={{ q.trend_metric }}{% endif %}
+{%- for mf in q.metric_filters -%}
+&fcol{{ loop.index0 }}={{ mf.col }}&fop{{ loop.index0 }}={{ 'gte' if mf.op == '>=' else 'lte' }}&fval{{ loop.index0 }}={{ mf.value }}
+{%- endfor -%}
+{%- if not drop_detail -%}
+  {%- if competition_id is not none %}&competition_id={{ competition_id }}
+  {%- elif detail_year is not none %}&detail_year={{ detail_year }}
+  {%- elif q.competition_id is not none and q.profile_scope == 'competition' %}&competition_id={{ q.competition_id }}
+  {%- elif q.detail_year is not none and q.profile_scope == 'season' %}&detail_year={{ q.detail_year }}{% endif -%}
+{%- endif -%}
+{%- if page %}&page={{ page }}{% endif %}
+{%- endmacro -%}
+
+{# Format one competition row cell by its column fmt hint. Ratio metrics carry
+   fmt="pct" and render with a trailing % (unit is never color-only). #}
+{%- macro comp_cell(v, fmt) -%}
+{%- if v is none -%}<span class="slg-comp-na" title="Not available for this scope">—</span>
+{%- elif fmt == 'int' -%}{{ v }}
+{%- elif fmt == 'pct' -%}{{ '%.1f' % v }}%
+{%- elif fmt == 'f2' -%}{{ '%.2f' % v }}
+{%- else -%}{{ '%.1f' % v }}
+{%- endif -%}
+{%- endmacro -%}
+
+{# Render one metric section (How it played / Performance landscape / Field
+   composition) as a definition grid. Every metric exposes its value, coverage,
+   and an expandable definition (formula, denominator, unit, interpretation). #}
+{%- macro metric_section(section) -%}
+<div class="slg-comp-metrics" role="list">
+  {% for m in section.metrics %}
+  <div class="slg-comp-metric slg-comp-metric--{{ m.coverage }}" role="listitem">
+    <div class="slg-comp-metric__head">
+      <span class="slg-comp-metric__label">{{ m.label }}</span>
+      <span class="slg-comp-metric__value">{{ m.formatted_value }}</span>
+    </div>
+    <div class="slg-comp-metric__cov">{{ coverage_badge(m.coverage, m.covered, m.eligible) }}</div>
+    {% if m.coverage != 'complete' and m.reason %}
+    <p class="slg-comp-metric__reason">{{ m.reason }}</p>
+    {% endif %}
+    <details class="slg-comp-metric__def">
+      <summary>Definition</summary>
+      <dl>
+        <dt>Formula</dt><dd><code>{{ m.formula }}</code></dd>
+        <dt>Denominator</dt><dd>{{ m.denominator }}</dd>
+        <dt>Unit</dt><dd>{{ m.unit }}</dd>
+        <dt>Reading</dt><dd>{{ m.interpretation }}</dd>
+        {% if m.confidence_note %}<dt>Caveat</dt><dd>{{ m.confidence_note }}</dd>{% endif %}
+      </dl>
+    </details>
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro -%}
+
+{# Coverage verdict badge (text + shape, never color alone). #}
+{%- macro coverage_badge(verdict, covered=none, eligible=none) -%}
+{%- set icon = {'complete': '●', 'partial': '◑', 'unavailable': '○'}.get(verdict, '○') -%}
+<span class="slg-cov slg-cov--{{ verdict }}">
+  <span class="slg-cov__dot" aria-hidden="true">{{ icon }}</span>
+  <span class="slg-cov__label">{{ verdict }}</span>
+  {%- if covered is not none and eligible is not none %} <span class="slg-cov__count">({{ covered }}/{{ eligible }})</span>{% endif -%}
+</span>
+{%- endmacro -%}

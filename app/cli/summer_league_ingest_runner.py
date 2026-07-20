@@ -96,6 +96,10 @@ from app.services.summer_league.backfill import (
     summarize_backfill_report,
 )
 from app.services.summer_league.endpoints import normalize_league_id
+from app.services.summer_league.environment_refresh import (
+    refresh_environment_profiles_for_year,
+    resolve_environment_refresh_scope,
+)
 from app.services.summer_league.manifest import SummerLeagueRawManifest
 from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics
 from app.services.summer_league.nba_stats_client import NBAStatsClient
@@ -1194,6 +1198,23 @@ async def main() -> int:
                                     summary["adv_pools"],
                                     refreshed_snapshots,
                                 )
+                                # Competition Context (#618): incremental
+                                # profile refresh runs after normalized
+                                # facts and advanced metrics are
+                                # materialized, inside this same locked
+                                # transaction (reusing the lock this branch
+                                # already holds). Isolated: a refresh
+                                # failure is caught/recorded internally and
+                                # never fails this pipeline run.
+                                target_year = resolve_environment_refresh_scope(
+                                    year=year,
+                                    any_games=any_games,
+                                    pending_reconciliation=pending_reconciliation,
+                                )
+                                if target_year is not None:
+                                    await refresh_environment_profiles_for_year(
+                                        db, year=target_year, telemetry=telemetry
+                                    )
                                 await complete_pipeline(
                                     db,
                                     job=SummerLeaguePipelineJob.FULL_INGESTION,

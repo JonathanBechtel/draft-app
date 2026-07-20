@@ -4,6 +4,9 @@
 
 **Parent direction:** `docs/plans/event-environment-intelligence-pitch.md`
 
+**Implementation contract:**
+`docs/plans/competition-context-explorer-implementation-contract.md`
+
 ## Release objective
 
 Add a fifth **Competitions** tab to the existing Summer League Explorer. It should let a
@@ -36,13 +39,15 @@ and disclose multi-competition participants.
 - season or competition name; venue for individual competitions;
 - dates; completed and scheduled/postponed game counts; distinct teams;
 - included competition count for season rollups;
-- box-score, shot-chart, and PBP coverage badges; calculation/freshness date.
+- box-score, shot-chart, and PBP coverage badges; calculation/freshness date. PBP is an
+  informational completeness dimension in v1; no displayed v1 metric requires it.
 
 ### Field composition
 
 - distinct players who appeared, plus roster/participation count when available;
 - rookie/returner split and Summer League appearance number;
-- drafted versus undrafted share; first/second-round and lottery share;
+- drafted-entering-event versus not-yet-drafted share; first/second-round and lottery
+  share;
 - draft-class, age, position-group, college/international origin distributions;
 - teams represented and repeat participants across venues in season scope.
 
@@ -88,12 +93,14 @@ leaderboard into a scouting conclusion.
 - **Coverage:** all / box complete / shot-chart complete / PBP complete.
 - **Display:** table and one selected metric trend across the filtered year range.
 - **Metric thresholds:** pace, ORtg, 3PA share, 3P%, rim share, rim FG%, turnover rate,
-  assisted-FG rate, score margin, field-composition shares, and coverage.
+  assisted-FG rate, score margin, team count, first-time share, drafted-entering-event
+  share, lottery share, median age, and coverage—only when registry coverage certifies
+  the value.
 
 ### Useful second-wave controls
 
 - competition type or format/round structure once consistently normalized;
-- field filters: rookie share, drafted share, lottery share, median age, team count;
+- expanded categorical field filters and origin breakdown filters;
 - game-length/era policy if historical sources introduce nonstandard formats;
 - direct prior-year or historical-same-venue comparison.
 
@@ -110,7 +117,7 @@ Competition / Summer League season profile
       ├── Explorer Competitions row and detail
       ├── context strip on filtered Players, Teams, and Matchups results
       ├── tournament/venue page “at a glance” module
-      ├── Summer League season hub trend/card
+      ├── explicitly labeled all-competitions summary alongside season-hub venue cards
       └── sourceable context for Summer League Desk and later player timelines
 ```
 
@@ -119,7 +126,7 @@ to the same scope in Players, Teams, or Matchups; from a Las Vegas profile to on
 Vegas rows; or from a season profile to one component competition. This is how the
 feature feeds existing discovery rather than becoming a fifth isolated table.
 
-## Aggregate rules that must be settled before implementation
+## Frozen implementation rules
 
 1. A season profile pools numerator and denominator totals across included final games;
    it never averages competition-level rates.
@@ -131,3 +138,7 @@ feature feeds existing discovery rather than becoming a fifth isolated table.
    shot-chart rate is not zero and does not invalidate box-derived pace or turnover rate.
 5. Trend charts render only consistently defined, sufficiently covered years; gaps remain
    visible with an explanation.
+6. The exact metric formulas, coverage gates, field-composition semantics, stable URL
+   parameters, profile version publication, query ceilings, and operational refresh rules
+   live in `docs/plans/competition-context-explorer-implementation-contract.md` and are
+   shared by every ticket.

@@ -116,9 +116,14 @@ ROUTE_BUDGETS: dict[str, int] = {
     # walks the ladder in Python (competition list + has-rows probe + rows ≤ 3).
     "/stats/summer-league/leaders": 5,
     # +1 each: the season/venue mini leader boards retry once at 1+ GP when the
-    # standard gate matches nobody (early-competition fallback).
-    "/stats/summer-league/{year}": 8,
-    "/stats/summer-league/{year}/{venue}": 8,
+    # standard gate matches nobody (early-competition fallback), worst case 8.
+    # +1 more (max 9): both pages also resolve their Competition Context
+    # profile (get_current_profile_by_scope_key, one indexed current-profile
+    # read; the venue page keys it off the competition_id get_venue's header
+    # lookup already resolved) — contract §9's "at most one
+    # indexed profile read, max expected budget 9" for season/venue reuse.
+    "/stats/summer-league/{year}": 9,
+    "/stats/summer-league/{year}/{venue}": 9,
     # Header + schedule + stats roster + announced roster (A4 pre-event preview,
     # one indexed read on summer_league_participation by team_entry_id) = 4.
     "/stats/summer-league/{year}/{venue}/{team}": 4,
@@ -132,6 +137,19 @@ ROUTE_BUDGETS: dict[str, int] = {
     # prior all-rows-in-Python approach.
     # +1 for _fetch_adv_counts: the N-of-M banner (#406) needs eligible_n + total_m over
     # SummerLeagueMetricContext, folded into a single grouped count query.
+    #
+    # This 10 is measured against the default subject=players render only.
+    # `subject=competitions` (#607, Competition Context) dispatches to a
+    # completely different, cheaper read path — one facet query (year/venue
+    # from current profiles only, skipping the 7 player/team facet reads
+    # above), one list query, plus at most one detail lookup + one membership
+    # read + one venue-series trend read when requested — and is NOT
+    # exercised by this generic harness: `representative_dataset` seeds no
+    # `summer_league_environment_profiles` rows, so a competitions request
+    # here would only ever measure the trivial empty-result path. It is
+    # measured for real (against a populated Competition Context seed,
+    # asserting <=10) by
+    # `tests/integration/test_summer_league_explorer.py::test_competitions_route_query_budget`.
     "/stats/summer-league/explorer": 10,
 }
 

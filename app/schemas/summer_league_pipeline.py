@@ -21,6 +21,7 @@ class SummerLeaguePipelineJob(str, Enum):
 
     DESK = "desk"
     FULL_INGESTION = "full_ingestion"
+    ENVIRONMENT_REFRESH = "environment_refresh"
 
 
 class SummerLeaguePipelineOutcome(str, Enum):

@@ -1,0 +1,100 @@
+{# Competition Context results: scope note, row table, detail, and trend.
+   Included by _explorer_results.html when subject == 'competitions'; renders
+   standalone for ?partial=1 JS swaps. #}
+{% from "stats/summer-league/_explorer_competition_macros.html" import comp_qs, comp_cell, coverage_badge %}
+{% set q = result.query %}
+{% set detail = result.competition_detail %}
+{% set is_competition_scope = q.profile_scope == 'competition' %}
+{# Metric/identity columns for the scannable list; meta columns are CSV-only. #}
+{% set table_cols = result.columns | selectattr('group', 'ne', 'meta') | list %}
+
+<div class="slg-comp" id="explorer-results">
+
+  {# ── Scope + coverage summary line ──────────────────────────────────────── #}
+  <p class="slg-comp-scopenote" role="status">
+    {% if is_competition_scope %}
+    Individual competitions — one row per competition edition (e.g. 2025 Las Vegas).
+    {% else %}
+    Summer League seasons — one row per calendar year pooled across every included competition.
+    {% endif %}
+  </p>
+
+  {# Competition scope with no venue selected: prompt before charting a trend
+     so unrelated venues are never blended into one line (contract §6). #}
+  {% if is_competition_scope and not q.venue and not detail %}
+  <p class="slg-comp-hint">Pick a venue or open a competition to chart a single-series trend. The table below still lists every competition edition.</p>
+  {% endif %}
+
+  <p class="slg-explorer-count">
+    {{ result.total }} {{ 'result' if result.total == 1 else 'results' }}
+    {% if result.total > result.page_size %}
+    · page {{ result.page }} of {{ (result.total // result.page_size) + (1 if result.total % result.page_size else 0) }}
+    {% endif %}
+    {% if result.total > 0 %}
+    · <a class="slg-explorer-count__csv" href="{{ comp_qs(result.query, drop_detail=True) }}&format=csv" download="summer-league-competitions.csv">Download CSV</a>
+    {% endif %}
+  </p>
+
+  {# ── Row table ──────────────────────────────────────────────────────────── #}
+  <div class="stats-scoreboard slg-board">
+    <div class="scanlines"></div>
+    <div class="slg-tablewrap">
+      <table class="sl-stats-table slg-explorer-table slg-comp-table">
+        <thead>
+          <tr>
+            <th scope="col" class="slg-explorer__label">Scope</th>
+            {% for col in table_cols %}
+            {%- set is_active = q.sort == col.key -%}
+            {%- set next_dir = 'asc' if (is_active and q.direction == 'desc') else 'desc' -%}
+            <th scope="col" class="{{ 'slg-sort-active' if is_active else '' }}" data-metric-group="{{ col.group }}"
+                {% if is_active %}aria-sort="{{ 'descending' if q.direction == 'desc' else 'ascending' }}"{% endif %}>
+              {% if col.sortable %}
+              <a href="{{ comp_qs(result.query, sort=col.key, direction=next_dir) }}">
+                {{ col.label }}{% if is_active %} {{ '▾' if q.direction == 'desc' else '▴' }}{% endif %}
+              </a>
+              {% else %}{{ col.label }}{% endif %}
+            </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in result.rows %}
+          {%- set row_year = row.values.get('year') -%}
+          {%- set row_cid = row.values.get('competition_id') -%}
+          {%- set is_selected = (is_competition_scope and detail and detail.competition_id == row_cid) or (not is_competition_scope and detail and detail.year == row_year) -%}
+          {%- set detail_href = comp_qs(result.query, competition_id=row_cid) if is_competition_scope else comp_qs(result.query, detail_year=row_year) -%}
+          <tr class="{{ 'is-selected' if is_selected else '' }}">
+            <th scope="row" class="slg-explorer__label">
+              <a href="{{ detail_href }}" class="slg-comp-open" aria-label="Open profile for {{ row.label }}"{% if is_selected %} aria-current="true"{% endif %}>{{ row.label }}</a>
+            </th>
+            {% for col in table_cols %}
+            <td class="{{ 'slg-strong' if col.key == q.sort else '' }}" data-metric-group="{{ col.group }}">
+              {%- if col.key == 'venue' -%}{{ row.values.get('venue') or '—' }}
+              {%- else -%}{{ comp_cell(row.values.get(col.key), col.fmt) }}{%- endif -%}
+            </td>
+            {% endfor %}
+          </tr>
+          {% else %}
+          <tr><td colspan="{{ table_cols|length + 1 }}" class="slg-empty">No competition profiles match these filters.{% if q.coverage != 'all' or q.metric_filters %} Try relaxing coverage or stat thresholds.{% endif %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% if result.page > 1 or result.has_next %}
+  <div class="slg-explorer-pager">
+    {% if result.page > 1 %}<a class="slg-pager-btn" href="{{ comp_qs(result.query, page=result.page - 1) }}">&larr; Prev</a>{% endif %}
+    {% if result.has_next %}<a class="slg-pager-btn" href="{{ comp_qs(result.query, page=result.page + 1) }}">Next &rarr;</a>{% endif %}
+  </div>
+  {% endif %}
+
+  {# ── Selected profile detail (five sections) ────────────────────────────── #}
+  {% if detail %}
+    {% include "stats/summer-league/_explorer_competition_detail.html" %}
+  {% endif %}
+
+  {# ── Trend ──────────────────────────────────────────────────────────────── #}
+  {% include "stats/summer-league/_explorer_competition_trend.html" %}
+
+</div>
