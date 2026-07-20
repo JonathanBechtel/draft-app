@@ -433,7 +433,9 @@ async def test_csv_structure_scope_ids_values_and_definitions(
     header = reader[0]
     assert header[0] == "Scope"
     assert "Scope Key" in header
-    assert "Version" in header
+    assert "Publication Version" in header
+    assert "Calculation Version" in header
+    assert "Registry Version" in header
     assert "Box Coverage" in header
     # A season row carries its stable scope key and a value.
     season_rows = [r for r in reader if r and r[0].startswith("2024 Summer League")]

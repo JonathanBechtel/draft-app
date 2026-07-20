@@ -91,6 +91,19 @@ class ScopeEligibility(str, Enum):
 # Bump when any formula/denominator/rounding/coverage rule changes.
 REGISTRY_VERSION = "2026.07.1"
 
+# Aggregation/calculation-algorithm version stamped onto every profile,
+# distinct from REGISTRY_VERSION (metric definitions/formulas/coverage rules,
+# above) and distinct from a profile's own `version` (a per-scope monotonic
+# publication sequence number, bumped every rebuild regardless of whether
+# anything actually changed). Bump CALCULATION_VERSION when the aggregation
+# *pipeline logic* changes -- e.g. which raw inputs are pooled, how the input
+# watermark is assembled, possession/coverage wiring -- even when no metric
+# formula in this registry changed. A profile carrying an older
+# calculation_version than the current constant was built under different
+# aggregation logic and is a candidate for rebuild even if its registry_version
+# still matches.
+CALCULATION_VERSION = "2026.07.2"
+
 # A literal threshold value for tests that want to assert boundary behavior
 # at a known number (see is_profile_stale's stale_after_hours override).
 # Runtime staleness reads settings.summer_league_environment_stale_after_hours

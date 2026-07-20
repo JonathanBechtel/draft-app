@@ -31,7 +31,21 @@ Tables
   position / origin) known / unknown / total counts over resolved appeared
   players plus an optional distribution histogram.
 * :class:`SummerLeagueEnvironmentProvenance` — per-source watermark, row count,
-  and parse-status summary feeding the profile's freshness disclosure.
+  and parse-status/source-status summary feeding the profile's freshness
+  disclosure. ``SummerLeagueEnvironmentProfile.raw_run_ids`` carries the exact
+  contributing ``SummerLeagueRawRun`` ids so a published profile can be traced
+  to the raw scrape snapshot(s) it was built from.
+
+Three distinct version stamps travel with a profile -- never conflate them:
+
+* ``version`` — a monotonic publication sequence number within a scope_key,
+  bumped on every rebuild regardless of whether anything changed.
+* ``registry_version`` — the metric-definition/registry version (formulas,
+  denominators, coverage rules) from
+  :mod:`app.services.summer_league_environment_registry`.
+* ``calculation_version`` — the aggregation-pipeline/calculation-logic
+  version, bumped when *how* inputs are pooled/watermarked changes even
+  without a metric-definition change.
 
 The exact metric formulas, denominators, rounding, coverage rules, and
 event-time field-composition semantics live in
@@ -140,7 +154,13 @@ class SummerLeagueEnvironmentProfile(SQLModel, table=True):  # type: ignore[call
 
     # Versioning / selection.
     version: int = Field(
-        nullable=False, description="Monotonic version within a scope_key"
+        nullable=False,
+        description=(
+            "Publication version: a monotonic sequence number within a "
+            "scope_key, bumped every rebuild regardless of whether the "
+            "calculation logic or values actually changed. Not the same as "
+            "calculation_version or registry_version below."
+        ),
     )
     is_current: bool = Field(
         default=False,
@@ -149,7 +169,22 @@ class SummerLeagueEnvironmentProfile(SQLModel, table=True):  # type: ignore[call
     )
     registry_version: str = Field(
         nullable=False,
-        description="Metric-registry definition version this profile was built under",
+        description=(
+            "Metric-registry definition version this profile was built "
+            "under (formulas/denominators/rounding/coverage rules) -- see "
+            "app.services.summer_league_environment_registry.REGISTRY_VERSION"
+        ),
+    )
+    calculation_version: str = Field(
+        nullable=False,
+        description=(
+            "Aggregation/calculation-algorithm version this profile was "
+            "built under -- distinct from registry_version (metric "
+            "definitions) and from the publication `version` above (a "
+            "sequence number). Bumped when the aggregation pipeline logic "
+            "changes even without a metric-definition change -- see "
+            "app.services.summer_league_environment_registry.CALCULATION_VERSION"
+        ),
     )
 
     # Identity & coverage (game grain).
@@ -221,6 +256,17 @@ class SummerLeagueEnvironmentProfile(SQLModel, table=True):  # type: ignore[call
     source_watermark: Optional[datetime] = Field(
         default=None,
         description="Max source-row updated_at pooled across contributing spokes",
+    )
+    raw_run_ids: Optional[list[int]] = Field(
+        default=None,
+        sa_column=Column(JSONB, nullable=True),
+        description=(
+            "Distinct SummerLeagueRawRun.id values for every contributing "
+            "competition (SummerLeagueCompetition.raw_run_id) -- the exact "
+            "raw scrape manifests this profile can be traced back to and "
+            "reproduced/audited from. Sorted ascending; null when no "
+            "contributing competition has a linked raw run."
+        ),
     )
     notes: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
@@ -388,13 +434,31 @@ class SummerLeagueEnvironmentProvenance(SQLModel, table=True):  # type: ignore[c
     )
     source_kind: str = Field(
         nullable=False,
-        description="'box' | 'shot' | 'pbp' | 'score' | 'ot_state' | 'identity'",
+        description=(
+            "'box' | 'shot' | 'pbp' | 'score' | 'ot_state' | 'identity' | "
+            "'participation' | 'schedule'"
+        ),
     )
     watermark_at: Optional[datetime] = Field(
         default=None, description="Max updated_at of the contributing source rows"
     )
     row_count: int = Field(default=0, nullable=False)
     parse_status: Optional[str] = Field(
-        default=None, description="Optional parse/coverage summary for the source"
+        default=None,
+        description=(
+            "Worst-case SummerLeagueRawFile.parse_status across the raw "
+            "files backing this source (box/shot/pbp endpoints) for the "
+            "scope's eligible final games; null for sources with no "
+            "directly-modeled per-file parse status (score/ot_state/"
+            "identity/participation/schedule)."
+        ),
+    )
+    source_status: Optional[str] = Field(
+        default=None,
+        description=(
+            "Worst-case SummerLeagueRawRun.status across the raw scrape "
+            "manifests (see raw_run_ids on the profile) that produced this "
+            "scope's contributing competitions."
+        ),
     )
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)

@@ -177,6 +177,14 @@
 .slg-comp-conf__scopekey { font-size: 0.74rem; color: var(--color-slate-500, #64748b); margin: 0.5rem 0 0; }
 .slg-comp-conf__scopekey code { font-family: var(--font-mono, monospace); background: var(--color-slate-100, #f1f5f9); padding: 0 0.25rem; border-radius: 3px; }
 
+/* Provenance / source references (exact raw-run audit trail) */
+.slg-comp-prov { margin-top: 0.6rem; }
+.slg-comp-prov__title { font-family: var(--font-mono, monospace); font-size: 0.72rem; text-transform: uppercase; color: var(--color-slate-500, #64748b); margin: 0 0 0.4rem; }
+.slg-comp-prov__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+.slg-comp-prov__row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: baseline; font-size: 0.78rem; padding: 0.2rem 0.4rem; border-bottom: 1px dashed var(--color-slate-100, #f1f5f9); }
+.slg-comp-prov__label { font-weight: 500; color: var(--color-slate-700, #334155); min-width: 8rem; }
+.slg-comp-prov__watermark, .slg-comp-prov__rows, .slg-comp-prov__status { font-family: var(--font-mono, monospace); font-size: 0.72rem; color: var(--color-slate-500, #64748b); }
+
 /* ── Trend chart ─────────────────────────────────────────────────────────── */
 .slg-comp-trend { margin-top: 1.5rem; }
 .slg-comp-trend__head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }

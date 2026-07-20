@@ -64,9 +64,16 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentProvenance,
     SummerLeagueEnvironmentSeasonMembership,
 )
+from app.schemas.summer_league import (
+    SummerLeagueRawFile,
+    SummerLeagueRawFileStatus,
+    SummerLeagueRawRun,
+    SummerLeagueRawRunStatus,
+)
 from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
 from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import (
+    CALCULATION_VERSION,
     FIELD_COMPOSITION_ATTRIBUTES,
     REGISTRY_VERSION,
     CoverageSource,
@@ -294,6 +301,52 @@ async def list_field_composition(
     return rows
 
 
+# Display order for the six provenance source kinds plus the two freshness-
+# only kinds added by this ticket (participation/schedule never gate a
+# displayed metric -- they exist purely so the input watermark advances).
+_PROVENANCE_SOURCE_ORDER: tuple[str, ...] = (
+    "box",
+    "shot",
+    "score",
+    "ot_state",
+    "pbp",
+    "identity",
+    "participation",
+    "schedule",
+)
+
+
+async def list_provenance(
+    db: AsyncSession, profile_id: int
+) -> list[SummerLeagueEnvironmentProvenance]:
+    """Every per-source provenance row for one profile (exact source references).
+
+    One indexed query over ``summer_league_environment_provenance`` — called
+    only when a detail profile is selected, never per list row, mirroring
+    :func:`list_field_composition` (contract §9). Every row discloses the
+    source's freshness watermark, contributing row count, and (where the
+    underlying data models it) parse/source status — the audit trail behind
+    a published profile.
+
+    Args:
+        db: Async session.
+        profile_id: The selected profile's primary key.
+
+    Returns:
+        Provenance rows in a stable display order (box/shot/score/ot_state/
+        pbp/identity/participation/schedule).
+    """
+    result = await db.execute(
+        select(SummerLeagueEnvironmentProvenance).where(
+            col(SummerLeagueEnvironmentProvenance.profile_id) == profile_id
+        )
+    )
+    rows = list(result.scalars())
+    order = {key: i for i, key in enumerate(_PROVENANCE_SOURCE_ORDER)}
+    rows.sort(key=lambda r: order.get(r.source_kind, len(order)))
+    return rows
+
+
 @dataclass(frozen=True)
 class MetricCoverageInfo:
     """A metric's read-time coverage verdict, counts, and reason for one profile."""
@@ -500,6 +553,7 @@ class ProfileSummaryView:
     display_name: str
     version: int
     registry_version: str
+    calculation_version: str
     calculated_at: Optional[datetime]
     source_watermark: Optional[datetime]
     is_stale: bool
@@ -611,6 +665,7 @@ def build_profile_summary_view(
         display_name=profile.display_name,
         version=profile.version,
         registry_version=profile.registry_version,
+        calculation_version=profile.calculation_version,
         calculated_at=profile.calculated_at,
         source_watermark=profile.source_watermark,
         is_stale=is_stale,
@@ -699,6 +754,16 @@ class _CompetitionInputs:
     display_name: str
     starts_on: Optional[date]
 
+    # Exact raw-source reference (contract: "trace to exact contributing raw
+    # run/source references") -- the audited scrape manifest this
+    # competition's normalized facts came from, if any.
+    raw_run_id: Optional[int] = None
+    # Worst-case SummerLeagueRawRun.status for that manifest.
+    raw_run_status: Optional[str] = None
+    # Worst-case SummerLeagueRawFile.parse_status per source kind ("box" /
+    # "shot" / "pbp") across this competition's eligible final games.
+    parse_status_by_source: dict[str, str] = field(default_factory=dict)
+
     # Schedule / status disclosure (all statuses).
     final_games: int = 0
     scheduled_games: int = 0
@@ -781,6 +846,7 @@ async def _load_competition_inputs(
             venue_slug=c.venue_slug,
             display_name=c.display_name,
             starts_on=c.starts_on,
+            raw_run_id=c.raw_run_id,
         )
         for c in competitions
     }
@@ -794,6 +860,8 @@ async def _load_competition_inputs(
     await _load_participation(db, comp_ids, inputs)
     await _load_shots(db, comp_ids, inputs)
     await _load_pbp(db, comp_ids, inputs)
+    await _load_raw_run_status(db, inputs)
+    await _load_raw_file_parse_status(db, comp_ids, inputs)
     return inputs
 
 
@@ -816,6 +884,12 @@ async def _load_game_status(
     ).all()
     for comp_id, status, home, away, status_text, updated_at in rows:
         acc = inputs[int(comp_id)]
+        # Every game (any status) is a profile-affecting input: a game
+        # flipping scheduled -> final changes eligibility/coverage even
+        # before it carries a score, so the watermark must move with it
+        # regardless of the score/ot_state observations below (which only
+        # fire for FINAL games).
+        acc.provenance["schedule"].observe(updated_at)
         if status == SummerLeagueGameStatus.FINAL:
             acc.final_games += 1
             acc.provenance["score"].observe(updated_at)
@@ -981,7 +1055,15 @@ async def _load_appearances(
 async def _load_participation(
     db: AsyncSession, comp_ids: list[int], inputs: dict[int, _CompetitionInputs]
 ) -> None:
-    """Count participation rows and capture event-time roster position (preferred)."""
+    """Count participation rows and capture event-time roster position (preferred).
+
+    Participation (roster/stint assertions) can change a profile's position
+    composition independent of any game log -- a roster correction must
+    advance the input watermark even when no player-game log changed, so this
+    observes its own ``"participation"`` provenance source (contract:
+    "ensure the input watermark covers every input that can change a
+    profile").
+    """
     part = SummerLeagueParticipation
     rows = (
         await db.execute(
@@ -989,12 +1071,14 @@ async def _load_participation(
                 part.competition_id,
                 part.player_id,
                 part.roster_position,
+                part.updated_at,
             ).where(col(part.competition_id).in_(comp_ids))
         )
     ).all()
-    for comp_id, player_id, roster_position in rows:
+    for comp_id, player_id, roster_position, updated_at in rows:
         acc = inputs[int(comp_id)]
         acc.participation_count += 1
+        acc.provenance["participation"].observe(updated_at)
         if player_id is not None and roster_position:
             # Roster position is the strongest event-time signal; it wins over a
             # box starter_position captured for a single game.
@@ -1057,6 +1141,139 @@ async def _load_pbp(
         acc = inputs[int(comp_id)]
         acc.pbp_covered_game_ids.add(int(game_id))
         acc.provenance["pbp"].observe(updated_at)
+
+
+# Worst-first ranking for SummerLeagueRawRunStatus: the pooled/aggregated
+# status across every contributing manifest is the single worst one, never
+# silently averaged away.
+_RAW_RUN_STATUS_RANK: dict[SummerLeagueRawRunStatus, int] = {
+    SummerLeagueRawRunStatus.COMPLETE: 0,
+    SummerLeagueRawRunStatus.PENDING: 1,
+    SummerLeagueRawRunStatus.PARTIAL: 2,
+    SummerLeagueRawRunStatus.FAILED: 3,
+}
+
+# Worst-first ranking for SummerLeagueRawFileStatus (per-endpoint parse
+# status). PRESENT (fetched, not yet parsed) ranks worse than a normal
+# PARSED/SKIPPED outcome but better than a genuine gap/failure.
+_PARSE_STATUS_RANK: dict[SummerLeagueRawFileStatus, int] = {
+    SummerLeagueRawFileStatus.PARSED: 0,
+    SummerLeagueRawFileStatus.SKIPPED: 1,
+    SummerLeagueRawFileStatus.PRESENT: 2,
+    SummerLeagueRawFileStatus.EMPTY: 3,
+    SummerLeagueRawFileStatus.MISSING: 4,
+    SummerLeagueRawFileStatus.PARSE_FAILED: 5,
+}
+
+# String-keyed mirrors of the rank tables above: `_CompetitionInputs`/
+# `_PooledScope` store the enum's ``.value`` (a plain string, matching the
+# provenance table's ``Optional[str]`` columns) rather than the enum itself.
+_RAW_RUN_STATUS_VALUE_RANK: dict[str, int] = {
+    status.value: rank for status, rank in _RAW_RUN_STATUS_RANK.items()
+}
+_PARSE_STATUS_VALUE_RANK: dict[str, int] = {
+    status.value: rank for status, rank in _PARSE_STATUS_RANK.items()
+}
+
+
+def _worse_status(current: Optional[str], candidate: str, rank: dict[str, int]) -> str:
+    """Return whichever of ``current``/``candidate`` ranks worse (never averaged)."""
+    if current is None or rank.get(candidate, 0) > rank.get(current, 0):
+        return candidate
+    return current
+
+
+# SummerLeagueRawFile.endpoint -> the Competition Context source kind it
+# feeds (single source of truth mirroring app.services.summer_league.
+# raw_ingestion.GAME_ENDPOINTS' box/shot/pbp split).
+_BOX_RAW_ENDPOINTS = (
+    "boxscoretraditionalv2",
+    "boxscoreadvancedv2",
+    "boxscorescoringv2",
+)
+_SHOT_RAW_ENDPOINT = "shotchartdetail"
+_PBP_RAW_ENDPOINT = "playbyplayv2"
+_ENDPOINT_SOURCE_KIND: dict[str, str] = {
+    **{endpoint: "box" for endpoint in _BOX_RAW_ENDPOINTS},
+    _SHOT_RAW_ENDPOINT: "shot",
+    _PBP_RAW_ENDPOINT: "pbp",
+}
+
+
+async def _load_raw_run_status(
+    db: AsyncSession, inputs: dict[int, _CompetitionInputs]
+) -> None:
+    """Bulk-load each contributing competition's raw-run (source) status.
+
+    One set-based query keyed by the distinct ``raw_run_id`` values already
+    captured on ``inputs`` (from ``SummerLeagueCompetition.raw_run_id``) --
+    populates the "source status" disclosure (contract: "populate ... source
+    status where modeled").
+    """
+    raw_run_ids = {
+        acc.raw_run_id for acc in inputs.values() if acc.raw_run_id is not None
+    }
+    if not raw_run_ids:
+        return
+    rows = (
+        await db.execute(
+            select(SummerLeagueRawRun.id, SummerLeagueRawRun.status).where(  # type: ignore[call-overload]
+                col(SummerLeagueRawRun.id).in_(raw_run_ids)
+            )
+        )
+    ).all()
+    status_by_run: dict[int, SummerLeagueRawRunStatus] = {
+        int(run_id): status for run_id, status in rows
+    }
+    for acc in inputs.values():
+        if acc.raw_run_id is not None and acc.raw_run_id in status_by_run:
+            acc.raw_run_status = status_by_run[acc.raw_run_id].value
+
+
+async def _load_raw_file_parse_status(
+    db: AsyncSession, comp_ids: list[int], inputs: dict[int, _CompetitionInputs]
+) -> None:
+    """Bulk-load per-source (box/shot/pbp) raw-file parse status.
+
+    Joins ``SummerLeagueRawFile`` to eligible final games by
+    ``nba_stats_game_id`` (unique) and reduces to the worst-case
+    :class:`SummerLeagueRawFileStatus` per (competition, source kind) --
+    populates the "parse status" disclosure (contract: "populate parse
+    status ... where modeled"). Score/OT-state/identity/participation/
+    schedule have no directly-modeled per-file parse status and are left
+    ``None``.
+    """
+    raw_file = SummerLeagueRawFile
+    game = SummerLeagueGame
+    rows = (
+        await db.execute(
+            select(  # type: ignore[call-overload]
+                game.competition_id,
+                raw_file.endpoint,
+                raw_file.parse_status,
+            )
+            .join(game, col(game.nba_stats_game_id) == col(raw_file.game_id))
+            .where(
+                col(game.status) == SummerLeagueGameStatus.FINAL,
+                col(game.competition_id).in_(comp_ids),
+                col(raw_file.endpoint).in_(_ENDPOINT_SOURCE_KIND),
+            )
+        )
+    ).all()
+    worst: dict[tuple[int, str], SummerLeagueRawFileStatus] = {}
+    for comp_id, endpoint, parse_status in rows:
+        source_kind = _ENDPOINT_SOURCE_KIND.get(endpoint)
+        if source_kind is None:
+            continue
+        key = (int(comp_id), source_kind)
+        current = worst.get(key)
+        if (
+            current is None
+            or _PARSE_STATUS_RANK[parse_status] > _PARSE_STATUS_RANK[current]
+        ):
+            worst[key] = parse_status
+    for (comp_id, source_kind), status in worst.items():
+        inputs[comp_id].parse_status_by_source[source_kind] = status.value
 
 
 @dataclass
@@ -1185,6 +1402,14 @@ class _PooledScope:
         default_factory=lambda: defaultdict(_SourceProvenance)
     )
 
+    # Exact raw-source references (contract: trace a profile to exact
+    # contributing raw run/source references) and their aggregated status
+    # disclosures (contract: populate parse status and source status where
+    # modeled).
+    raw_run_ids: set[int] = field(default_factory=set)
+    raw_run_status: Optional[str] = None
+    parse_status_by_source: dict[str, str] = field(default_factory=dict)
+
     def pool(self) -> None:
         """Sum every member competition's numerators/denominators into this scope."""
         for member in self.members:
@@ -1226,6 +1451,19 @@ class _PooledScope:
                 bucket = self.provenance[source_kind]
                 bucket.row_count += prov.row_count
                 bucket.watermark = _max_dt(bucket.watermark, prov.watermark)
+            if member.raw_run_id is not None:
+                self.raw_run_ids.add(member.raw_run_id)
+            if member.raw_run_status is not None:
+                self.raw_run_status = _worse_status(
+                    self.raw_run_status,
+                    member.raw_run_status,
+                    _RAW_RUN_STATUS_VALUE_RANK,
+                )
+            for source_kind, status in member.parse_status_by_source.items():
+                current_status = self.parse_status_by_source.get(source_kind)
+                self.parse_status_by_source[source_kind] = _worse_status(
+                    current_status, status, _PARSE_STATUS_VALUE_RANK
+                )
 
     @property
     def watermark(self) -> Optional[datetime]:
@@ -1590,6 +1828,7 @@ def _build_candidate(
         version=0,  # assigned at publication
         is_current=False,  # flipped at publication
         registry_version=REGISTRY_VERSION,
+        calculation_version=CALCULATION_VERSION,
         included_competitions=max(1, len(pooled.members)),
         final_games=pooled.final_games,
         # The persisted column is the "Scheduled / not-final" disclosure
@@ -1619,6 +1858,7 @@ def _build_candidate(
         teams_represented=len(pooled.team_entry_ids),
         median_age=composition.median_age,
         source_watermark=pooled.watermark,
+        raw_run_ids=sorted(pooled.raw_run_ids) or None,
         **stored_values,  # type: ignore[arg-type]
     )
 
@@ -1638,6 +1878,8 @@ def _build_candidate(
             source_kind=source_kind,
             watermark_at=prov.watermark,
             row_count=prov.row_count,
+            parse_status=pooled.parse_status_by_source.get(source_kind),
+            source_status=pooled.raw_run_status,
         )
         for source_kind, prov in sorted(pooled.provenance.items())
     ]
@@ -1763,7 +2005,7 @@ class EnvironmentRebuildResult:
     failed_scopes: int = 0
     metric_coverage_complete: int = 0
     registry_version: str = REGISTRY_VERSION
-    calculation_version: str = REGISTRY_VERSION
+    calculation_version: str = CALCULATION_VERSION
     input_watermark: Optional[datetime] = None
     duration_seconds: float = 0.0
     published_scope_keys: list[str] = field(default_factory=list)

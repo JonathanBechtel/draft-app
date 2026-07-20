@@ -102,15 +102,23 @@ intervention. Rollback is only for reversing an already-*published* version.
 
 ## 5. Inspect / verify
 
-Check what's currently published for a scope:
+Check what's currently published for a scope. Three independent version
+stamps ride every row — `version` (publication sequence, bumped every
+rebuild), `registry_version` (metric definitions/formulas), and
+`calculation_version` (aggregation-pipeline logic) — never conflate them:
 
 ```sql
-SELECT scope_key, version, is_current, calculated_at, source_watermark,
+SELECT scope_key, version, registry_version, calculation_version,
+       is_current, calculated_at, source_watermark, raw_run_ids,
        final_games, box_complete_games, shot_covered_games
 FROM summer_league_environment_profiles
 WHERE scope_key = 'season:2025'
 ORDER BY version DESC;
 ```
+
+`raw_run_ids` is the exact set of `summer_league_raw_runs.id` values this
+profile can be traced back to and reproduced/audited from (the contributing
+competitions' `raw_run_id`).
 
 Per-metric coverage/reason for the current row:
 
@@ -119,6 +127,19 @@ SELECT c.metric_key, c.coverage, c.covered_games, c.eligible_games, c.reason
 FROM summer_league_environment_metric_coverage c
 JOIN summer_league_environment_profiles p ON p.id = c.profile_id
 WHERE p.scope_key = 'season:2025' AND p.is_current;
+```
+
+Per-source provenance (freshness watermark, row count, and parse/source
+status where the underlying raw data models it — box/shot/pbp get a
+per-file parse status from `summer_league_raw_files`; every source gets an
+aggregated raw-run status from `summer_league_raw_runs`):
+
+```sql
+SELECT pr.source_kind, pr.watermark_at, pr.row_count, pr.parse_status, pr.source_status
+FROM summer_league_environment_provenance pr
+JOIN summer_league_environment_profiles p ON p.id = pr.profile_id
+WHERE p.scope_key = 'season:2025' AND p.is_current
+ORDER BY pr.source_kind;
 ```
 
 Last incremental-refresh outcome (durable pipeline state, updated by every

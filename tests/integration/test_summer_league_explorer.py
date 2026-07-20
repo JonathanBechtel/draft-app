@@ -5585,7 +5585,8 @@ async def test_competitions_csv_export_includes_coverage_and_freshness_columns(
     header = resp.text.splitlines()[0]
     for expected_col in (
         "Scope Key",
-        "Version",
+        "Publication Version",
+        "Calculation Version",
         "Registry Version",
         "Calculated At",
         "Box Coverage",

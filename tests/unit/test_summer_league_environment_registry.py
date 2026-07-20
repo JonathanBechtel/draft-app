@@ -260,6 +260,18 @@ def test_field_composition_attributes_are_frozen() -> None:
     assert reg.FIELD_COMPOSITION_ATTRIBUTES == ("draft", "age", "position", "origin")
 
 
+def test_calculation_version_is_distinct_from_registry_version() -> None:
+    """Calculation version is its own stamp, never conflated with the registry.
+
+    A published profile's `version` (publication sequence), `registry_version`
+    (metric definitions), and `calculation_version` (aggregation-pipeline
+    logic) are three independent stamps -- this asserts the constants
+    themselves never accidentally collapse into one value.
+    """
+    assert isinstance(reg.CALCULATION_VERSION, str) and reg.CALCULATION_VERSION
+    assert reg.CALCULATION_VERSION != reg.REGISTRY_VERSION
+
+
 def test_registry_summary_counts() -> None:
     """The registry summary reports consistent section counts."""
     summary = reg.registry_summary()

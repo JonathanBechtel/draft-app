@@ -70,6 +70,7 @@ from app.schemas.summer_league_environment import (
     SCOPE_KIND_SEASON,
     SummerLeagueEnvironmentFieldComposition,
     SummerLeagueEnvironmentProfile,
+    SummerLeagueEnvironmentProvenance,
 )
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
@@ -97,6 +98,7 @@ from app.services.summer_league_environment_service import (
     get_current_profile_by_scope_key,
     list_current_profiles,
     list_field_composition,
+    list_provenance,
     list_season_membership,
     metric_coverage_for_profile,
     registry_raw_value,
@@ -980,10 +982,28 @@ _COMPETITION_META_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn(
         "scope_key", "Scope Key", _GROUP_META, sortable=False, fmt="raw", numeric=False
     ),
-    ExplorerColumn("version", "Version", _GROUP_META, sortable=False, fmt="int"),
+    ExplorerColumn(
+        "version", "Publication Version", _GROUP_META, sortable=False, fmt="int"
+    ),
+    ExplorerColumn(
+        "calculation_version",
+        "Calculation Version",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
     ExplorerColumn(
         "registry_version",
         "Registry Version",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+    ExplorerColumn(
+        "raw_run_ids",
+        "Raw Run IDs",
         _GROUP_META,
         sortable=False,
         fmt="raw",
@@ -1783,6 +1803,27 @@ class SourceCoverageView:
 
 
 @dataclass(frozen=True)
+class ProvenanceSourceView:
+    """One source's exact provenance record: freshness, volume, and status.
+
+    Distinct from :class:`SourceCoverageView` (a metric-coverage verdict
+    derived from stored counts): this is the raw audit trail persisted at
+    build time in ``summer_league_environment_provenance`` -- when the source
+    last changed, how many rows fed it, and (where the underlying raw data
+    models it) its parse/source status. Includes the ``"participation"`` and
+    ``"schedule"`` freshness-only sources, which gate no metric but must
+    still be visible in the audit trail.
+    """
+
+    source_kind: str
+    label: str
+    watermark_at: Optional[datetime]
+    row_count: int
+    parse_status: Optional[str]
+    source_status: Optional[str]
+
+
+@dataclass(frozen=True)
 class MetricValueView:
     """One registry metric fully resolved for the detail panel (contract §4/§6).
 
@@ -1836,6 +1877,8 @@ class CompetitionDetail:
     display_name: str
     version: int
     registry_version: str
+    calculation_version: str
+    raw_run_ids: Optional[list[int]]
     calculated_at: Optional[datetime]
     source_watermark: Optional[datetime]
     is_stale: bool
@@ -1861,6 +1904,9 @@ class CompetitionDetail:
     source_coverage: list[SourceCoverageView] = field(default_factory=list)
     field_composition: list[FieldCompositionAttributeView] = field(default_factory=list)
     membership: list[CompetitionMembershipRow] = field(default_factory=list)
+    # Exact per-source provenance (freshness + row count + parse/source
+    # status) — the audit trail behind this published profile.
+    provenance: list[ProvenanceSourceView] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -3646,6 +3692,8 @@ class _CompetitionProfileView:
     display_name: str
     version: int
     registry_version: str
+    calculation_version: str
+    raw_run_ids: Optional[list[int]]
     calculated_at: Optional[datetime]
     source_watermark: Optional[datetime]
     included_competitions: int
@@ -3722,6 +3770,8 @@ def _build_profile_view(
         display_name=profile.display_name,
         version=profile.version,
         registry_version=profile.registry_version,
+        calculation_version=profile.calculation_version,
+        raw_run_ids=profile.raw_run_ids,
         calculated_at=profile.calculated_at,
         source_watermark=profile.source_watermark,
         included_competitions=profile.included_competitions,
@@ -3828,6 +3878,10 @@ def _view_to_row(
         "scope_key": view.scope_key,
         "version": view.version,
         "registry_version": view.registry_version,
+        "calculation_version": view.calculation_version,
+        "raw_run_ids": (
+            ",".join(str(i) for i in view.raw_run_ids) if view.raw_run_ids else None
+        ),
         "calculated_at": (
             view.calculated_at.isoformat() if view.calculated_at is not None else None
         ),
@@ -3860,6 +3914,15 @@ _SOURCE_LABELS: dict[CoverageSource, str] = {
     CoverageSource.OT_STATE: "Overtime state",
     CoverageSource.PBP: "Play-by-play",
     CoverageSource.IDENTITY: "Player identity",
+}
+
+# Human labels for every provenance source_kind, including the two
+# freshness-only kinds ("participation"/"schedule") that gate no metric but
+# still advance the input watermark and belong in the audit trail.
+_PROVENANCE_LABELS: dict[str, str] = {
+    **{source.value: label for source, label in _SOURCE_LABELS.items()},
+    "participation": "Roster / participation",
+    "schedule": "Game schedule / status",
 }
 
 # Human labels for the four field-composition attributes (contract §5).
@@ -3903,6 +3966,23 @@ def _field_composition_views(
             unknown=r.unknown,
             total=r.total,
             distribution=r.distribution,
+        )
+        for r in rows
+    ]
+
+
+def _provenance_views(
+    rows: Sequence[SummerLeagueEnvironmentProvenance],
+) -> list[ProvenanceSourceView]:
+    """Provenance rows as labeled, ordered audit-trail disclosures."""
+    return [
+        ProvenanceSourceView(
+            source_kind=r.source_kind,
+            label=_PROVENANCE_LABELS.get(r.source_kind, r.source_kind.title()),
+            watermark_at=r.watermark_at,
+            row_count=r.row_count,
+            parse_status=r.parse_status,
+            source_status=r.source_status,
         )
         for r in rows
     ]
@@ -3965,6 +4045,7 @@ def _view_to_detail(
     metric_by_key: dict[str, MetricDefinition],
     membership: list[CompetitionMembershipRow],
     field_composition: list[FieldCompositionAttributeView],
+    provenance: list[ProvenanceSourceView],
 ) -> CompetitionDetail:
     is_stale = is_profile_stale(view.calculated_at)
     values = {
@@ -3981,6 +4062,8 @@ def _view_to_detail(
         display_name=view.display_name,
         version=view.version,
         registry_version=view.registry_version,
+        calculation_version=view.calculation_version,
+        raw_run_ids=view.raw_run_ids,
         calculated_at=view.calculated_at,
         source_watermark=view.source_watermark,
         is_stale=is_stale,
@@ -4000,6 +4083,7 @@ def _view_to_detail(
         source_coverage=_source_coverage_views(view),
         field_composition=field_composition,
         membership=membership,
+        provenance=provenance,
     )
 
 
@@ -4195,11 +4279,16 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
             db,
             detail_view.profile_id,  # type: ignore[arg-type]
         )
+        provenance_rows = await list_provenance(
+            db,
+            detail_view.profile_id,  # type: ignore[arg-type]
+        )
         result.competition_detail = _view_to_detail(
             detail_view,
             metric_by_key,
             membership,
             _field_composition_views(field_rows),
+            _provenance_views(provenance_rows),
         )
 
     # ---- Trend (contract §6: season = one line across years; competition =

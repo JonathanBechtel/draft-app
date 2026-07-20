@@ -30,6 +30,11 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
+    SummerLeagueParticipation,
+    SummerLeagueRawFile,
+    SummerLeagueRawFileStatus,
+    SummerLeagueRawRun,
+    SummerLeagueRawRunStatus,
     SummerLeagueShotEvent,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
@@ -44,9 +49,11 @@ from app.schemas.summer_league_environment import (
 )
 from app.services.summer_league.metrics import Box
 from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
+from app.services.summer_league_environment_registry import CALCULATION_VERSION
 from app.services.summer_league_environment_service import (
     EnvironmentScope,
     get_environment_profile,
+    list_provenance,
     rebuild_environment_profiles,
 )
 from tests.integration.conftest import make_player
@@ -339,6 +346,112 @@ async def test_competition_projection_matches_pooled_source(
     assert season is None
 
 
+# --------------------------------------------------------------------------- #
+# Distinct calculation version + exact raw-run/source provenance (#641)
+# --------------------------------------------------------------------------- #
+async def test_profile_traces_to_raw_run_and_discloses_source_status(
+    db_session: AsyncSession,
+) -> None:
+    """A published profile stamps a distinct calculation_version, is exactly
+    traceable to its contributing raw run, and discloses per-source parse/
+    source status where the underlying raw data models it.
+    """
+    raw_run = SummerLeagueRawRun(
+        year=2025,
+        league_id="15",
+        venue_slug="las_vegas",
+        status=SummerLeagueRawRunStatus.COMPLETE,
+        manifest_path="s3://bucket/2025/las_vegas/manifest.json",
+    )
+    db_session.add(raw_run)
+    await db_session.flush()
+    assert raw_run.id is not None
+
+    comp_id, roster = await _seed_competition(
+        db_session, year=2025, venue="las_vegas", league_id="15"
+    )
+    comp = await db_session.get(SummerLeagueCompetition, comp_id)
+    assert comp is not None
+    comp.raw_run_id = raw_run.id
+    await db_session.flush()
+
+    games = (
+        (
+            await db_session.execute(
+                select(SummerLeagueGame).where(
+                    SummerLeagueGame.competition_id == comp_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert games
+    db_session.add(
+        SummerLeagueRawFile(
+            raw_run_id=raw_run.id,
+            year=2025,
+            league_id="15",
+            endpoint="boxscoretraditionalv2",
+            game_id=games[0].nba_stats_game_id,
+            relative_path=f"{games[0].nba_stats_game_id}/boxscoretraditionalv2.json",
+            parse_status=SummerLeagueRawFileStatus.PARSED,
+        )
+    )
+    # A roster/participation row so its own provenance source is populated.
+    team_entries = (
+        (
+            await db_session.execute(
+                select(SummerLeagueTeamEntry).where(
+                    SummerLeagueTeamEntry.competition_id == comp_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    db_session.add(
+        SummerLeagueParticipation(
+            competition_id=comp_id,
+            team_entry_id=team_entries[0].id,
+            source_player_id=roster[0].id,
+            player_id=roster[0].canonical_player_id,
+            roster_position="G",
+        )
+    )
+    await db_session.commit()
+
+    async with db_session.begin():
+        result = await rebuild_environment_profiles(db_session, competition_id=comp_id)
+    assert result.built_scopes == 1
+    assert result.failed_scopes == 0
+
+    profile = await get_environment_profile(
+        db_session, EnvironmentScope.for_competition(comp_id, 2025)
+    )
+    assert profile is not None
+    assert profile.id is not None
+    assert profile.calculation_version == CALCULATION_VERSION
+    assert profile.calculation_version != profile.registry_version
+    assert profile.raw_run_ids == [raw_run.id]
+
+    provenance = await list_provenance(db_session, profile.id)
+    by_source = {p.source_kind for p in provenance}
+    # Every input that can change the profile is represented, including the
+    # freshness-only participation/schedule sources.
+    assert {"box", "score", "identity", "participation", "schedule"} <= by_source
+
+    box_row = next(p for p in provenance if p.source_kind == "box")
+    assert box_row.parse_status == "PARSED"
+    assert box_row.source_status == "COMPLETE"
+
+    participation_row = next(p for p in provenance if p.source_kind == "participation")
+    assert participation_row.row_count >= 1
+    assert participation_row.watermark_at is not None
+    # No per-file parse status is modeled for participation; never fabricated.
+    assert participation_row.parse_status is None
+
+
 async def test_non_final_games_disclosed_in_scheduled_count(
     db_session: AsyncSession,
 ) -> None:
@@ -351,9 +464,7 @@ async def test_non_final_games_disclosed_in_scheduled_count(
     )
     comp = (
         await db_session.execute(
-            select(SummerLeagueCompetition).where(
-                SummerLeagueCompetition.id == comp_id
-            )
+            select(SummerLeagueCompetition).where(SummerLeagueCompetition.id == comp_id)
         )
     ).scalar_one()
     team_a = await _team(db_session, comp_id, 3)
@@ -387,9 +498,19 @@ async def test_non_final_games_disclosed_in_scheduled_count(
         db_session, EnvironmentScope.for_competition(comp_id, 2025)
     )
     assert profile is not None
+    assert profile.id is not None
     assert profile.final_games == 1
     # All 5 non-final statuses disclosed, not just the literal SCHEDULED one.
     assert profile.scheduled_games == 5
+
+    # The "schedule" provenance source watches every game regardless of
+    # status (#641): a game flipping scheduled -> final is itself a
+    # profile-affecting input, so its watermark/row_count must cover all 6
+    # seeded games, not just the 1 final one.
+    provenance = await list_provenance(db_session, profile.id)
+    schedule_row = next(p for p in provenance if p.source_kind == "schedule")
+    assert schedule_row.row_count == 6
+    assert schedule_row.watermark_at is not None
 
 
 # --------------------------------------------------------------------------- #

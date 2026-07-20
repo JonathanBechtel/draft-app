@@ -127,9 +127,27 @@
     <dl class="slg-comp-facts slg-comp-facts--freshness">
       <div><dt>Calculated</dt><dd>{{ detail.calculated_at.strftime('%Y-%m-%d %H:%M UTC') if detail.calculated_at else '—' }}</dd></div>
       <div><dt>Source watermark</dt><dd>{{ detail.source_watermark.strftime('%Y-%m-%d %H:%M UTC') if detail.source_watermark else '—' }}</dd></div>
-      <div><dt>Calc version</dt><dd>v{{ detail.version }}</dd></div>
+      <div><dt>Publication version</dt><dd>v{{ detail.version }}</dd></div>
+      <div><dt>Calc version</dt><dd>{{ detail.calculation_version }}</dd></div>
       <div><dt>Registry</dt><dd>{{ detail.registry_version }}</dd></div>
+      <div><dt>Raw run(s)</dt><dd>{{ detail.raw_run_ids | join(', ') if detail.raw_run_ids else '—' }}</dd></div>
     </dl>
+    {% if detail.provenance %}
+    <div class="slg-comp-prov">
+      <h4 class="slg-comp-prov__title">Source references</h4>
+      <ul class="slg-comp-prov__list">
+        {% for p in detail.provenance %}
+        <li class="slg-comp-prov__row">
+          <span class="slg-comp-prov__label">{{ p.label }}</span>
+          <span class="slg-comp-prov__watermark">{{ p.watermark_at.strftime('%Y-%m-%d %H:%M UTC') if p.watermark_at else '—' }}</span>
+          <span class="slg-comp-prov__rows">{{ p.row_count }} rows</span>
+          {% if p.parse_status %}<span class="slg-comp-prov__status">parse: {{ p.parse_status }}</span>{% endif %}
+          {% if p.source_status %}<span class="slg-comp-prov__status">source: {{ p.source_status }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
     <p class="slg-comp-conf__scopekey">Stable scope key: <code>{{ detail.scope_key }}</code></p>
   </div>
 </section>

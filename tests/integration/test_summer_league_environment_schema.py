@@ -26,7 +26,10 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentProvenance,
     SummerLeagueEnvironmentSeasonMembership,
 )
-from app.services.summer_league_environment_registry import REGISTRY_VERSION
+from app.services.summer_league_environment_registry import (
+    CALCULATION_VERSION,
+    REGISTRY_VERSION,
+)
 from app.services.summer_league_environment_service import (
     EnvironmentScope,
     get_environment_profile,
@@ -64,6 +67,7 @@ def _season_profile(
         version=version,
         is_current=is_current,
         registry_version=REGISTRY_VERSION,
+        calculation_version=CALCULATION_VERSION,
         included_competitions=3,
         final_games=88,
         pace_per_48=98.4,
@@ -149,6 +153,7 @@ async def test_get_environment_profile_by_scope(db_session: AsyncSession) -> Non
             version=1,
             is_current=True,
             registry_version=REGISTRY_VERSION,
+            calculation_version=CALCULATION_VERSION,
             final_games=76,
             pace_per_48=99.1,
         )

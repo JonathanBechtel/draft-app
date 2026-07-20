@@ -14,9 +14,14 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from app.services.summer_league.metrics import Box
-from app.services.summer_league_environment_registry import METRICS_BY_KEY
+from app.services.summer_league_environment_registry import (
+    CALCULATION_VERSION,
+    REGISTRY_VERSION,
+    METRICS_BY_KEY,
+)
 from app.services.summer_league_environment_service import (
     EnvironmentScope,
+    _RAW_RUN_STATUS_VALUE_RANK,
     _build_candidate,
     _CompetitionInputs,
     _coverage_verdict,
@@ -26,6 +31,7 @@ from app.services.summer_league_environment_service import (
     _PooledScope,
     _top_decile_share,
     _validate_candidate,
+    _worse_status,
     build_profile_summary_view,
     explorer_competitions_href,
 )
@@ -411,6 +417,105 @@ def test_registry_metric_count_covered() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Distinct calculation version + exact raw-run/source provenance (#641)
+# --------------------------------------------------------------------------- #
+
+
+def test_build_candidate_stamps_distinct_calculation_version() -> None:
+    """A built candidate's calculation_version is the registry constant, and
+    is never equal to registry_version (the two must stay independently
+    meaningful, even though both currently come from the same module)."""
+    pool = _comp_pool(2025)
+    candidate = _build_candidate(pool, {})
+    assert candidate.profile.calculation_version == CALCULATION_VERSION
+    assert candidate.profile.registry_version == REGISTRY_VERSION
+    assert candidate.profile.calculation_version != candidate.profile.registry_version
+
+
+def test_build_candidate_carries_pooled_raw_run_ids() -> None:
+    """Distinct contributing raw_run_ids pool onto the profile, sorted."""
+    pool = _comp_pool(2025)
+    pool.raw_run_ids = {9, 3, 3}
+    candidate = _build_candidate(pool, {})
+    assert candidate.profile.raw_run_ids == [3, 9]
+
+
+def test_build_candidate_raw_run_ids_none_when_absent() -> None:
+    """No linked raw run anywhere in the scope stores None, not an empty list."""
+    pool = _comp_pool(2025)
+    candidate = _build_candidate(pool, {})
+    assert candidate.profile.raw_run_ids is None
+
+
+def test_build_candidate_provenance_carries_parse_and_source_status() -> None:
+    """Provenance rows disclose per-source parse status and the pooled source
+    (raw-run) status, populated from the pooled aggregation inputs."""
+    pool = _comp_pool(2025)
+    pool.provenance["box"].row_count = 4
+    pool.parse_status_by_source = {"box": "PARSED"}
+    pool.raw_run_status = "PARTIAL"
+    candidate = _build_candidate(pool, {})
+    box_row = next(r for r in candidate.provenance_rows if r.source_kind == "box")
+    assert box_row.parse_status == "PARSED"
+    assert box_row.source_status == "PARTIAL"
+
+
+def test_build_candidate_provenance_status_none_when_unmodeled() -> None:
+    """A source with no per-file parse status (e.g. score) stays None, never
+    fabricated."""
+    pool = _comp_pool(2025)
+    pool.provenance["score"].row_count = 2
+    candidate = _build_candidate(pool, {})
+    score_row = next(r for r in candidate.provenance_rows if r.source_kind == "score")
+    assert score_row.parse_status is None
+    assert score_row.source_status is None
+
+
+def test_worse_status_prefers_ranked_worse_value() -> None:
+    """The worst-case status wins; ties/better candidates never regress it."""
+    assert _worse_status(None, "COMPLETE", _RAW_RUN_STATUS_VALUE_RANK) == "COMPLETE"
+    assert (
+        _worse_status("COMPLETE", "PARTIAL", _RAW_RUN_STATUS_VALUE_RANK) == "PARTIAL"
+    )
+    assert _worse_status("FAILED", "COMPLETE", _RAW_RUN_STATUS_VALUE_RANK) == "FAILED"
+
+
+def test_pooled_scope_pool_aggregates_raw_run_and_parse_status() -> None:
+    """`_PooledScope.pool()` unions raw_run_ids and worst-cases status across
+    every member competition (season scopes pool several competitions)."""
+    member_a = _CompetitionInputs(
+        competition_id=1,
+        year=2025,
+        venue_slug="las_vegas",
+        display_name="a",
+        starts_on=None,
+        raw_run_id=10,
+        raw_run_status="COMPLETE",
+        parse_status_by_source={"box": "PARSED"},
+    )
+    member_b = _CompetitionInputs(
+        competition_id=2,
+        year=2025,
+        venue_slug="california_classic",
+        display_name="b",
+        starts_on=None,
+        raw_run_id=11,
+        raw_run_status="PARTIAL",
+        parse_status_by_source={"box": "PARSE_FAILED"},
+    )
+    pooled = _PooledScope(
+        scope=EnvironmentScope.for_season(2025),
+        display_name="2025 Summer League",
+        venue_slug=None,
+        members=[member_a, member_b],
+    )
+    pooled.pool()
+    assert pooled.raw_run_ids == {10, 11}
+    assert pooled.raw_run_status == "PARTIAL"
+    assert pooled.parse_status_by_source["box"] == "PARSE_FAILED"
+
+
+# --------------------------------------------------------------------------- #
 # Page-ready DTO shaping for season/venue reuse (#610)
 # --------------------------------------------------------------------------- #
 def _season_profile(**overrides: object) -> SummerLeagueEnvironmentProfile:
@@ -426,6 +531,7 @@ def _season_profile(**overrides: object) -> SummerLeagueEnvironmentProfile:
         version=3,
         is_current=True,
         registry_version="2026.07.1",
+        calculation_version="2026.07.2",
         included_competitions=2,
         final_games=4,
         scheduled_games=1,
@@ -466,6 +572,8 @@ def test_build_profile_summary_view_season_identity_and_link() -> None:
     assert view.scope_key == "season:2025"
     assert view.scope_kind == SCOPE_KIND_SEASON
     assert view.included_competitions == 2
+    assert view.registry_version == "2026.07.1"
+    assert view.calculation_version == "2026.07.2"
     assert view.explorer_href == (
         "/stats/summer-league/explorer"
         "?subject=competitions&profile_scope=season&detail_year=2025"

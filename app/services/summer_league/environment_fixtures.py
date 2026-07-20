@@ -36,7 +36,10 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentProfile,
     SummerLeagueEnvironmentSeasonMembership,
 )
-from app.services.summer_league_environment_registry import REGISTRY_VERSION
+from app.services.summer_league_environment_registry import (
+    CALCULATION_VERSION,
+    REGISTRY_VERSION,
+)
 from app.services.summer_league_environment_service import (
     competition_scope_key,
     season_scope_key,
@@ -165,6 +168,7 @@ def _profile(
         version=version,
         is_current=True,
         registry_version=REGISTRY_VERSION,
+        calculation_version=CALCULATION_VERSION,
         included_competitions=included_competitions,
         final_games=final_games,
         scheduled_games=scheduled_games,
