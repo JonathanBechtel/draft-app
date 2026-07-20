@@ -1,7 +1,11 @@
 {# Summer League Desk -- Live tick board (#509): every game, its status, score,
    Top Performer (headshot + live GmSc; em-dash pre-tip per behavior spec §1),
-   and the last tick's read. `row.read` is already-rendered commentary prose
-   (#519) -- placed here, never re-worded.
+   and the last tick's read. `row.read` is normally the already-rendered
+   snapshot commentary prose (#519) -- placed here as-is -- but
+   `_refresh_snapshot_live_state` swaps in a short live-consistent line
+   whenever the request-time overlay moves the top performer's identity or
+   Game Score past what that frozen prose quotes, so this cell never
+   contradicts the Top Performer column next to it.
 
    Pre-prod blocker fix: a still-`scheduled` game has no Top Performer yet,
    so the cell used to render a bare, very-low-contrast em-dash that mobile

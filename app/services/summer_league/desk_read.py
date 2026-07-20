@@ -960,6 +960,12 @@ class _CurrentLiveSnapshotState:
     players: dict[int, dict]
 
 
+def _player_label(player_id: int, players: Mapping[int, dict]) -> str:
+    """Display name for a live-context player dict, or a stable id-based fallback."""
+    performer = players.get(player_id)
+    return performer["display_name"] if performer else f"Player {player_id}"
+
+
 def _player_view_context(player: PlayerMaster) -> dict:
     """Build the template identity context shared by snapshot and live reads."""
     assert player.id is not None
@@ -1147,6 +1153,24 @@ async def _refresh_snapshot_live_state(
             current.logs_by_game.get(snapshot_row.game_id, {})
         )
         top = ranked[0] if ranked else None
+        top_player_id = (
+            top[0] if top is not None else snapshot_row.top_performer_player_id
+        )
+        top_gmsc = top[2] if top is not None else snapshot_row.top_performer_gmsc
+        # The snapshot's "read" prose quotes a Game Score frozen at the last
+        # hourly tick. Once the live overlay above moves the top performer's
+        # identity or number past that frozen value, the two would visibly
+        # contradict each other in the same row (behavior spec §1's freshness
+        # stamp only covers the snapshot side). Swap in a short line built
+        # from the same live number rather than let the row disagree with
+        # itself -- mirrors the hero headline's live-regeneration handling above.
+        read = snapshot_row.read
+        if top is not None and (top_player_id, top_gmsc) != (
+            snapshot_row.top_performer_player_id,
+            snapshot_row.top_performer_gmsc,
+        ):
+            performer_name = _player_label(top[0], current.players)
+            read = f"{performer_name} leads with a live {top[2]:.1f} Game Score."
         refreshed_live_board.append(
             dataclass_replace(
                 snapshot_row,
@@ -1164,12 +1188,9 @@ async def _refresh_snapshot_live_state(
                 tip_datetime=game.tip_datetime
                 if game is not None
                 else snapshot_row.tip_datetime,
-                top_performer_player_id=(
-                    top[0] if top is not None else snapshot_row.top_performer_player_id
-                ),
-                top_performer_gmsc=(
-                    top[2] if top is not None else snapshot_row.top_performer_gmsc
-                ),
+                top_performer_player_id=top_player_id,
+                top_performer_gmsc=top_gmsc,
+                read=read,
             )
         )
 
