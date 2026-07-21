@@ -89,7 +89,7 @@ class ScopeEligibility(str, Enum):
 
 # Definition version stamped onto every profile built under this registry.
 # Bump when any formula/denominator/rounding/coverage rule changes.
-REGISTRY_VERSION = "2026.07.1"
+REGISTRY_VERSION = "2026.07.2"
 
 # Aggregation/calculation-algorithm version stamped onto every profile,
 # distinct from REGISTRY_VERSION (metric definitions/formulas/coverage rules,
@@ -102,7 +102,7 @@ REGISTRY_VERSION = "2026.07.1"
 # calculation_version than the current constant was built under different
 # aggregation logic and is a candidate for rebuild even if its registry_version
 # still matches.
-CALCULATION_VERSION = "2026.07.4"
+CALCULATION_VERSION = "2026.07.5"
 
 # A literal threshold value for tests that want to assert boundary behavior
 # at a known number (see is_profile_stale's stale_after_hours override).
@@ -156,11 +156,21 @@ def is_profile_stale(
     return (reference - calculated).total_seconds() > threshold_hours * 3600
 
 
-# Field-composition attributes with per-attribute known/unknown coverage.
+# Field-composition attributes with per-attribute known/unknown coverage, in
+# display order. ``draft_class``/``age_reference``/``position_source``/
+# ``appearance`` are disclosure dimensions distinct from their sibling base
+# attribute: ``age_reference``/``position_source`` disclose *which source*
+# resolved the value (known = the preferred event-time source; unknown = a
+# disclosed fallback was used), never whether the base attribute itself is
+# known.
 FIELD_COMPOSITION_ATTRIBUTES: tuple[str, ...] = (
     "draft",
+    "draft_class",
     "age",
+    "age_reference",
     "position",
+    "position_source",
+    "appearance",
     "origin",
 )
 
@@ -597,6 +607,27 @@ _COMPOSITION: tuple[MetricDefinition, ...] = (
         filterable=True,
         scope_eligibility=_R,
         interpretation="Share of the field undrafted as of event time.",
+        stored=False,
+    ),
+    MetricDefinition(
+        key="not_yet_drafted_share",
+        label="Not-Yet-Drafted Share",
+        section=MetricSection.COMPOSITION,
+        source_fields=("not_yet_drafted_count", "appeared_players"),
+        formula="not_yet_drafted_count / appeared_players",
+        denominator="distinct resolved appeared players; 0 -> None",
+        unit=MetricUnit.RATIO,
+        scale=100.0,
+        rounding=1,
+        coverage_source=CoverageSource.IDENTITY,
+        sortable=True,
+        filterable=True,
+        scope_eligibility=_R,
+        interpretation=(
+            "Share of the field whose draft_year is after event time -- "
+            "distinct from undrafted (contract §5: 'not yet drafted', never "
+            "retrospectively undrafted)."
+        ),
         stored=False,
     ),
     MetricDefinition(

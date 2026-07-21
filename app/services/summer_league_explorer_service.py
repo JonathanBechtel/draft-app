@@ -1026,6 +1026,26 @@ _COMPETITION_META_COLUMNS: list[ExplorerColumn] = [
         numeric=False,
     ),
     ExplorerColumn(
+        "starts_on", "Starts On", _GROUP_META, sortable=False, fmt="raw", numeric=False
+    ),
+    ExplorerColumn(
+        "ends_on", "Ends On", _GROUP_META, sortable=False, fmt="raw", numeric=False
+    ),
+    ExplorerColumn(
+        "participation_count",
+        "Participation Count",
+        _GROUP_META,
+        sortable=False,
+        fmt="int",
+    ),
+    ExplorerColumn(
+        "repeat_participants",
+        "Repeat Participants",
+        _GROUP_META,
+        sortable=False,
+        fmt="int",
+    ),
+    ExplorerColumn(
         "coverage_box",
         "Box Coverage",
         _GROUP_META,
@@ -1780,12 +1800,13 @@ class FieldCompositionAttributeView:
     position groups, origin) surfaced in the detail drilldown.
     """
 
-    attribute_key: str  # "draft" | "age" | "position" | "origin"
+    attribute_key: str  # see FIELD_COMPOSITION_ATTRIBUTES for the full key set
     label: str
     known: int
     unknown: int
     total: int
     distribution: Optional[dict[str, Any]]
+    reason: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -1884,6 +1905,8 @@ class CompetitionDetail:
     is_stale: bool
     href: str
     # Identity & format scalars (contract §2/§5).
+    starts_on: Optional[date]
+    ends_on: Optional[date]
     included_competitions: int
     final_games: int
     scheduled_games: int
@@ -1893,6 +1916,7 @@ class CompetitionDetail:
     player_games: int
     appeared_players: int
     appeared_unresolved: int
+    repeat_participants: Optional[int]
     # Display-scaled values (e.g. 0-100 for a ratio metric), keyed by registry
     # metric key — the same scaling `format_metric_value` applies for display.
     values: dict[str, Optional[float]]
@@ -3696,6 +3720,8 @@ class _CompetitionProfileView:
     raw_run_ids: Optional[list[int]]
     calculated_at: Optional[datetime]
     source_watermark: Optional[datetime]
+    starts_on: Optional[date]
+    ends_on: Optional[date]
     included_competitions: int
     final_games: int
     scheduled_games: int
@@ -3705,6 +3731,7 @@ class _CompetitionProfileView:
     player_games: int
     appeared_players: int
     appeared_unresolved: int
+    repeat_participants: Optional[int]
     # metric_key -> raw (unscaled) canonical value.
     raw_values: dict[str, Optional[float]]
     # metric_key -> per-metric coverage disclosure.
@@ -3774,6 +3801,8 @@ def _build_profile_view(
         raw_run_ids=profile.raw_run_ids,
         calculated_at=profile.calculated_at,
         source_watermark=profile.source_watermark,
+        starts_on=profile.starts_on,
+        ends_on=profile.ends_on,
         included_competitions=profile.included_competitions,
         final_games=profile.final_games,
         scheduled_games=profile.scheduled_games,
@@ -3783,6 +3812,7 @@ def _build_profile_view(
         player_games=profile.player_games,
         appeared_players=profile.appeared_players,
         appeared_unresolved=profile.appeared_unresolved,
+        repeat_participants=profile.repeat_participants,
         raw_values=raw_values,
         coverage=coverage,
         source_coverage=source_coverage,
@@ -3890,6 +3920,10 @@ def _view_to_row(
             if view.source_watermark is not None
             else None
         ),
+        "starts_on": view.starts_on.isoformat() if view.starts_on is not None else None,
+        "ends_on": view.ends_on.isoformat() if view.ends_on is not None else None,
+        "participation_count": view.participation_count,
+        "repeat_participants": view.repeat_participants,
         "coverage_box": _coverage_summary_label(view, CoverageSource.BOX),
         "coverage_shot": _coverage_summary_label(view, CoverageSource.SHOT),
         "coverage_score": _coverage_summary_label(view, CoverageSource.SCORE),
@@ -3925,11 +3959,16 @@ _PROVENANCE_LABELS: dict[str, str] = {
     "schedule": "Game schedule / status",
 }
 
-# Human labels for the four field-composition attributes (contract §5).
+# Human labels for every field-composition attribute (contract §5). See
+# FIELD_COMPOSITION_ATTRIBUTES for the canonical display order.
 _FIELD_ATTRIBUTE_LABELS: dict[str, str] = {
     "draft": "Draft status",
+    "draft_class": "Draft class",
     "age": "Age",
+    "age_reference": "Age reference date",
     "position": "Position",
+    "position_source": "Position source",
+    "appearance": "Appearance number",
     "origin": "College / international origin",
 }
 
@@ -3966,6 +4005,7 @@ def _field_composition_views(
             unknown=r.unknown,
             total=r.total,
             distribution=r.distribution,
+            reason=r.reason,
         )
         for r in rows
     ]
@@ -4068,6 +4108,8 @@ def _view_to_detail(
         source_watermark=view.source_watermark,
         is_stale=is_stale,
         href=_competition_href(view),
+        starts_on=view.starts_on,
+        ends_on=view.ends_on,
         included_competitions=view.included_competitions,
         final_games=view.final_games,
         scheduled_games=view.scheduled_games,
@@ -4077,6 +4119,7 @@ def _view_to_detail(
         player_games=view.player_games,
         appeared_players=view.appeared_players,
         appeared_unresolved=view.appeared_unresolved,
+        repeat_participants=view.repeat_participants,
         values=values,
         coverage=view.coverage,
         sections=_metric_sections(view, metric_by_key),

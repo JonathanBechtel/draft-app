@@ -27,9 +27,14 @@ Tables
   ``partial`` / ``unavailable`` verdict, covered/eligible game counts, and a
   human reason. ``partial`` is never coerced to zero and never certifies a
   metric.
-* :class:`SummerLeagueEnvironmentFieldComposition` — per-attribute (draft / age /
-  position / origin) known / unknown / total counts over resolved appeared
-  players plus an optional distribution histogram.
+* :class:`SummerLeagueEnvironmentFieldComposition` — per-attribute (draft /
+  draft_class / age / age_reference / position / position_source /
+  appearance / origin -- see
+  ``app.services.summer_league_environment_registry.FIELD_COMPOSITION_ATTRIBUTES``)
+  known / unknown / total counts over resolved appeared players plus an
+  optional distribution histogram and an optional ``reason`` caveat (e.g. a
+  fallback-usage disclosure, or an explicit "not yet supported" note for
+  origin). ``attribute_key`` is a free-form string, not a DB-enforced enum.
 * :class:`SummerLeagueEnvironmentProvenance` — per-source watermark, row count,
   and parse-status/source-status summary feeding the profile's freshness
   disclosure. ``SummerLeagueEnvironmentProfile.raw_run_ids`` carries the exact
@@ -55,7 +60,7 @@ shared definition consumed by aggregation (#617) and the Explorer (#607/#608).
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
@@ -151,6 +156,22 @@ class SummerLeagueEnvironmentProfile(SQLModel, table=True):  # type: ignore[call
     )
     venue_slug: Optional[str] = Field(default=None)
     display_name: str = Field(nullable=False)
+    starts_on: Optional[date] = Field(
+        default=None,
+        description=(
+            "Competition scope: the competition's own start date. Season "
+            "scope: the earliest included competition's start date (None "
+            "when no member has a known date)."
+        ),
+    )
+    ends_on: Optional[date] = Field(
+        default=None,
+        description=(
+            "Competition scope: the competition's own end date. Season "
+            "scope: the latest included competition's end date (None "
+            "when no member has a known date)."
+        ),
+    )
 
     # Versioning / selection.
     version: int = Field(
@@ -243,12 +264,29 @@ class SummerLeagueEnvironmentProfile(SQLModel, table=True):  # type: ignore[call
     returner_count: int = Field(default=0, nullable=False)
     drafted_count: int = Field(default=0, nullable=False)
     undrafted_count: int = Field(default=0, nullable=False)
+    not_yet_drafted_count: int = Field(
+        default=0,
+        nullable=False,
+        description=(
+            "Resolved appeared players whose draft_year is after the profile "
+            "year -- distinct from undrafted_count (contract §5: 'not yet "
+            "drafted', never retrospectively undrafted)"
+        ),
+    )
     first_round_count: int = Field(default=0, nullable=False)
     second_round_count: int = Field(default=0, nullable=False)
     lottery_count: int = Field(default=0, nullable=False)
     teams_represented: int = Field(default=0, nullable=False)
     median_age: Optional[float] = Field(
         default=None, description="Median age in years at competition start"
+    )
+    repeat_participants: Optional[int] = Field(
+        default=None,
+        description=(
+            "Season scope only: distinct canonical players appearing in more "
+            "than one member competition this year. None for competition "
+            "scope (not applicable, rather than zero)."
+        ),
     )
 
     # Freshness / provenance summary.
@@ -398,6 +436,14 @@ class SummerLeagueEnvironmentFieldComposition(SQLModel, table=True):  # type: ig
         default=None,
         sa_column=Column(JSONB, nullable=True),
         description="Bucket -> count histogram for this attribute",
+    )
+    reason: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional honesty caveat explaining what known/unknown means for "
+            "this attribute (e.g. a fallback-usage disclosure, or why an "
+            "attribute is explicitly unavailable rather than inferred)"
+        ),
     )
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 

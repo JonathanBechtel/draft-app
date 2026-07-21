@@ -23,17 +23,20 @@ from app.services.summer_league_environment_service import (
     EnvironmentScope,
     _RAW_RUN_STATUS_VALUE_RANK,
     _REQUIRED_BOX_FIELDS,
+    _age_reference_info,
     _box_row_usable,
     _build_candidate,
     _CompetitionInputs,
     _coverage_verdict,
     _field_composition,
+    _ordered_buckets,
     _percentile,
     _PlayerAttributes,
     _PooledScope,
     _top_decile_share,
     _validate_candidate,
     _worse_status,
+    _year_buckets,
     build_profile_summary_view,
     explorer_competitions_href,
 )
@@ -445,6 +448,247 @@ def test_median_age_event_time_at_competition_start() -> None:
     }
     comp = _field_composition(pool, attrs)
     assert comp.median_age == pytest.approx(22.0, abs=0.1)
+
+
+# --------------------------------------------------------------------------- #
+# New identity/field-composition disclosures (#638): draft class, appearance
+# number, age/position fallback-source disclosure, repeat participants, and
+# competition start/end dates.
+# --------------------------------------------------------------------------- #
+def test_ordered_buckets_appends_unmodeled_keys_after_fixed_order() -> None:
+    """Fixed-order buckets come first; any unexpected key is appended, never dropped."""
+    out = _ordered_buckets({"3": 1, "1": 2, "unexpected": 9}, ("1", "2", "3", "4+"))
+    assert out is not None
+    assert list(out.items()) == [("1", 2), ("3", 1), ("unexpected", 9)]
+
+
+def test_ordered_buckets_empty_is_none() -> None:
+    """An empty distribution renders as ``None``, never an empty dict."""
+    assert _ordered_buckets({}, ("1", "2")) is None
+
+
+def test_year_buckets_sorts_ascending_with_unknown_trailing() -> None:
+    """Draft-class year buckets sort ascending with 'unknown' always last."""
+    out = _year_buckets({"2024": 1, "2022": 2, "unknown": 3, "2023": 4})
+    assert out is not None
+    assert list(out.keys()) == ["2022", "2023", "2024", "unknown"]
+
+
+def test_year_buckets_empty_is_none() -> None:
+    """An empty draft-class distribution renders as ``None``, never an empty dict."""
+    assert _year_buckets({}) is None
+
+
+def test_field_composition_draft_class_distribution() -> None:
+    """Draft class buckets by draft-year cohort, independent of event-time status."""
+    pool = _comp_pool(2025)
+    pool.resolved_player_ids = {1, 2, 3}
+    attrs = {
+        1: _PlayerAttributes(draft_year=2023, draft_round=1, draft_pick=5),
+        2: _PlayerAttributes(draft_year=2026, draft_round=1, draft_pick=2),  # not yet drafted
+        3: _PlayerAttributes(),  # no draft record at all
+    }
+    comp = _field_composition(pool, attrs)
+    draft_class = comp.attributes["draft_class"]
+    assert draft_class["known"] == 2
+    assert draft_class["unknown"] == 1
+    assert draft_class["total"] == 3
+    assert draft_class["distribution"] == {"2023": 1, "2026": 1}
+
+
+def test_field_composition_appearance_number_distribution() -> None:
+    """Appearance rank buckets 1/2/3/4+ derive from distinct SL years <= profile year."""
+    pool = _comp_pool(2026)
+    pool.resolved_player_ids = {1, 2, 3, 4}
+    attrs = {
+        1: _PlayerAttributes(sl_years=(2026,)),  # rank 1
+        2: _PlayerAttributes(sl_years=(2024, 2025, 2026)),  # rank 3
+        3: _PlayerAttributes(sl_years=(2021, 2022, 2023, 2024, 2026)),  # rank 5 -> "4+"
+        4: _PlayerAttributes(sl_years=()),  # no known SL history -> unknown rank
+    }
+    comp = _field_composition(pool, attrs)
+    appearance = comp.attributes["appearance"]
+    assert appearance["known"] == 3
+    assert appearance["unknown"] == 1
+    assert appearance["total"] == 4
+    assert appearance["distribution"] == {"1": 1, "3": 1, "4+": 1}
+
+
+def test_field_composition_age_reference_fallback_disclosure() -> None:
+    """Age reference discloses July-1-fallback usage when no event date exists."""
+    member = _CompetitionInputs(
+        competition_id=7,
+        year=2025,
+        venue_slug="las_vegas",
+        display_name="2025 Las Vegas",
+        starts_on=None,  # no known competition date -> fallback
+    )
+    pool = _PooledScope(
+        scope=EnvironmentScope.for_competition(7, 2025),
+        display_name=member.display_name,
+        venue_slug="las_vegas",
+        members=[member],
+    )
+    pool.resolved_player_ids = {1, 2}
+    attrs = {
+        1: _PlayerAttributes(birthdate=date(2003, 1, 1)),
+        2: _PlayerAttributes(),  # no birthdate -> excluded from age entirely
+    }
+    comp = _field_composition(pool, attrs)
+    age_reference = comp.attributes["age_reference"]
+    assert age_reference["total"] == 1  # only player 1 has a known age at all
+    assert age_reference["known"] == 0
+    assert age_reference["unknown"] == 1  # fallback used
+    assert age_reference["reason"] is not None
+
+
+def test_field_composition_age_reference_known_when_date_present() -> None:
+    """A competition with a known start date resolves age from the event date."""
+    pool = _comp_pool(2025)  # member.starts_on == date(2025, 7, 10)
+    pool.resolved_player_ids = {1}
+    attrs = {1: _PlayerAttributes(birthdate=date(2003, 1, 1))}
+    comp = _field_composition(pool, attrs)
+    age_reference = comp.attributes["age_reference"]
+    assert age_reference["known"] == 1
+    assert age_reference["unknown"] == 0
+
+
+def test_field_composition_position_source_disclosure() -> None:
+    """Position source discloses event-time vs canonical-fallback resolution."""
+    pool = _comp_pool(2025)
+    pool.resolved_player_ids = {1, 2, 3}
+    pool.event_position_by_player = {1: "G"}  # only player 1 has an event-time position
+    attrs = {
+        1: _PlayerAttributes(canonical_position="PG"),  # event-time wins
+        2: _PlayerAttributes(canonical_position="C"),  # canonical fallback only
+        3: _PlayerAttributes(),  # no position at all
+    }
+    comp = _field_composition(pool, attrs)
+    position_source = comp.attributes["position_source"]
+    assert position_source["total"] == 2  # players 1 and 2 have a position at all
+    assert position_source["known"] == 1  # player 1 (event-time)
+    assert position_source["unknown"] == 1  # player 2 (fallback)
+
+
+def test_field_composition_repeat_participants_season_scope() -> None:
+    """A player appearing in >1 member competition counts once as a repeat."""
+    member_a = _CompetitionInputs(
+        competition_id=1,
+        year=2025,
+        venue_slug="las_vegas",
+        display_name="a",
+        starts_on=None,
+    )
+    member_a.resolved_player_ids = {1, 2}
+    member_b = _CompetitionInputs(
+        competition_id=2,
+        year=2025,
+        venue_slug="california_classic",
+        display_name="b",
+        starts_on=None,
+    )
+    member_b.resolved_player_ids = {2, 3}
+    pool = _PooledScope(
+        scope=EnvironmentScope.for_season(2025),
+        display_name="2025 Summer League",
+        venue_slug=None,
+        members=[member_a, member_b],
+    )
+    pool.resolved_player_ids = {1, 2, 3}
+    comp = _field_composition(pool, {})
+    assert comp.repeat_participants == 1  # only player 2 appeared in both
+
+
+def test_field_composition_repeat_participants_none_for_competition_scope() -> None:
+    """Repeat participants is not applicable (None) for a single-competition scope."""
+    pool = _comp_pool(2025)
+    pool.resolved_player_ids = {1, 2}
+    comp = _field_composition(pool, {})
+    assert comp.repeat_participants is None
+
+
+def test_age_reference_info_competition_uses_start_date() -> None:
+    """A competition scope with a known start date never falls back."""
+    pool = _comp_pool(2025)
+    reference, used_fallback = _age_reference_info(pool, player_id=1)
+    assert reference == date(2025, 7, 10)
+    assert used_fallback is False
+
+
+def test_age_reference_info_falls_back_to_july_first() -> None:
+    """A missing competition date falls back to July 1 of the profile year."""
+    member = _CompetitionInputs(
+        competition_id=7,
+        year=2025,
+        venue_slug="las_vegas",
+        display_name="x",
+        starts_on=None,
+    )
+    pool = _PooledScope(
+        scope=EnvironmentScope.for_competition(7, 2025),
+        display_name="x",
+        venue_slug="las_vegas",
+        members=[member],
+    )
+    reference, used_fallback = _age_reference_info(pool, player_id=1)
+    assert reference == date(2025, 7, 1)
+    assert used_fallback is True
+
+
+def test_build_candidate_competition_dates_from_member() -> None:
+    """Competition scope stamps starts_on/ends_on from its one member."""
+    pool = _comp_pool(2025)
+    pool.members[0].ends_on = date(2025, 7, 20)
+    candidate = _build_candidate(pool, {})
+    assert candidate.profile.starts_on == date(2025, 7, 10)
+    assert candidate.profile.ends_on == date(2025, 7, 20)
+
+
+def test_build_candidate_season_dates_span_members() -> None:
+    """Season scope spans the earliest start / latest end among known member dates."""
+    member_a = _CompetitionInputs(
+        competition_id=1,
+        year=2025,
+        venue_slug="las_vegas",
+        display_name="a",
+        starts_on=date(2025, 7, 10),
+        ends_on=date(2025, 7, 20),
+    )
+    member_b = _CompetitionInputs(
+        competition_id=2,
+        year=2025,
+        venue_slug="california_classic",
+        display_name="b",
+        starts_on=date(2025, 7, 6),
+        ends_on=None,  # a missing end date never blanks the window
+    )
+    pool = _PooledScope(
+        scope=EnvironmentScope.for_season(2025),
+        display_name="2025 Summer League",
+        venue_slug=None,
+        members=[member_a, member_b],
+    )
+    candidate = _build_candidate(pool, {})
+    assert candidate.profile.starts_on == date(2025, 7, 6)
+    assert candidate.profile.ends_on == date(2025, 7, 20)
+
+
+def test_validate_candidate_rejects_negative_not_yet_drafted_count() -> None:
+    """A tampered negative not-yet-drafted count fails validation."""
+    pool = _comp_pool(2025)
+    candidate = _build_candidate(pool, {})
+    candidate.profile.not_yet_drafted_count = -1
+    with pytest.raises(ValueError):
+        _validate_candidate(candidate)
+
+
+def test_validate_candidate_rejects_negative_repeat_participants() -> None:
+    """A tampered negative repeat-participant count fails validation."""
+    pool = _season_pool()
+    candidate = _build_candidate(pool, {})
+    candidate.profile.repeat_participants = -1
+    with pytest.raises(ValueError):
+        _validate_candidate(candidate)
 
 
 # --------------------------------------------------------------------------- #

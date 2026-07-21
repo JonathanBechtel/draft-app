@@ -324,9 +324,22 @@ async def test_field_composition_known_unknown(
     detail = result.competition_detail
     assert detail is not None
     attrs = {a.attribute_key: a for a in detail.field_composition}
-    assert set(attrs) == {"draft", "age", "position", "origin"}
+    assert set(attrs) == {
+        "draft",
+        "draft_class",
+        "age",
+        "age_reference",
+        "position",
+        "position_source",
+        "appearance",
+        "origin",
+    }
     for a in attrs.values():
         assert a.total == a.known + a.unknown
+    # Fallback-usage and unavailability disclosures carry an explanatory reason.
+    assert attrs["age_reference"].reason is not None
+    assert attrs["position_source"].reason is not None
+    assert attrs["origin"].reason is not None
 
 
 # --------------------------------------------------------------------------- #

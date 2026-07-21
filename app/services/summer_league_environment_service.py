@@ -37,7 +37,7 @@ Aggregation honors the frozen implementation contract
 from __future__ import annotations
 
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Literal, Optional
@@ -499,6 +499,7 @@ _COMPOSITION_SHARE_NUMERATOR_COLUMN: dict[str, str] = {
     "returner_share": "returner_count",
     "drafted_share": "drafted_count",
     "undrafted_share": "undrafted_count",
+    "not_yet_drafted_share": "not_yet_drafted_count",
     "first_round_share": "first_round_count",
     "second_round_share": "second_round_count",
     "lottery_share": "lottery_count",
@@ -816,6 +817,7 @@ class _CompetitionInputs:
     venue_slug: Optional[str]
     display_name: str
     starts_on: Optional[date]
+    ends_on: Optional[date] = None
 
     # Exact raw-source reference (contract: "trace to exact contributing raw
     # run/source references") -- the audited scrape manifest this
@@ -918,6 +920,7 @@ async def _load_competition_inputs(
             venue_slug=c.venue_slug,
             display_name=c.display_name,
             starts_on=c.starts_on,
+            ends_on=c.ends_on,
             raw_run_id=c.raw_run_id,
         )
         for c in competitions
@@ -1421,6 +1424,15 @@ class _PlayerAttributes:
     draft_pick: Optional[int] = None
     canonical_position: Optional[str] = None
     first_sl_year: Optional[int] = None
+    # Every distinct Summer League calendar year the player has appeared in
+    # (positive minutes, any competition, FINAL game), sorted ascending --
+    # global across every competition, not just those in the current rebuild
+    # request. A profile's appearance-number distribution (contract §5:
+    # "appearance rank is the player's distinct Summer League calendar-year
+    # rank across all competitions") derives the rank for a given scope year
+    # as ``count(y for y in sl_years if y <= scope_year)`` -- computed once
+    # here and reused for every scope year a rebuild touches.
+    sl_years: tuple[int, ...] = ()
 
 
 async def _load_player_attributes(
@@ -1458,13 +1470,16 @@ async def _load_player_attributes(
             draft_pick=draft_pick,
             canonical_position=position_code,
         )
-    # Rookie/returner needs the player's earliest Summer League appearance year
-    # across *all* competitions (not just those in scope): one set-based query.
+    # Rookie/returner and the appearance-number distribution both need every
+    # distinct Summer League calendar year a player has appeared in *across
+    # all competitions* (not just those in the current rebuild request): one
+    # set-based query, deduplicated in Python rather than two separate
+    # aggregate queries.
     pgl = SummerLeaguePlayerGameLog
     game = SummerLeagueGame
-    first_year_rows = (
+    year_rows = (
         await db.execute(
-            select(pgl.player_id, func.min(SummerLeagueCompetition.year))  # type: ignore[call-overload]
+            select(pgl.player_id, SummerLeagueCompetition.year)  # type: ignore[call-overload]
             .join(game, col(game.id) == col(pgl.game_id))
             .join(
                 SummerLeagueCompetition,
@@ -1475,12 +1490,18 @@ async def _load_player_attributes(
                 col(pgl.minutes_seconds) > 0,
                 col(pgl.player_id).in_(ids),
             )
-            .group_by(pgl.player_id)
+            .distinct()
         )
     ).all()
-    for pid, first_year in first_year_rows:
-        if pid is not None and int(pid) in attributes:
-            attributes[int(pid)].first_sl_year = int(first_year)
+    years_by_player: dict[int, set[int]] = defaultdict(set)
+    for pid, year in year_rows:
+        if pid is not None:
+            years_by_player[int(pid)].add(int(year))
+    for pid, years in years_by_player.items():
+        if pid in attributes:
+            ordered = tuple(sorted(years))
+            attributes[pid].sl_years = ordered
+            attributes[pid].first_sl_year = ordered[0]
     return attributes
 
 
@@ -1727,11 +1748,49 @@ class _FieldComposition:
     returner_count: int
     drafted_count: int
     undrafted_count: int
+    not_yet_drafted_count: int
     first_round_count: int
     second_round_count: int
     lottery_count: int
     median_age: Optional[float]
+    repeat_participants: Optional[int]
     attributes: dict[str, dict[str, Any]]
+
+
+# Appearance-rank bucket order (contract §5: rank 1 is first-time).
+_APPEARANCE_BUCKET_ORDER: tuple[str, ...] = ("1", "2", "3", "4+")
+
+
+def _appearance_bucket(rank: int) -> str:
+    """Map a distinct-calendar-year appearance rank to its display bucket."""
+    return str(rank) if rank <= 3 else "4+"
+
+
+def _ordered_buckets(
+    distribution: dict[str, int], order: tuple[str, ...]
+) -> Optional[dict[str, int]]:
+    """Rebuild ``distribution`` in a fixed display order.
+
+    Keys not in ``order`` are appended afterward (defensive; every producer
+    here only emits keys in ``order``). Returns ``None`` when empty, never an
+    empty dict.
+    """
+    if not distribution:
+        return None
+    ordered = {k: distribution[k] for k in order if k in distribution}
+    for k, v in distribution.items():
+        if k not in ordered:
+            ordered[k] = v
+    return ordered
+
+
+def _year_buckets(distribution: dict[str, int]) -> Optional[dict[str, int]]:
+    """Draft-class year buckets sorted ascending, with 'unknown' trailing."""
+    if not distribution:
+        return None
+    return dict(
+        sorted(distribution.items(), key=lambda kv: (kv[0] == "unknown", kv[0]))
+    )
 
 
 def _field_composition(
@@ -1743,6 +1802,18 @@ def _field_composition(
     age is the event-time age at the competition start (or a player's first
     eligible appearance date for a season scope, falling back to July 1). Unknown
     attributes stay visible — they are never dropped from a denominator silently.
+
+    Beyond the base draft/age/position/origin attributes, this also derives:
+
+    * ``draft_class`` — the player's draft-year cohort (independent of
+      event-time drafted/undrafted/not-yet status).
+    * ``appearance`` — the distinct-calendar-year appearance-rank distribution
+      (contract §5), a finer-grained sibling to the rookie/returner binary.
+    * ``age_reference`` / ``position_source`` — disclosure of *which source*
+      resolved the base ``age`` / ``position`` value: known = the preferred
+      event-time source; unknown = a documented fallback was used (July 1 for
+      age, canonical ``player_status`` position for position). These are
+      distinct from whether the base attribute itself is known at all.
     """
     year = pooled.scope.year
     resolved = sorted(pooled.resolved_player_ids)
@@ -1752,9 +1823,15 @@ def _field_composition(
     drafted = undrafted = not_yet = draft_unknown = 0
     first_round = second_round = lottery = 0
     draft_distribution: dict[str, int] = defaultdict(int)
+    draft_class_distribution: dict[str, int] = defaultdict(int)
+    draft_class_known = draft_class_unknown = 0
     position_distribution: dict[str, int] = defaultdict(int)
     position_known = 0
+    position_event_time = position_fallback = 0
     ages: list[float] = []
+    age_reference_known = age_reference_fallback = 0
+    appearance_distribution: dict[str, int] = defaultdict(int)
+    appearance_known = appearance_unknown = 0
 
     for player_id in resolved:
         attr = attributes.get(player_id, _PlayerAttributes())
@@ -1764,6 +1841,17 @@ def _field_composition(
             returner += 1
         else:
             rookie += 1
+
+        # Appearance-number distribution: the finer-grained rank behind the
+        # rookie/returner binary above -- how many distinct SL calendar years
+        # (across every competition) the player has reached, up to and
+        # including this profile's year.
+        rank = sum(1 for y in attr.sl_years if y <= year) if attr.sl_years else 0
+        if rank > 0:
+            appearance_distribution[_appearance_bucket(rank)] += 1
+            appearance_known += 1
+        else:
+            appearance_unknown += 1
 
         # Draft status at event time.
         if attr.draft_year is None:
@@ -1787,21 +1875,48 @@ def _field_composition(
             draft_unknown += 1
             draft_distribution["unknown"] += 1
 
-        # Position: event-time first, canonical fallback.
-        position = (
-            pooled.event_position_by_player.get(player_id) or attr.canonical_position
-        )
+        # Draft-class: the player's draft-year cohort, independent of the
+        # event-time drafted/undrafted/not-yet status computed above.
+        if attr.draft_year is not None:
+            draft_class_distribution[str(attr.draft_year)] += 1
+            draft_class_known += 1
+        else:
+            draft_class_unknown += 1
+
+        # Position: event-time first, canonical fallback -- disclosed which
+        # source resolved it (contract §5: "current canonical position is a
+        # labeled fallback").
+        event_position = pooled.event_position_by_player.get(player_id)
+        position = event_position or attr.canonical_position
         if position:
             position_known += 1
             position_distribution[str(position)] += 1
+            if event_position:
+                position_event_time += 1
+            else:
+                position_fallback += 1
 
-        # Age at event time.
+        # Age at event time -- disclosed whether the July 1 fallback was used.
         if attr.birthdate is not None:
-            reference = _age_reference_date(pooled, player_id)
+            reference, used_fallback = _age_reference_info(pooled, player_id)
             ages.append(_age_years(attr.birthdate, reference))
+            if used_fallback:
+                age_reference_fallback += 1
+            else:
+                age_reference_known += 1
 
     median_age = round(_percentile(ages, 0.5), 1) if ages else None
     age_known = len(ages)
+
+    # Repeat participants: canonical players appearing in more than one member
+    # competition within a season profile (contract §5). Not applicable to a
+    # single-competition scope, so it is disclosed as None rather than 0.
+    repeat_participants: Optional[int] = None
+    if pooled.scope.scope_kind == "season_all_competitions":
+        member_counts: Counter[int] = Counter()
+        for member in pooled.members:
+            member_counts.update(member.resolved_player_ids)
+        repeat_participants = sum(1 for c in member_counts.values() if c > 1)
 
     attributes_out: dict[str, dict[str, Any]] = {
         "draft": {
@@ -1809,18 +1924,58 @@ def _field_composition(
             "unknown": draft_unknown,
             "total": appeared,
             "distribution": dict(draft_distribution) or None,
+            "reason": None,
+        },
+        "draft_class": {
+            "known": draft_class_known,
+            "unknown": draft_class_unknown,
+            "total": appeared,
+            "distribution": _year_buckets(dict(draft_class_distribution)),
+            "reason": None,
         },
         "age": {
             "known": age_known,
             "unknown": appeared - age_known,
             "total": appeared,
             "distribution": None,
+            "reason": None,
+        },
+        "age_reference": {
+            "known": age_reference_known,
+            "unknown": age_reference_fallback,
+            "total": age_known,
+            "distribution": None,
+            "reason": (
+                "known = age computed at the exact competition/appearance "
+                "date; unknown = July 1 fallback used because the event date "
+                "was unavailable."
+            ),
         },
         "position": {
             "known": position_known,
             "unknown": appeared - position_known,
             "total": appeared,
             "distribution": dict(position_distribution) or None,
+            "reason": None,
+        },
+        "position_source": {
+            "known": position_event_time,
+            "unknown": position_fallback,
+            "total": position_known,
+            "distribution": None,
+            "reason": (
+                "known = event-time roster/starter position; unknown = "
+                "canonical player_status position used as a labeled fallback."
+            ),
+        },
+        "appearance": {
+            "known": appearance_known,
+            "unknown": appearance_unknown,
+            "total": appeared,
+            "distribution": _ordered_buckets(
+                dict(appearance_distribution), _APPEARANCE_BUCKET_ORDER
+            ),
+            "reason": None,
         },
         # Origin (pre-event college/international affiliation) has insufficient
         # provenance for v1; disclosed as fully unknown rather than inferred from
@@ -1830,6 +1985,12 @@ def _field_composition(
             "unknown": appeared,
             "total": appeared,
             "distribution": None,
+            "reason": (
+                "Pre-event college/international affiliation provenance is "
+                "not yet sufficient to certify this distribution in v1; "
+                "disclosed as fully unavailable rather than inferred from "
+                "current biography."
+            ),
         },
     }
 
@@ -1840,31 +2001,34 @@ def _field_composition(
         returner_count=returner,
         drafted_count=drafted,
         undrafted_count=undrafted,
+        not_yet_drafted_count=not_yet,
         first_round_count=first_round,
         second_round_count=second_round,
         lottery_count=lottery,
         median_age=median_age,
+        repeat_participants=repeat_participants,
         attributes=attributes_out,
     )
 
 
-def _age_reference_date(pooled: _PooledScope, player_id: int) -> date:
+def _age_reference_info(pooled: _PooledScope, player_id: int) -> tuple[date, bool]:
     """Event-time reference date for a player's age in a scope.
 
-    Competition scope uses the competition start; a season scope uses the
-    player's first eligible appearance date that year. Either falls back to
-    July 1 of the profile year when the date is absent.
+    Also reports whether the July 1 fallback was used (contract §5: "expose
+    fallback coverage"). Competition scope uses the competition start; a
+    season scope uses the player's first eligible appearance date that year.
+    Either falls back to July 1 of the profile year when the date is absent.
     """
     year = pooled.scope.year
     if pooled.scope.scope_kind == "competition":
         member = pooled.members[0] if pooled.members else None
         if member is not None and member.starts_on is not None:
-            return member.starts_on
+            return member.starts_on, False
     else:
         appearance = pooled.first_date_by_player.get(player_id)
         if appearance is not None:
-            return appearance
-    return date(year, *FALLBACK_MONTH_DAY)
+            return appearance, False
+    return date(year, *FALLBACK_MONTH_DAY), True
 
 
 # ---------------------------------------------------------------------------
@@ -1906,6 +2070,20 @@ def _build_candidate(
     env_values = _environment_metric_values(pooled)
     composition = _field_composition(pooled, attributes)
     scope = pooled.scope
+
+    # Identity dates (contract: "competition start/end dates"). Competition
+    # scope uses its one member's dates; a season scope spans the earliest
+    # start / latest end among members that have a known date, so one missing
+    # member date never blanks the whole window.
+    if scope.scope_kind == "competition":
+        member0 = pooled.members[0] if pooled.members else None
+        starts_on = member0.starts_on if member0 is not None else None
+        ends_on = member0.ends_on if member0 is not None else None
+    else:
+        member_starts = [m.starts_on for m in pooled.members if m.starts_on is not None]
+        member_ends = [m.ends_on for m in pooled.members if m.ends_on is not None]
+        starts_on = min(member_starts) if member_starts else None
+        ends_on = max(member_ends) if member_ends else None
 
     # Per-metric coverage verdicts (disclosure for every registered metric).
     coverage_rows: list[SummerLeagueEnvironmentMetricCoverage] = []
@@ -1962,6 +2140,8 @@ def _build_candidate(
         competition_id=scope.competition_id,
         venue_slug=pooled.venue_slug if scope.scope_kind == "competition" else None,
         display_name=pooled.display_name,
+        starts_on=starts_on,
+        ends_on=ends_on,
         version=0,  # assigned at publication
         is_current=False,  # flipped at publication
         registry_version=REGISTRY_VERSION,
@@ -1989,11 +2169,13 @@ def _build_candidate(
         returner_count=composition.returner_count,
         drafted_count=composition.drafted_count,
         undrafted_count=composition.undrafted_count,
+        not_yet_drafted_count=composition.not_yet_drafted_count,
         first_round_count=composition.first_round_count,
         second_round_count=composition.second_round_count,
         lottery_count=composition.lottery_count,
         teams_represented=len(pooled.team_entry_ids),
         median_age=composition.median_age,
+        repeat_participants=composition.repeat_participants,
         source_watermark=pooled.watermark,
         raw_run_ids=sorted(pooled.raw_run_ids) or None,
         **stored_values,  # type: ignore[arg-type]
@@ -2006,6 +2188,7 @@ def _build_candidate(
             unknown=payload["unknown"],
             total=payload["total"],
             distribution=payload["distribution"],
+            reason=payload.get("reason"),
         )
         for attribute_key, payload in composition.attributes.items()
     ]
@@ -2076,6 +2259,12 @@ def _validate_candidate(candidate: _ScopeCandidate) -> None:
         )
     if profile.appeared_players < 0 or profile.appeared_unresolved < 0:
         raise ValueError(f"{candidate.scope.scope_key}: negative appeared-player count")
+    if profile.not_yet_drafted_count < 0:
+        raise ValueError(f"{candidate.scope.scope_key}: negative not-yet-drafted count")
+    if profile.repeat_participants is not None and profile.repeat_participants < 0:
+        raise ValueError(
+            f"{candidate.scope.scope_key}: negative repeat-participant count"
+        )
 
 
 async def _publish_candidate(db: AsyncSession, candidate: _ScopeCandidate) -> int:

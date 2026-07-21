@@ -46,6 +46,7 @@ EXPECTED_COMPOSITION_KEYS = {
     "returner_share",
     "drafted_share",
     "undrafted_share",
+    "not_yet_drafted_share",
     "first_round_share",
     "second_round_share",
     "lottery_share",
@@ -275,8 +276,17 @@ def test_metrics_for_scope_returns_both_eligible() -> None:
 
 
 def test_field_composition_attributes_are_frozen() -> None:
-    """The four field-composition attributes are draft/age/position/origin."""
-    assert reg.FIELD_COMPOSITION_ATTRIBUTES == ("draft", "age", "position", "origin")
+    """The field-composition attributes are the frozen contract §5 set."""
+    assert reg.FIELD_COMPOSITION_ATTRIBUTES == (
+        "draft",
+        "draft_class",
+        "age",
+        "age_reference",
+        "position",
+        "position_source",
+        "appearance",
+        "origin",
+    )
 
 
 def test_calculation_version_is_distinct_from_registry_version() -> None:
