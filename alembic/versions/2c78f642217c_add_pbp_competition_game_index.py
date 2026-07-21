@@ -36,11 +36,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Add the ``(competition_id, game_id)`` index for PBP rebuild reads."""
+    """Add the ``(competition_id, game_id)`` index for PBP rebuild reads.
+
+    ``if_not_exists=True``: the parent table is created by an earlier
+    ``SQLModel.metadata.create_all`` migration that reflects the live model
+    class, so a from-scratch bootstrap already has this index by the time
+    this migration runs (see `16a524075c8e` for the same guard rationale).
+    """
     op.create_index(
         "ix_summer_league_pbp_events_competition_game",
         "summer_league_play_by_play_events",
         ["competition_id", "game_id"],
+        if_not_exists=True,
     )
 
 
@@ -49,4 +56,5 @@ def downgrade() -> None:
     op.drop_index(
         "ix_summer_league_pbp_events_competition_game",
         table_name="summer_league_play_by_play_events",
+        if_exists=True,
     )

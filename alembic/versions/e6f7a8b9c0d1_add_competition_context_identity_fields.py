@@ -28,7 +28,6 @@ convention for existing-table changes.
 
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
@@ -39,43 +38,64 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Add identity/field-composition disclosure columns."""
-    op.add_column(
-        "summer_league_environment_profiles",
-        sa.Column("starts_on", sa.Date(), nullable=True),
+    """Add identity/field-composition disclosure columns.
+
+    ``ADD COLUMN IF NOT EXISTS`` guards throughout: the parent tables are
+    created by an earlier ``SQLModel.metadata.create_all`` migration that
+    reflects the live model classes, so a from-scratch bootstrap already has
+    these columns by the time this migration runs (see `16a524075c8e` for the
+    same guard rationale).
+    """
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "ADD COLUMN IF NOT EXISTS starts_on DATE"
     )
-    op.add_column(
-        "summer_league_environment_profiles",
-        sa.Column("ends_on", sa.Date(), nullable=True),
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "ADD COLUMN IF NOT EXISTS ends_on DATE"
     )
-    op.add_column(
-        "summer_league_environment_profiles",
-        sa.Column("not_yet_drafted_count", sa.Integer(), nullable=True),
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "ADD COLUMN IF NOT EXISTS not_yet_drafted_count INTEGER"
     )
     op.execute(
         "UPDATE summer_league_environment_profiles "
         "SET not_yet_drafted_count = 0 WHERE not_yet_drafted_count IS NULL"
     )
-    op.alter_column(
-        "summer_league_environment_profiles",
-        "not_yet_drafted_count",
-        nullable=False,
-        server_default="0",
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "ALTER COLUMN not_yet_drafted_count SET NOT NULL, "
+        "ALTER COLUMN not_yet_drafted_count SET DEFAULT 0"
     )
-    op.add_column(
-        "summer_league_environment_profiles",
-        sa.Column("repeat_participants", sa.Integer(), nullable=True),
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "ADD COLUMN IF NOT EXISTS repeat_participants INTEGER"
     )
-    op.add_column(
-        "summer_league_environment_field_composition",
-        sa.Column("reason", sa.String(), nullable=True),
+    op.execute(
+        "ALTER TABLE summer_league_environment_field_composition "
+        "ADD COLUMN IF NOT EXISTS reason VARCHAR"
     )
 
 
 def downgrade() -> None:
     """Drop the added columns."""
-    op.drop_column("summer_league_environment_field_composition", "reason")
-    op.drop_column("summer_league_environment_profiles", "repeat_participants")
-    op.drop_column("summer_league_environment_profiles", "not_yet_drafted_count")
-    op.drop_column("summer_league_environment_profiles", "ends_on")
-    op.drop_column("summer_league_environment_profiles", "starts_on")
+    op.execute(
+        "ALTER TABLE summer_league_environment_field_composition "
+        "DROP COLUMN IF EXISTS reason"
+    )
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "DROP COLUMN IF EXISTS repeat_participants"
+    )
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "DROP COLUMN IF EXISTS not_yet_drafted_count"
+    )
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "DROP COLUMN IF EXISTS ends_on"
+    )
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "DROP COLUMN IF EXISTS starts_on"
+    )

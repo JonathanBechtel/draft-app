@@ -24,7 +24,6 @@ state) until the next environment-profile rebuild populates it.
 
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op  # type: ignore[attr-defined]
 
 # revision identifiers, used by Alembic.
@@ -35,13 +34,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Add the nullable ``team_points_iqr`` column."""
-    op.add_column(
-        "summer_league_environment_profiles",
-        sa.Column("team_points_iqr", sa.Float(), nullable=True),
+    """Add the nullable ``team_points_iqr`` column.
+
+    ``ADD COLUMN IF NOT EXISTS``: the parent table is created by an earlier
+    ``SQLModel.metadata.create_all`` migration that reflects the live model
+    class, so a from-scratch bootstrap already has this column by the time
+    this migration runs (see `16a524075c8e` for the same guard rationale).
+    """
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "ADD COLUMN IF NOT EXISTS team_points_iqr FLOAT"
     )
 
 
 def downgrade() -> None:
     """Drop the ``team_points_iqr`` column."""
-    op.drop_column("summer_league_environment_profiles", "team_points_iqr")
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "DROP COLUMN IF EXISTS team_points_iqr"
+    )

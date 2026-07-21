@@ -28,9 +28,7 @@ convention for existing-table changes.
 
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op  # type: ignore[attr-defined]
-from sqlalchemy.dialects.postgresql import JSONB
 
 # revision identifiers, used by Alembic.
 revision: str = "16a524075c8e"
@@ -40,10 +38,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Add calculation_version/raw_run_ids/source_status columns."""
-    op.add_column(
-        "summer_league_environment_profiles",
-        sa.Column("calculation_version", sa.String(), nullable=True),
+    """Add calculation_version/raw_run_ids/source_status columns.
+
+    The parent tables are created by an earlier ``SQLModel.metadata.create_all``
+    migration that reflects the *live* model classes, so a from-scratch bootstrap
+    (fresh CI database, new review app) already has these columns by the time this
+    migration runs. Use ``ADD COLUMN IF NOT EXISTS`` so this stays a no-op there
+    while still adding the columns on a real deployed database that pre-dates this
+    ticket — mirroring the existing-table guard convention used elsewhere in this
+    migration history (e.g. `2f09df4af11c`).
+    """
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "ADD COLUMN IF NOT EXISTS calculation_version VARCHAR"
     )
     # Backfill: the best available approximation for already-published rows
     # is the registry version they were built under; the next rebuild stamps
@@ -53,23 +60,31 @@ def upgrade() -> None:
         "SET calculation_version = registry_version "
         "WHERE calculation_version IS NULL"
     )
-    op.alter_column(
-        "summer_league_environment_profiles",
-        "calculation_version",
-        nullable=False,
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "ALTER COLUMN calculation_version SET NOT NULL"
     )
-    op.add_column(
-        "summer_league_environment_profiles",
-        sa.Column("raw_run_ids", JSONB(), nullable=True),
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "ADD COLUMN IF NOT EXISTS raw_run_ids JSONB"
     )
-    op.add_column(
-        "summer_league_environment_provenance",
-        sa.Column("source_status", sa.String(), nullable=True),
+    op.execute(
+        "ALTER TABLE summer_league_environment_provenance "
+        "ADD COLUMN IF NOT EXISTS source_status VARCHAR"
     )
 
 
 def downgrade() -> None:
     """Drop the added columns."""
-    op.drop_column("summer_league_environment_provenance", "source_status")
-    op.drop_column("summer_league_environment_profiles", "raw_run_ids")
-    op.drop_column("summer_league_environment_profiles", "calculation_version")
+    op.execute(
+        "ALTER TABLE summer_league_environment_provenance "
+        "DROP COLUMN IF EXISTS source_status"
+    )
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "DROP COLUMN IF EXISTS raw_run_ids"
+    )
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "DROP COLUMN IF EXISTS calculation_version"
+    )
