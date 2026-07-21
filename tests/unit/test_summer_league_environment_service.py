@@ -22,6 +22,8 @@ from app.services.summer_league_environment_registry import (
 from app.services.summer_league_environment_service import (
     EnvironmentScope,
     _RAW_RUN_STATUS_VALUE_RANK,
+    _REQUIRED_BOX_FIELDS,
+    _box_row_usable,
     _build_candidate,
     _CompetitionInputs,
     _coverage_verdict,
@@ -51,6 +53,51 @@ def _box(**stats: float) -> Box:
     for key, value in stats.items():
         setattr(box, key, value)
     return box
+
+
+_FULL_BOX_ROW: dict[str, float] = {
+    "minutes": 200,
+    "pts": 100,
+    "fgm": 40,
+    "fga": 85,
+    "fg3m": 10,
+    "fg3a": 30,
+    "fta": 20,
+    "oreb": 10,
+    "dreb": 30,
+    "tov": 15,
+    "ast": 22,
+}
+
+
+def _team_box_row(**overrides: object) -> object:
+    """A minimal object exposing every ``_REQUIRED_BOX_FIELDS`` attribute."""
+    values = {**_FULL_BOX_ROW, **overrides}
+    return type("Row", (), values)()
+
+
+# --------------------------------------------------------------------------- #
+# Box-row certification (contract §3: nullable box fields must never fold to 0)
+# --------------------------------------------------------------------------- #
+def test_box_row_usable_requires_every_registered_field() -> None:
+    """A fully-populated, minute-floor-clearing row is usable."""
+    assert _box_row_usable(_team_box_row()) is True
+
+
+@pytest.mark.parametrize("field_name", _REQUIRED_BOX_FIELDS)
+def test_box_row_unusable_when_any_required_field_missing(field_name: str) -> None:
+    """A null value in any metric-required field disqualifies the row, even
+    though the minutes floor is otherwise cleared -- the exact bug the old
+    minutes-only check missed."""
+    row = _team_box_row(**{field_name: None})
+    assert _box_row_usable(row) is False
+
+
+def test_box_row_unusable_below_minutes_floor() -> None:
+    """A short/garbage line below the regulation-minute floor is never usable
+    even with every other field populated."""
+    row = _team_box_row(minutes=10)
+    assert _box_row_usable(row) is False
 
 
 def _season_pool(**overrides: object) -> _PooledScope:

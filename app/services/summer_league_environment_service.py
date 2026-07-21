@@ -20,6 +20,14 @@ Aggregation honors the frozen implementation contract
   ``unavailable`` from audited input coverage; a partial metric is published as
   ``NULL`` plus counts + reason, never coerced to zero (§3). Play-by-play is
   informational and gates no displayed metric.
+* Certification reads audited input/file status, never the mere existence of
+  one fact row (§3; hardened by #635): a box-complete game needs exactly two
+  team-box rows with **every** metric-required field non-null
+  (:func:`_box_row_usable` -- a null field silently becomes 0 in
+  ``Box.add_row`` otherwise); a shot/PBP-complete game needs its
+  ``SummerLeagueRawFile.parse_status`` to be ``PARSED`` for that specific game
+  (:func:`_load_game_parse_status`), and an unmapped/unknown non-backcourt shot
+  zone additionally uncertifies that game's shot coverage.
 * Publication acquires the transaction-scoped Summer League writer lock
   **before** the first source read and holds the same transaction through
   calculation, validation, version insertion, and the atomic ``is_current``
@@ -94,10 +102,65 @@ CLOSE_GAME_MARGIN = 5
 # zone (heaves carry no scouting signal; same exclusion as the shot services).
 RIM_ZONE = "Restricted Area"
 BACKCOURT_ZONE = "Backcourt"
+# The full NBA SHOT_ZONE_BASIC taxonomy this pipeline understands -- mirrors
+# app.services.summer_league.metrics._ZONE_TO_BUCKET plus its excluded
+# Backcourt zone. A shot row whose zone is null or outside this set is
+# "unmapped": a parse/taxonomy gap, not a legitimate backcourt heave, and it
+# invalidates that game's shot certification rather than silently dropping
+# out of the denominator (contract §3).
+_KNOWN_SHOT_ZONES: frozenset[str] = frozenset(
+    {
+        RIM_ZONE,
+        "In The Paint (Non-RA)",
+        "Mid-Range",
+        "Left Corner 3",
+        "Right Corner 3",
+        "Above the Break 3",
+        BACKCOURT_ZONE,
+    }
+)
 # Minimum team-game offensive ratings needed to report an IQR (registry).
 MIN_ORTG_SAMPLE = 4
 # Fallback reference month/day when an event date is absent (contract §5 age).
 FALLBACK_MONTH_DAY = (7, 1)
+
+# Team-box fields every BOX-sourced metric formula reads (registry
+# source_fields union: points_per_team_game/estimated_possessions/pace/
+# offensive_rating/three_attempt_share/three_fg_pct/free_throw_rate/
+# offensive_rebound_rate/turnover_rate/assisted_fg_rate/team_ortg_iqr all
+# resolve to some subset of these). A team-box row is "usable" only when
+# every one of these is non-null -- ``Box.add_row`` silently treats a null
+# field as 0 (``getattr(r, f) or 0``), so a game with an incomplete row must
+# never reach that pooling step uncaught (contract §3: "exactly two usable
+# team-box rows with all fields required by the metric").
+_REQUIRED_BOX_FIELDS: tuple[str, ...] = (
+    "minutes",
+    "pts",
+    "fgm",
+    "fga",
+    "fg3m",
+    "fg3a",
+    "fta",
+    "oreb",
+    "dreb",
+    "tov",
+    "ast",
+)
+
+
+def _box_row_usable(row: Any) -> bool:
+    """Whether one team-box row clears the minute floor and field-completeness bar.
+
+    Both conditions are required for the row to count toward a box-complete
+    game (contract §3): the regulation-minute floor rules out a garbage/
+    reserves-only line, and every metric-required field being non-null rules
+    out a partially-parsed row silently zero-filling into the pooled totals.
+    """
+    minutes = row.minutes or 0
+    if minutes < MIN_COMPLETE_TEAM_MP:
+        return False
+    return all(getattr(row, f) is not None for f in _REQUIRED_BOX_FIELDS)
+
 
 # The service returns the persisted ORM row as the profile boundary type. The
 # alias keeps call sites reading against the contract's ``EnvironmentProfile``
@@ -763,6 +826,15 @@ class _CompetitionInputs:
     # Worst-case SummerLeagueRawFile.parse_status per source kind ("box" /
     # "shot" / "pbp") across this competition's eligible final games.
     parse_status_by_source: dict[str, str] = field(default_factory=dict)
+    # Per-game raw-file parse status: internal game id -> {"box"/"shot"/"pbp":
+    # worst-case SummerLeagueRawFileStatus.value for that one game}. This is
+    # the audited certification signal shot/PBP completeness reads from --
+    # not the mere existence of a normalized shot/PBP event row (contract §3;
+    # coverage audit: "reconcile against summer_league_raw_files.parse_status
+    # ... before certifying shot_complete").
+    game_parse_status: dict[int, dict[str, str]] = field(
+        default_factory=lambda: defaultdict(dict)
+    )
 
     # Schedule / status disclosure (all statuses).
     final_games: int = 0
@@ -855,13 +927,15 @@ async def _load_competition_inputs(
         return inputs
 
     await _load_game_status(db, comp_ids, inputs)
+    # Per-game raw-file parse status must be loaded before shot/PBP pooling
+    # (both certify from it, not from event-row existence -- contract §3).
+    await _load_game_parse_status(db, comp_ids, inputs)
     await _load_team_boxes(db, comp_ids, inputs)
     await _load_appearances(db, comp_ids, inputs)
     await _load_participation(db, comp_ids, inputs)
     await _load_shots(db, comp_ids, inputs)
     await _load_pbp(db, comp_ids, inputs)
     await _load_raw_run_status(db, inputs)
-    await _load_raw_file_parse_status(db, comp_ids, inputs)
     return inputs
 
 
@@ -915,10 +989,13 @@ async def _load_team_boxes(
 ) -> None:
     """Pool paired team boxes from box-complete final games (opponent-adjusted).
 
-    A final game contributes only when it has exactly two usable team-box rows
-    (both meeting the regulation-minute floor). Possessions reuse
-    :meth:`Box.poss` — the shared opponent-adjusted estimate — so pace, ORtg and
-    turnover rate never invent a competing possession formula (contract §4).
+    A final game contributes only when it has exactly two *usable* team-box
+    rows: both clear the regulation-minute floor **and** carry every
+    metric-required field non-null (:func:`_box_row_usable`) -- a row with an
+    unparsed field must never reach ``Box.add_row`` and silently zero-fill
+    (contract §3). Possessions reuse :meth:`Box.poss` — the shared
+    opponent-adjusted estimate — so pace, ORtg and turnover rate never invent a
+    competing possession formula (contract §4).
     """
     tgl = SummerLeagueTeamGameLog
     game = SummerLeagueGame
@@ -956,8 +1033,10 @@ async def _load_team_boxes(
             )
         )
     ).all()
-    # game_id -> list of (competition_id, team_entry_id, Box, minutes, updated_at)
-    by_game: dict[int, list[tuple[int, int, Box, float, Any]]] = defaultdict(list)
+    # game_id -> list of (competition_id, team_entry_id, Box, minutes,
+    # updated_at, usable) -- ``usable`` is decided from the raw row (contract
+    # §3), before any field can be lost to Box.add_row's null-to-zero fold.
+    by_game: dict[int, list[tuple[int, int, Box, float, Any, bool]]] = defaultdict(list)
     for row in rows:
         box = Box()
         box.add_row(row)
@@ -968,15 +1047,17 @@ async def _load_team_boxes(
                 box,
                 float(row.minutes or 0),
                 row.updated_at,
+                _box_row_usable(row),
             )
         )
     for entries in by_game.values():
         if len(entries) != 2:
             continue
-        (comp_a, team_a, box_a, min_a, upd_a), (comp_b, team_b, box_b, min_b, upd_b) = (
-            entries
-        )
-        if min_a < MIN_COMPLETE_TEAM_MP or min_b < MIN_COMPLETE_TEAM_MP:
+        (
+            (comp_a, team_a, box_a, min_a, upd_a, usable_a),
+            (comp_b, team_b, box_b, min_b, upd_b, usable_b),
+        ) = entries
+        if not (usable_a and usable_b):
             continue
         acc = inputs[comp_a]
         acc.box_complete_games += 1
@@ -1088,7 +1169,16 @@ async def _load_participation(
 async def _load_shots(
     db: AsyncSession, comp_ids: list[int], inputs: dict[int, _CompetitionInputs]
 ) -> None:
-    """Pool rim / mapped shot attempts and record which final games are covered."""
+    """Pool rim / mapped shot attempts and certify which final games are covered.
+
+    A game certifies as shot-covered only when its shotchartdetail raw file
+    parsed successfully (:data:`SummerLeagueRawFileStatus.PARSED`, from
+    :func:`_load_game_parse_status`) **and** every shot row in that game maps
+    to a known non-backcourt/backcourt zone. A null or unrecognized zone, or a
+    parse status short of ``PARSED`` (missing evidence included), is treated
+    as a certification failure for the *whole game* -- one partial/unmapped
+    row must not certify an otherwise-uncertain shot chart (contract §3).
+    """
     shot = SummerLeagueShotEvent
     game = SummerLeagueGame
     rows = (
@@ -1107,23 +1197,41 @@ async def _load_shots(
             )
         )
     ).all()
+    seen_games: set[tuple[int, int]] = set()
+    unmapped_games: set[tuple[int, int]] = set()
     for comp_id, game_id, zone, made, updated_at in rows:
         acc = inputs[int(comp_id)]
-        acc.shot_covered_game_ids.add(int(game_id))
+        key = (int(comp_id), int(game_id))
+        seen_games.add(key)
         acc.provenance["shot"].observe(updated_at)
-        if zone is None or zone == BACKCOURT_ZONE:
+        if zone is None or zone not in _KNOWN_SHOT_ZONES:
+            unmapped_games.add(key)
+            continue
+        if zone == BACKCOURT_ZONE:
             continue
         acc.mapped_fga += 1
         if zone == RIM_ZONE:
             acc.rim_fga += 1
             if made:
                 acc.rim_fgm += 1
+    for comp_id, game_id in seen_games:
+        if (comp_id, game_id) in unmapped_games:
+            continue
+        parse_status = inputs[comp_id].game_parse_status.get(game_id, {}).get("shot")
+        if parse_status == SummerLeagueRawFileStatus.PARSED.value:
+            inputs[comp_id].shot_covered_game_ids.add(game_id)
 
 
 async def _load_pbp(
     db: AsyncSession, comp_ids: list[int], inputs: dict[int, _CompetitionInputs]
 ) -> None:
-    """Record which final games have parsed play-by-play (informational only)."""
+    """Certify which final games have successfully parsed play-by-play.
+
+    PBP is informational only in v1 (gates no displayed metric), but its own
+    coverage badge/filter must still be honest: a game counts as PBP-covered
+    only when its playbyplayv2 raw file parsed successfully (contract §3),
+    not merely because at least one normalized event row exists for it.
+    """
     pbp = SummerLeaguePlayByPlayEvent
     game = SummerLeagueGame
     rows = (
@@ -1139,8 +1247,11 @@ async def _load_pbp(
     ).all()
     for comp_id, game_id, updated_at in rows:
         acc = inputs[int(comp_id)]
-        acc.pbp_covered_game_ids.add(int(game_id))
+        gid = int(game_id)
         acc.provenance["pbp"].observe(updated_at)
+        parse_status = acc.game_parse_status.get(gid, {}).get("pbp")
+        if parse_status == SummerLeagueRawFileStatus.PARSED.value:
+            acc.pbp_covered_game_ids.add(gid)
 
 
 # Worst-first ranking for SummerLeagueRawRunStatus: the pooled/aggregated
@@ -1230,18 +1341,23 @@ async def _load_raw_run_status(
             acc.raw_run_status = status_by_run[acc.raw_run_id].value
 
 
-async def _load_raw_file_parse_status(
+async def _load_game_parse_status(
     db: AsyncSession, comp_ids: list[int], inputs: dict[int, _CompetitionInputs]
 ) -> None:
-    """Bulk-load per-source (box/shot/pbp) raw-file parse status.
+    """Bulk-load per-game, then per-competition, raw-file parse status.
 
     Joins ``SummerLeagueRawFile`` to eligible final games by
     ``nba_stats_game_id`` (unique) and reduces to the worst-case
-    :class:`SummerLeagueRawFileStatus` per (competition, source kind) --
-    populates the "parse status" disclosure (contract: "populate parse
-    status ... where modeled"). Score/OT-state/identity/participation/
-    schedule have no directly-modeled per-file parse status and are left
-    ``None``.
+    :class:`SummerLeagueRawFileStatus` per **(game, source kind)** --
+    populating :attr:`_CompetitionInputs.game_parse_status`, the audited
+    certification signal :func:`_load_shots`/:func:`_load_pbp` gate on
+    (contract §3: "a successfully parsed shot-chart/PBP input", not the mere
+    existence of a normalized event row). The same reduction rolls up to the
+    worst-case per (competition, source kind) in
+    :attr:`_CompetitionInputs.parse_status_by_source`, which feeds the
+    provenance "parse status" disclosure. Score/OT-state/identity/
+    participation/schedule have no directly-modeled per-file parse status and
+    are left absent from both dicts.
     """
     raw_file = SummerLeagueRawFile
     game = SummerLeagueGame
@@ -1249,6 +1365,7 @@ async def _load_raw_file_parse_status(
         await db.execute(
             select(  # type: ignore[call-overload]
                 game.competition_id,
+                game.id,
                 raw_file.endpoint,
                 raw_file.parse_status,
             )
@@ -1260,19 +1377,34 @@ async def _load_raw_file_parse_status(
             )
         )
     ).all()
-    worst: dict[tuple[int, str], SummerLeagueRawFileStatus] = {}
-    for comp_id, endpoint, parse_status in rows:
+    worst_per_game: dict[tuple[int, str], SummerLeagueRawFileStatus] = {}
+    comp_by_game: dict[int, int] = {}
+    for comp_id, game_id, endpoint, parse_status in rows:
         source_kind = _ENDPOINT_SOURCE_KIND.get(endpoint)
         if source_kind is None:
             continue
-        key = (int(comp_id), source_kind)
-        current = worst.get(key)
+        gid = int(game_id)
+        comp_by_game[gid] = int(comp_id)
+        key = (gid, source_kind)
+        current = worst_per_game.get(key)
         if (
             current is None
             or _PARSE_STATUS_RANK[parse_status] > _PARSE_STATUS_RANK[current]
         ):
-            worst[key] = parse_status
-    for (comp_id, source_kind), status in worst.items():
+            worst_per_game[key] = parse_status
+
+    worst_per_comp: dict[tuple[int, str], SummerLeagueRawFileStatus] = {}
+    for (game_id, source_kind), status in worst_per_game.items():
+        comp_id = comp_by_game[game_id]
+        inputs[comp_id].game_parse_status[game_id][source_kind] = status.value
+        comp_key = (comp_id, source_kind)
+        current_comp = worst_per_comp.get(comp_key)
+        if (
+            current_comp is None
+            or _PARSE_STATUS_RANK[status] > _PARSE_STATUS_RANK[current_comp]
+        ):
+            worst_per_comp[comp_key] = status
+    for (comp_id, source_kind), status in worst_per_comp.items():
         inputs[comp_id].parse_status_by_source[source_kind] = status.value
 
 

@@ -102,7 +102,7 @@ REGISTRY_VERSION = "2026.07.1"
 # calculation_version than the current constant was built under different
 # aggregation logic and is a candidate for rebuild even if its registry_version
 # still matches.
-CALCULATION_VERSION = "2026.07.2"
+CALCULATION_VERSION = "2026.07.3"
 
 # A literal threshold value for tests that want to assert boundary behavior
 # at a known number (see is_profile_stale's stale_after_hours override).

@@ -29,6 +29,7 @@ from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
+    SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
     SummerLeagueParticipation,
     SummerLeagueRawFile,
@@ -105,6 +106,53 @@ def _box_from(line: dict) -> Box:
     box = Box()
     box.add_row(type("Row", (), line)())
     return box
+
+
+async def _raw_run_id(db: AsyncSession, *, year: int = 2024, league_id: str = "15") -> int:
+    """A minimal raw run row, satisfying SummerLeagueRawFile's required FK."""
+    _SEQ["n"] += 1
+    raw_run = SummerLeagueRawRun(
+        year=year,
+        league_id=league_id,
+        venue_slug="las_vegas",
+        status=SummerLeagueRawRunStatus.COMPLETE,
+        manifest_path=f"s3://bucket/{year}/{league_id}/manifest-{_SEQ['n']}.json",
+    )
+    db.add(raw_run)
+    await db.flush()
+    assert raw_run.id is not None
+    return raw_run.id
+
+
+async def _raw_file(
+    db: AsyncSession,
+    *,
+    game: SummerLeagueGame,
+    endpoint: str,
+    parse_status: SummerLeagueRawFileStatus,
+    year: int = 2024,
+    league_id: str = "15",
+) -> None:
+    """Seed one audited raw-file row certifying (or failing) a game's endpoint.
+
+    Competition Context certifies shot/PBP coverage from exactly this table's
+    ``parse_status`` per (game, endpoint) -- not from whether a normalized
+    shot/PBP event row happens to exist (contract §3).
+    """
+    run_id = await _raw_run_id(db, year=year, league_id=league_id)
+    _SEQ["n"] += 1
+    db.add(
+        SummerLeagueRawFile(
+            raw_run_id=run_id,
+            year=year,
+            league_id=league_id,
+            endpoint=endpoint,
+            game_id=game.nba_stats_game_id,
+            relative_path=f"{game.nba_stats_game_id}/{endpoint}-{_SEQ['n']}.json",
+            parse_status=parse_status,
+        )
+    )
+    await db.flush()
 
 
 async def _competition(
@@ -586,9 +634,9 @@ async def test_partial_shot_coverage_nulls_shot_metric(
         db_session, year=2024, venue="las_vegas", league_id="15", n_games=2
     )
     # Add shot events to exactly one of the two final games (partial shot coverage).
-    game_id = (
+    game = (
         await db_session.execute(
-            select(SummerLeagueGame.id)
+            select(SummerLeagueGame)
             .where(SummerLeagueGame.competition_id == comp_id)
             .limit(1)
         )
@@ -609,7 +657,7 @@ async def test_partial_shot_coverage_nulls_shot_metric(
     _SEQ["n"] += 1
     db_session.add(
         SummerLeagueShotEvent(
-            game_id=game_id,
+            game_id=game.id,
             competition_id=comp_id,
             team_entry_id=team_id,
             source_player_id=source.id,
@@ -620,6 +668,16 @@ async def test_partial_shot_coverage_nulls_shot_metric(
             shot_zone_basic="Restricted Area",
             made=True,
         )
+    )
+    # Certification reads the audited shotchartdetail parse status, not just
+    # the shot-event row's existence (contract §3) -- back this one game's
+    # coverage with a PARSED raw file so the scenario stays a genuine
+    # "1 of 2 games certified" partial, not an unaudited zero.
+    await _raw_file(
+        db_session,
+        game=game,
+        endpoint="shotchartdetail",
+        parse_status=SummerLeagueRawFileStatus.PARSED,
     )
     await db_session.commit()
 
@@ -646,6 +704,340 @@ async def test_partial_shot_coverage_nulls_shot_metric(
     assert coverage["points_per_team_game"].coverage == COVERAGE_COMPLETE
     assert coverage["rim_attempt_share"].coverage == COVERAGE_PARTIAL
     assert coverage["rim_attempt_share"].reason is not None
+
+
+# --------------------------------------------------------------------------- #
+# Certification from audited parse/reconciliation state, not row existence
+# --------------------------------------------------------------------------- #
+async def test_shot_parse_failure_uncertifies_game_despite_existing_rows(
+    db_session: AsyncSession,
+) -> None:
+    """A shot row exists for both games, but only one game's shotchartdetail
+    file actually parsed. The old row-existence check would have certified
+    both games (2 of 2, complete); the audited parse status must certify
+    only the genuinely-parsed one (1 of 2, partial) -- contract §3.
+    """
+    comp_id, _ = await _seed_competition(
+        db_session, year=2024, venue="las_vegas", league_id="15", n_games=2
+    )
+    games = (
+        (
+            await db_session.execute(
+                select(SummerLeagueGame)
+                .where(SummerLeagueGame.competition_id == comp_id)
+                .order_by(SummerLeagueGame.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(games) == 2
+    team_id = (
+        await db_session.execute(
+            select(SummerLeagueTeamEntry.id)
+            .where(SummerLeagueTeamEntry.competition_id == comp_id)
+            .limit(1)
+        )
+    ).scalar_one()
+    source = (
+        (await db_session.execute(select(SummerLeagueSourcePlayer).limit(1)))
+        .scalars()
+        .first()
+    )
+    assert source is not None
+
+    for game in games:
+        _SEQ["n"] += 1
+        db_session.add(
+            SummerLeagueShotEvent(
+                game_id=game.id,
+                competition_id=comp_id,
+                team_entry_id=team_id,
+                source_player_id=source.id,
+                player_id=source.canonical_player_id,
+                nba_stats_person_id=source.nba_stats_person_id,
+                nba_stats_game_id=f"shot-{_SEQ['n']}",
+                nba_stats_game_event_id=_SEQ["n"],
+                shot_zone_basic="Restricted Area",
+                made=True,
+            )
+        )
+    await _raw_file(
+        db_session,
+        game=games[0],
+        endpoint="shotchartdetail",
+        parse_status=SummerLeagueRawFileStatus.PARSED,
+    )
+    # A genuine parse failure that still emitted one shot row before erroring.
+    await _raw_file(
+        db_session,
+        game=games[1],
+        endpoint="shotchartdetail",
+        parse_status=SummerLeagueRawFileStatus.PARSE_FAILED,
+    )
+    await db_session.commit()
+
+    async with db_session.begin():
+        await rebuild_environment_profiles(db_session, competition_id=comp_id)
+
+    profile = await get_environment_profile(
+        db_session, EnvironmentScope.for_competition(comp_id, 2024)
+    )
+    assert profile is not None
+    assert profile.final_games == 2
+    assert profile.shot_covered_games == 1  # not 2 -- the old proxy's answer
+    assert profile.rim_attempt_share is None
+    coverage = {
+        row.metric_key: row
+        for row in (
+            await db_session.execute(
+                select(SummerLeagueEnvironmentMetricCoverage).where(
+                    SummerLeagueEnvironmentMetricCoverage.profile_id == profile.id
+                )
+            )
+        ).scalars()
+    }
+    assert coverage["rim_attempt_share"].coverage == COVERAGE_PARTIAL
+
+
+async def test_unmapped_shot_zone_uncertifies_game(db_session: AsyncSession) -> None:
+    """A null/unmapped shot zone keeps a game from certifying even when its
+    raw file parsed successfully -- a successful parse status alone is not
+    sufficient evidence when the zone taxonomy itself came back unmapped
+    (contract §3).
+    """
+    comp_id, _ = await _seed_competition(
+        db_session, year=2024, venue="las_vegas", league_id="15", n_games=2
+    )
+    games = (
+        (
+            await db_session.execute(
+                select(SummerLeagueGame)
+                .where(SummerLeagueGame.competition_id == comp_id)
+                .order_by(SummerLeagueGame.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    team_id = (
+        await db_session.execute(
+            select(SummerLeagueTeamEntry.id)
+            .where(SummerLeagueTeamEntry.competition_id == comp_id)
+            .limit(1)
+        )
+    ).scalar_one()
+    source = (
+        (await db_session.execute(select(SummerLeagueSourcePlayer).limit(1)))
+        .scalars()
+        .first()
+    )
+    assert source is not None
+
+    def _shot(game_id: int, zone: str | None) -> SummerLeagueShotEvent:
+        _SEQ["n"] += 1
+        return SummerLeagueShotEvent(
+            game_id=game_id,
+            competition_id=comp_id,
+            team_entry_id=team_id,
+            source_player_id=source.id,
+            player_id=source.canonical_player_id,
+            nba_stats_person_id=source.nba_stats_person_id,
+            nba_stats_game_id=f"shot-{_SEQ['n']}",
+            nba_stats_game_event_id=_SEQ["n"],
+            shot_zone_basic=zone,
+            made=True,
+        )
+
+    db_session.add(_shot(games[0].id, "Restricted Area"))
+    # A genuine backcourt heave is a *known* zone (excluded from the FGA
+    # denominator, never treated as "unmapped") -- it must not keep game 0
+    # from certifying.
+    db_session.add(_shot(games[0].id, "Backcourt"))
+    db_session.add(_shot(games[1].id, None))  # unmapped: parsed but zone-less
+    for game in games:
+        await _raw_file(
+            db_session,
+            game=game,
+            endpoint="shotchartdetail",
+            parse_status=SummerLeagueRawFileStatus.PARSED,
+        )
+    await db_session.commit()
+
+    async with db_session.begin():
+        await rebuild_environment_profiles(db_session, competition_id=comp_id)
+
+    profile = await get_environment_profile(
+        db_session, EnvironmentScope.for_competition(comp_id, 2024)
+    )
+    assert profile is not None
+    assert profile.shot_covered_games == 1  # game 1's unmapped zone excludes it
+    assert profile.rim_attempt_share is None
+
+
+async def test_box_row_missing_required_field_uncertifies_game(
+    db_session: AsyncSession,
+) -> None:
+    """A team-box row missing a metric-required field (assists never parsed)
+    never counts as usable, even though it clears the regulation-minute
+    floor -- the old minutes-only check would have wrongly certified this
+    game (contract §3: "nullable box fields can be converted to zero").
+    """
+    comp = await _competition(db_session, year=2024, venue="las_vegas", league_id="15")
+    assert comp.id is not None
+    team_a = await _team(db_session, comp.id, 1)
+    team_b = await _team(db_session, comp.id, 2)
+    assert team_a.id is not None and team_b.id is not None
+
+    good_game = await _final_game(
+        db_session,
+        comp_id=comp.id,
+        home=team_a,
+        away=team_b,
+        game_date=date(2024, 7, 8),
+        home_score=_TEAM_A["pts"],
+        away_score=_TEAM_B["pts"],
+    )
+    bad_game = await _final_game(
+        db_session,
+        comp_id=comp.id,
+        home=team_a,
+        away=team_b,
+        game_date=date(2024, 7, 9),
+        home_score=_TEAM_A["pts"],
+        away_score=_TEAM_B["pts"],
+    )
+    assert good_game.id is not None and bad_game.id is not None
+    await _team_log(
+        db_session,
+        comp_id=comp.id,
+        game_id=good_game.id,
+        team_id=team_a.id,
+        line=_TEAM_A,
+    )
+    await _team_log(
+        db_session,
+        comp_id=comp.id,
+        game_id=good_game.id,
+        team_id=team_b.id,
+        line=_TEAM_B,
+    )
+    # Clears the minutes floor but is missing a metric-required field.
+    incomplete_a = {**_TEAM_A, "ast": None}
+    await _team_log(
+        db_session,
+        comp_id=comp.id,
+        game_id=bad_game.id,
+        team_id=team_a.id,
+        line=incomplete_a,
+    )
+    await _team_log(
+        db_session,
+        comp_id=comp.id,
+        game_id=bad_game.id,
+        team_id=team_b.id,
+        line=_TEAM_B,
+    )
+    await db_session.commit()
+
+    async with db_session.begin():
+        await rebuild_environment_profiles(db_session, competition_id=comp.id)
+
+    profile = await get_environment_profile(
+        db_session, EnvironmentScope.for_competition(comp.id, 2024)
+    )
+    assert profile is not None
+    assert profile.final_games == 2
+    # Only the fully-populated game certifies; the null `ast` field keeps the
+    # second game's row unusable even though both rows met the minutes floor.
+    assert profile.box_complete_games == 1
+    assert profile.points_per_team_game is None
+    coverage = {
+        row.metric_key: row
+        for row in (
+            await db_session.execute(
+                select(SummerLeagueEnvironmentMetricCoverage).where(
+                    SummerLeagueEnvironmentMetricCoverage.profile_id == profile.id
+                )
+            )
+        ).scalars()
+    }
+    assert coverage["points_per_team_game"].coverage == COVERAGE_PARTIAL
+
+
+async def test_pbp_uncertified_without_parsed_raw_file(
+    db_session: AsyncSession,
+) -> None:
+    """A PBP event row exists, but with no PARSED playbyplayv2 raw file the
+    game never counts as PBP-covered. PBP stays informational (gates no
+    displayed metric), but its own coverage disclosure must still be audited
+    rather than a proxy for "at least one event row exists" (contract §3).
+    """
+    comp_id, _ = await _seed_competition(
+        db_session, year=2024, venue="las_vegas", league_id="15", n_games=1
+    )
+    game = (
+        await db_session.execute(
+            select(SummerLeagueGame).where(SummerLeagueGame.competition_id == comp_id)
+        )
+    ).scalar_one()
+    db_session.add(
+        SummerLeaguePlayByPlayEvent(
+            game_id=game.id,
+            competition_id=comp_id,
+            nba_stats_game_id=game.nba_stats_game_id,
+            event_num=1,
+            period=1,
+        )
+    )
+    await db_session.commit()
+
+    async with db_session.begin():
+        await rebuild_environment_profiles(db_session, competition_id=comp_id)
+
+    profile = await get_environment_profile(
+        db_session, EnvironmentScope.for_competition(comp_id, 2024)
+    )
+    assert profile is not None
+    assert profile.pbp_covered_games == 0  # no audited PARSED evidence
+
+
+async def test_pbp_certified_with_parsed_raw_file(db_session: AsyncSession) -> None:
+    """A PBP event row backed by a PARSED playbyplayv2 raw file does certify --
+    audited evidence, not row existence, is what flips coverage on."""
+    comp_id, _ = await _seed_competition(
+        db_session, year=2024, venue="las_vegas", league_id="15", n_games=1
+    )
+    game = (
+        await db_session.execute(
+            select(SummerLeagueGame).where(SummerLeagueGame.competition_id == comp_id)
+        )
+    ).scalar_one()
+    db_session.add(
+        SummerLeaguePlayByPlayEvent(
+            game_id=game.id,
+            competition_id=comp_id,
+            nba_stats_game_id=game.nba_stats_game_id,
+            event_num=1,
+            period=1,
+        )
+    )
+    await _raw_file(
+        db_session,
+        game=game,
+        endpoint="playbyplayv2",
+        parse_status=SummerLeagueRawFileStatus.PARSED,
+    )
+    await db_session.commit()
+
+    async with db_session.begin():
+        await rebuild_environment_profiles(db_session, competition_id=comp_id)
+
+    profile = await get_environment_profile(
+        db_session, EnvironmentScope.for_competition(comp_id, 2024)
+    )
+    assert profile is not None
+    assert profile.pbp_covered_games == 1
 
 
 # --------------------------------------------------------------------------- #
