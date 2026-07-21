@@ -20,6 +20,14 @@ Aggregation honors the frozen implementation contract
   ``unavailable`` from audited input coverage; a partial metric is published as
   ``NULL`` plus counts + reason, never coerced to zero (§3). Play-by-play is
   informational and gates no displayed metric.
+* Certification reads audited input/file status, never the mere existence of
+  one fact row (§3; hardened by #635): a box-complete game needs exactly two
+  team-box rows with **every** metric-required field non-null
+  (:func:`_box_row_usable` -- a null field silently becomes 0 in
+  ``Box.add_row`` otherwise); a shot/PBP-complete game needs its
+  ``SummerLeagueRawFile.parse_status`` to be ``PARSED`` for that specific game
+  (:func:`_load_game_parse_status`), and an unmapped/unknown non-backcourt shot
+  zone additionally uncertifies that game's shot coverage.
 * Publication acquires the transaction-scoped Summer League writer lock
   **before** the first source read and holds the same transaction through
   calculation, validation, version insertion, and the atomic ``is_current``
@@ -29,7 +37,7 @@ Aggregation honors the frozen implementation contract
 from __future__ import annotations
 
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from typing import Any, Literal, Optional
@@ -64,9 +72,16 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentProvenance,
     SummerLeagueEnvironmentSeasonMembership,
 )
+from app.schemas.summer_league import (
+    SummerLeagueRawFile,
+    SummerLeagueRawFileStatus,
+    SummerLeagueRawRun,
+    SummerLeagueRawRunStatus,
+)
 from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
 from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import (
+    CALCULATION_VERSION,
     FIELD_COMPOSITION_ATTRIBUTES,
     REGISTRY_VERSION,
     CoverageSource,
@@ -87,10 +102,68 @@ CLOSE_GAME_MARGIN = 5
 # zone (heaves carry no scouting signal; same exclusion as the shot services).
 RIM_ZONE = "Restricted Area"
 BACKCOURT_ZONE = "Backcourt"
-# Minimum team-game offensive ratings needed to report an IQR (registry).
-MIN_ORTG_SAMPLE = 4
+# The full NBA SHOT_ZONE_BASIC taxonomy this pipeline understands -- mirrors
+# app.services.summer_league.metrics._ZONE_TO_BUCKET plus its excluded
+# Backcourt zone. A shot row whose zone is null or outside this set is
+# "unmapped": a parse/taxonomy gap, not a legitimate backcourt heave, and it
+# invalidates that game's shot certification rather than silently dropping
+# out of the denominator (contract §3).
+_KNOWN_SHOT_ZONES: frozenset[str] = frozenset(
+    {
+        RIM_ZONE,
+        "In The Paint (Non-RA)",
+        "Mid-Range",
+        "Left Corner 3",
+        "Right Corner 3",
+        "Above the Break 3",
+        BACKCOURT_ZONE,
+    }
+)
+# Minimum team-game sample needed to report an IQR-based landscape metric
+# (registry): both team_ortg_iqr and team_points_iqr gate on this same floor
+# since each box-complete team-game contributes exactly one entry to both
+# pooled lists.
+MIN_LANDSCAPE_SAMPLE = 4
 # Fallback reference month/day when an event date is absent (contract §5 age).
 FALLBACK_MONTH_DAY = (7, 1)
+
+# Team-box fields every BOX-sourced metric formula reads (registry
+# source_fields union: points_per_team_game/estimated_possessions/pace/
+# offensive_rating/three_attempt_share/three_fg_pct/free_throw_rate/
+# offensive_rebound_rate/turnover_rate/assisted_fg_rate/team_ortg_iqr all
+# resolve to some subset of these). A team-box row is "usable" only when
+# every one of these is non-null -- ``Box.add_row`` silently treats a null
+# field as 0 (``getattr(r, f) or 0``), so a game with an incomplete row must
+# never reach that pooling step uncaught (contract §3: "exactly two usable
+# team-box rows with all fields required by the metric").
+_REQUIRED_BOX_FIELDS: tuple[str, ...] = (
+    "minutes",
+    "pts",
+    "fgm",
+    "fga",
+    "fg3m",
+    "fg3a",
+    "fta",
+    "oreb",
+    "dreb",
+    "tov",
+    "ast",
+)
+
+
+def _box_row_usable(row: Any) -> bool:
+    """Whether one team-box row clears the minute floor and field-completeness bar.
+
+    Both conditions are required for the row to count toward a box-complete
+    game (contract §3): the regulation-minute floor rules out a garbage/
+    reserves-only line, and every metric-required field being non-null rules
+    out a partially-parsed row silently zero-filling into the pooled totals.
+    """
+    minutes = row.minutes or 0
+    if minutes < MIN_COMPLETE_TEAM_MP:
+        return False
+    return all(getattr(row, f) is not None for f in _REQUIRED_BOX_FIELDS)
+
 
 # The service returns the persisted ORM row as the profile boundary type. The
 # alias keeps call sites reading against the contract's ``EnvironmentProfile``
@@ -294,6 +367,52 @@ async def list_field_composition(
     return rows
 
 
+# Display order for the six provenance source kinds plus the two freshness-
+# only kinds added by this ticket (participation/schedule never gate a
+# displayed metric -- they exist purely so the input watermark advances).
+_PROVENANCE_SOURCE_ORDER: tuple[str, ...] = (
+    "box",
+    "shot",
+    "score",
+    "ot_state",
+    "pbp",
+    "identity",
+    "participation",
+    "schedule",
+)
+
+
+async def list_provenance(
+    db: AsyncSession, profile_id: int
+) -> list[SummerLeagueEnvironmentProvenance]:
+    """Every per-source provenance row for one profile (exact source references).
+
+    One indexed query over ``summer_league_environment_provenance`` — called
+    only when a detail profile is selected, never per list row, mirroring
+    :func:`list_field_composition` (contract §9). Every row discloses the
+    source's freshness watermark, contributing row count, and (where the
+    underlying data models it) parse/source status — the audit trail behind
+    a published profile.
+
+    Args:
+        db: Async session.
+        profile_id: The selected profile's primary key.
+
+    Returns:
+        Provenance rows in a stable display order (box/shot/score/ot_state/
+        pbp/identity/participation/schedule).
+    """
+    result = await db.execute(
+        select(SummerLeagueEnvironmentProvenance).where(
+            col(SummerLeagueEnvironmentProvenance.profile_id) == profile_id
+        )
+    )
+    rows = list(result.scalars())
+    order = {key: i for i, key in enumerate(_PROVENANCE_SOURCE_ORDER)}
+    rows.sort(key=lambda r: order.get(r.source_kind, len(order)))
+    return rows
+
+
 @dataclass(frozen=True)
 class MetricCoverageInfo:
     """A metric's read-time coverage verdict, counts, and reason for one profile."""
@@ -383,6 +502,7 @@ _COMPOSITION_SHARE_NUMERATOR_COLUMN: dict[str, str] = {
     "returner_share": "returner_count",
     "drafted_share": "drafted_count",
     "undrafted_share": "undrafted_count",
+    "not_yet_drafted_share": "not_yet_drafted_count",
     "first_round_share": "first_round_count",
     "second_round_share": "second_round_count",
     "lottery_share": "lottery_count",
@@ -500,6 +620,7 @@ class ProfileSummaryView:
     display_name: str
     version: int
     registry_version: str
+    calculation_version: str
     calculated_at: Optional[datetime]
     source_watermark: Optional[datetime]
     is_stale: bool
@@ -611,6 +732,7 @@ def build_profile_summary_view(
         display_name=profile.display_name,
         version=profile.version,
         registry_version=profile.registry_version,
+        calculation_version=profile.calculation_version,
         calculated_at=profile.calculated_at,
         source_watermark=profile.source_watermark,
         is_stale=is_stale,
@@ -698,6 +820,26 @@ class _CompetitionInputs:
     venue_slug: Optional[str]
     display_name: str
     starts_on: Optional[date]
+    ends_on: Optional[date] = None
+
+    # Exact raw-source reference (contract: "trace to exact contributing raw
+    # run/source references") -- the audited scrape manifest this
+    # competition's normalized facts came from, if any.
+    raw_run_id: Optional[int] = None
+    # Worst-case SummerLeagueRawRun.status for that manifest.
+    raw_run_status: Optional[str] = None
+    # Worst-case SummerLeagueRawFile.parse_status per source kind ("box" /
+    # "shot" / "pbp") across this competition's eligible final games.
+    parse_status_by_source: dict[str, str] = field(default_factory=dict)
+    # Per-game raw-file parse status: internal game id -> {"box"/"shot"/"pbp":
+    # worst-case SummerLeagueRawFileStatus.value for that one game}. This is
+    # the audited certification signal shot/PBP completeness reads from --
+    # not the mere existence of a normalized shot/PBP event row (contract §3;
+    # coverage audit: "reconcile against summer_league_raw_files.parse_status
+    # ... before certifying shot_complete").
+    game_parse_status: dict[int, dict[str, str]] = field(
+        default_factory=lambda: defaultdict(dict)
+    )
 
     # Schedule / status disclosure (all statuses).
     final_games: int = 0
@@ -710,6 +852,7 @@ class _CompetitionInputs:
     team_minutes: float = 0.0
     total_possessions: float = 0.0
     team_ortgs: list[float] = field(default_factory=list)
+    team_points: list[float] = field(default_factory=list)
     box_complete_games: int = 0
 
     # Score / overtime disclosure (final games).
@@ -781,6 +924,8 @@ async def _load_competition_inputs(
             venue_slug=c.venue_slug,
             display_name=c.display_name,
             starts_on=c.starts_on,
+            ends_on=c.ends_on,
+            raw_run_id=c.raw_run_id,
         )
         for c in competitions
     }
@@ -789,11 +934,15 @@ async def _load_competition_inputs(
         return inputs
 
     await _load_game_status(db, comp_ids, inputs)
+    # Per-game raw-file parse status must be loaded before shot/PBP pooling
+    # (both certify from it, not from event-row existence -- contract §3).
+    await _load_game_parse_status(db, comp_ids, inputs)
     await _load_team_boxes(db, comp_ids, inputs)
     await _load_appearances(db, comp_ids, inputs)
     await _load_participation(db, comp_ids, inputs)
     await _load_shots(db, comp_ids, inputs)
     await _load_pbp(db, comp_ids, inputs)
+    await _load_raw_run_status(db, inputs)
     return inputs
 
 
@@ -816,6 +965,12 @@ async def _load_game_status(
     ).all()
     for comp_id, status, home, away, status_text, updated_at in rows:
         acc = inputs[int(comp_id)]
+        # Every game (any status) is a profile-affecting input: a game
+        # flipping scheduled -> final changes eligibility/coverage even
+        # before it carries a score, so the watermark must move with it
+        # regardless of the score/ot_state observations below (which only
+        # fire for FINAL games).
+        acc.provenance["schedule"].observe(updated_at)
         if status == SummerLeagueGameStatus.FINAL:
             acc.final_games += 1
             acc.provenance["score"].observe(updated_at)
@@ -841,10 +996,16 @@ async def _load_team_boxes(
 ) -> None:
     """Pool paired team boxes from box-complete final games (opponent-adjusted).
 
-    A final game contributes only when it has exactly two usable team-box rows
-    (both meeting the regulation-minute floor). Possessions reuse
-    :meth:`Box.poss` — the shared opponent-adjusted estimate — so pace, ORtg and
-    turnover rate never invent a competing possession formula (contract §4).
+    A final game contributes only when it has exactly two *usable* team-box
+    rows: both clear the regulation-minute floor **and** carry every
+    metric-required field non-null (:func:`_box_row_usable`) -- a row with an
+    unparsed field must never reach ``Box.add_row`` and silently zero-fill
+    (contract §3). Possessions reuse :meth:`Box.poss` — the shared
+    opponent-adjusted estimate — so pace and ORtg never invent a competing
+    possession formula (contract §4). Turnover rate deliberately does **not**
+    use this possession estimate; its denominator is the frozen
+    ``FGA + 0.44*FTA + TOV`` plays formula, computed independently in
+    :func:`_environment_metric_values`.
     """
     tgl = SummerLeagueTeamGameLog
     game = SummerLeagueGame
@@ -882,8 +1043,10 @@ async def _load_team_boxes(
             )
         )
     ).all()
-    # game_id -> list of (competition_id, team_entry_id, Box, minutes, updated_at)
-    by_game: dict[int, list[tuple[int, int, Box, float, Any]]] = defaultdict(list)
+    # game_id -> list of (competition_id, team_entry_id, Box, minutes,
+    # updated_at, usable) -- ``usable`` is decided from the raw row (contract
+    # §3), before any field can be lost to Box.add_row's null-to-zero fold.
+    by_game: dict[int, list[tuple[int, int, Box, float, Any, bool]]] = defaultdict(list)
     for row in rows:
         box = Box()
         box.add_row(row)
@@ -894,15 +1057,17 @@ async def _load_team_boxes(
                 box,
                 float(row.minutes or 0),
                 row.updated_at,
+                _box_row_usable(row),
             )
         )
     for entries in by_game.values():
         if len(entries) != 2:
             continue
-        (comp_a, team_a, box_a, min_a, upd_a), (comp_b, team_b, box_b, min_b, upd_b) = (
-            entries
-        )
-        if min_a < MIN_COMPLETE_TEAM_MP or min_b < MIN_COMPLETE_TEAM_MP:
+        (
+            (comp_a, team_a, box_a, min_a, upd_a, usable_a),
+            (comp_b, team_b, box_b, min_b, upd_b, usable_b),
+        ) = entries
+        if not (usable_a and usable_b):
             continue
         acc = inputs[comp_a]
         acc.box_complete_games += 1
@@ -918,6 +1083,7 @@ async def _load_team_boxes(
             acc.total_possessions += poss
             if poss > 0:
                 acc.team_ortgs.append(100.0 * box.pts / poss)
+            acc.team_points.append(float(box.pts))
             acc.provenance["box"].observe(updated_at)
 
 
@@ -981,7 +1147,15 @@ async def _load_appearances(
 async def _load_participation(
     db: AsyncSession, comp_ids: list[int], inputs: dict[int, _CompetitionInputs]
 ) -> None:
-    """Count participation rows and capture event-time roster position (preferred)."""
+    """Count participation rows and capture event-time roster position (preferred).
+
+    Participation (roster/stint assertions) can change a profile's position
+    composition independent of any game log -- a roster correction must
+    advance the input watermark even when no player-game log changed, so this
+    observes its own ``"participation"`` provenance source (contract:
+    "ensure the input watermark covers every input that can change a
+    profile").
+    """
     part = SummerLeagueParticipation
     rows = (
         await db.execute(
@@ -989,12 +1163,14 @@ async def _load_participation(
                 part.competition_id,
                 part.player_id,
                 part.roster_position,
+                part.updated_at,
             ).where(col(part.competition_id).in_(comp_ids))
         )
     ).all()
-    for comp_id, player_id, roster_position in rows:
+    for comp_id, player_id, roster_position, updated_at in rows:
         acc = inputs[int(comp_id)]
         acc.participation_count += 1
+        acc.provenance["participation"].observe(updated_at)
         if player_id is not None and roster_position:
             # Roster position is the strongest event-time signal; it wins over a
             # box starter_position captured for a single game.
@@ -1004,7 +1180,16 @@ async def _load_participation(
 async def _load_shots(
     db: AsyncSession, comp_ids: list[int], inputs: dict[int, _CompetitionInputs]
 ) -> None:
-    """Pool rim / mapped shot attempts and record which final games are covered."""
+    """Pool rim / mapped shot attempts and certify which final games are covered.
+
+    A game certifies as shot-covered only when its shotchartdetail raw file
+    parsed successfully (:data:`SummerLeagueRawFileStatus.PARSED`, from
+    :func:`_load_game_parse_status`) **and** every shot row in that game maps
+    to a known non-backcourt/backcourt zone. A null or unrecognized zone, or a
+    parse status short of ``PARSED`` (missing evidence included), is treated
+    as a certification failure for the *whole game* -- one partial/unmapped
+    row must not certify an otherwise-uncertain shot chart (contract §3).
+    """
     shot = SummerLeagueShotEvent
     game = SummerLeagueGame
     rows = (
@@ -1023,23 +1208,41 @@ async def _load_shots(
             )
         )
     ).all()
+    seen_games: set[tuple[int, int]] = set()
+    unmapped_games: set[tuple[int, int]] = set()
     for comp_id, game_id, zone, made, updated_at in rows:
         acc = inputs[int(comp_id)]
-        acc.shot_covered_game_ids.add(int(game_id))
+        key = (int(comp_id), int(game_id))
+        seen_games.add(key)
         acc.provenance["shot"].observe(updated_at)
-        if zone is None or zone == BACKCOURT_ZONE:
+        if zone is None or zone not in _KNOWN_SHOT_ZONES:
+            unmapped_games.add(key)
+            continue
+        if zone == BACKCOURT_ZONE:
             continue
         acc.mapped_fga += 1
         if zone == RIM_ZONE:
             acc.rim_fga += 1
             if made:
                 acc.rim_fgm += 1
+    for comp_id, game_id in seen_games:
+        if (comp_id, game_id) in unmapped_games:
+            continue
+        parse_status = inputs[comp_id].game_parse_status.get(game_id, {}).get("shot")
+        if parse_status == SummerLeagueRawFileStatus.PARSED.value:
+            inputs[comp_id].shot_covered_game_ids.add(game_id)
 
 
 async def _load_pbp(
     db: AsyncSession, comp_ids: list[int], inputs: dict[int, _CompetitionInputs]
 ) -> None:
-    """Record which final games have parsed play-by-play (informational only)."""
+    """Certify which final games have successfully parsed play-by-play.
+
+    PBP is informational only in v1 (gates no displayed metric), but its own
+    coverage badge/filter must still be honest: a game counts as PBP-covered
+    only when its playbyplayv2 raw file parsed successfully (contract §3),
+    not merely because at least one normalized event row exists for it.
+    """
     pbp = SummerLeaguePlayByPlayEvent
     game = SummerLeagueGame
     rows = (
@@ -1055,8 +1258,182 @@ async def _load_pbp(
     ).all()
     for comp_id, game_id, updated_at in rows:
         acc = inputs[int(comp_id)]
-        acc.pbp_covered_game_ids.add(int(game_id))
+        gid = int(game_id)
         acc.provenance["pbp"].observe(updated_at)
+        parse_status = acc.game_parse_status.get(gid, {}).get("pbp")
+        if parse_status == SummerLeagueRawFileStatus.PARSED.value:
+            acc.pbp_covered_game_ids.add(gid)
+
+
+# Worst-first ranking for SummerLeagueRawRunStatus: the pooled/aggregated
+# status across every contributing manifest is the single worst one, never
+# silently averaged away.
+_RAW_RUN_STATUS_RANK: dict[SummerLeagueRawRunStatus, int] = {
+    SummerLeagueRawRunStatus.COMPLETE: 0,
+    SummerLeagueRawRunStatus.PENDING: 1,
+    SummerLeagueRawRunStatus.PARTIAL: 2,
+    SummerLeagueRawRunStatus.FAILED: 3,
+}
+
+# Worst-first ranking for SummerLeagueRawFileStatus (per-endpoint parse
+# status). PRESENT (fetched, not yet parsed) ranks worse than a normal
+# PARSED/SKIPPED outcome but better than a genuine gap/failure.
+_PARSE_STATUS_RANK: dict[SummerLeagueRawFileStatus, int] = {
+    SummerLeagueRawFileStatus.PARSED: 0,
+    SummerLeagueRawFileStatus.SKIPPED: 1,
+    SummerLeagueRawFileStatus.PRESENT: 2,
+    SummerLeagueRawFileStatus.EMPTY: 3,
+    SummerLeagueRawFileStatus.MISSING: 4,
+    SummerLeagueRawFileStatus.PARSE_FAILED: 5,
+}
+
+# String-keyed mirrors of the rank tables above: `_CompetitionInputs`/
+# `_PooledScope` store the enum's ``.value`` (a plain string, matching the
+# provenance table's ``Optional[str]`` columns) rather than the enum itself.
+_RAW_RUN_STATUS_VALUE_RANK: dict[str, int] = {
+    status.value: rank for status, rank in _RAW_RUN_STATUS_RANK.items()
+}
+_PARSE_STATUS_VALUE_RANK: dict[str, int] = {
+    status.value: rank for status, rank in _PARSE_STATUS_RANK.items()
+}
+
+
+def _worse_status(current: Optional[str], candidate: str, rank: dict[str, int]) -> str:
+    """Return whichever of ``current``/``candidate`` ranks worse (never averaged)."""
+    if current is None or rank.get(candidate, 0) > rank.get(current, 0):
+        return candidate
+    return current
+
+
+# SummerLeagueRawFile.endpoint -> the Competition Context source kind it
+# feeds (single source of truth mirroring app.services.summer_league.
+# raw_ingestion.GAME_ENDPOINTS' box/shot/pbp split).
+_BOX_RAW_ENDPOINTS = (
+    "boxscoretraditionalv2",
+    "boxscoreadvancedv2",
+    "boxscorescoringv2",
+)
+_SHOT_RAW_ENDPOINT = "shotchartdetail"
+_PBP_RAW_ENDPOINT = "playbyplayv2"
+_ENDPOINT_SOURCE_KIND: dict[str, str] = {
+    **{endpoint: "box" for endpoint in _BOX_RAW_ENDPOINTS},
+    _SHOT_RAW_ENDPOINT: "shot",
+    _PBP_RAW_ENDPOINT: "pbp",
+}
+
+
+async def _load_raw_run_status(
+    db: AsyncSession, inputs: dict[int, _CompetitionInputs]
+) -> None:
+    """Bulk-load each contributing competition's raw-run (source) status.
+
+    One set-based query keyed by the distinct ``raw_run_id`` values already
+    captured on ``inputs`` (from ``SummerLeagueCompetition.raw_run_id``) --
+    populates the "source status" disclosure (contract: "populate ... source
+    status where modeled").
+    """
+    raw_run_ids = {
+        acc.raw_run_id for acc in inputs.values() if acc.raw_run_id is not None
+    }
+    if not raw_run_ids:
+        return
+    rows = (
+        await db.execute(
+            select(SummerLeagueRawRun.id, SummerLeagueRawRun.status).where(  # type: ignore[call-overload]
+                col(SummerLeagueRawRun.id).in_(raw_run_ids)
+            )
+        )
+    ).all()
+    status_by_run: dict[int, SummerLeagueRawRunStatus] = {
+        int(run_id): status for run_id, status in rows
+    }
+    for acc in inputs.values():
+        if acc.raw_run_id is not None and acc.raw_run_id in status_by_run:
+            acc.raw_run_status = status_by_run[acc.raw_run_id].value
+
+
+async def _load_game_parse_status(
+    db: AsyncSession, comp_ids: list[int], inputs: dict[int, _CompetitionInputs]
+) -> None:
+    """Bulk-load per-game, then per-competition, raw-file parse status.
+
+    Joins ``SummerLeagueRawFile`` to eligible final games by
+    ``nba_stats_game_id`` (unique) and reduces to the worst-case
+    :class:`SummerLeagueRawFileStatus` per **(game, source kind)** --
+    populating :attr:`_CompetitionInputs.game_parse_status`, the audited
+    certification signal :func:`_load_shots`/:func:`_load_pbp` gate on
+    (contract §3: "a successfully parsed shot-chart/PBP input", not the mere
+    existence of a normalized event row). The same reduction rolls up to the
+    worst-case per (competition, source kind) in
+    :attr:`_CompetitionInputs.parse_status_by_source`, which feeds the
+    provenance "parse status" disclosure. Score/OT-state/identity/
+    participation/schedule have no directly-modeled per-file parse status and
+    are left absent from both dicts.
+
+    A raw file's own ``raw_run_id`` is matched against the competition's
+    pinned ``SummerLeagueCompetition.raw_run_id`` (the exact scrape manifest
+    ``raw_run_ids`` provenance already traces the profile to -- see
+    ``_load_raw_run_status``). Without this, a stale file left behind by an
+    older/failed scrape re-run for the same NBA game id would pool into the
+    worst-case reduction alongside the file the current run actually
+    produced, silently uncertifying (or, worse, certifying) a game based on
+    a manifest that isn't the one contributing to this profile. Competitions
+    with no pinned ``raw_run_id`` (pre-audit legacy data) fall back to the
+    unscoped, game-id-only match.
+    """
+    raw_file = SummerLeagueRawFile
+    game = SummerLeagueGame
+    rows = (
+        await db.execute(
+            select(  # type: ignore[call-overload]
+                game.competition_id,
+                game.id,
+                raw_file.endpoint,
+                raw_file.parse_status,
+                raw_file.raw_run_id,
+            )
+            .join(game, col(game.nba_stats_game_id) == col(raw_file.game_id))
+            .where(
+                col(game.status) == SummerLeagueGameStatus.FINAL,
+                col(game.competition_id).in_(comp_ids),
+                col(raw_file.endpoint).in_(_ENDPOINT_SOURCE_KIND),
+            )
+        )
+    ).all()
+    pinned_run_by_comp = {comp_id: acc.raw_run_id for comp_id, acc in inputs.items()}
+    worst_per_game: dict[tuple[int, str], SummerLeagueRawFileStatus] = {}
+    comp_by_game: dict[int, int] = {}
+    for comp_id, game_id, endpoint, parse_status, file_run_id in rows:
+        source_kind = _ENDPOINT_SOURCE_KIND.get(endpoint)
+        if source_kind is None:
+            continue
+        comp_id = int(comp_id)
+        pinned_run_id = pinned_run_by_comp.get(comp_id)
+        if pinned_run_id is not None and int(file_run_id) != pinned_run_id:
+            continue
+        gid = int(game_id)
+        comp_by_game[gid] = comp_id
+        key = (gid, source_kind)
+        current = worst_per_game.get(key)
+        if (
+            current is None
+            or _PARSE_STATUS_RANK[parse_status] > _PARSE_STATUS_RANK[current]
+        ):
+            worst_per_game[key] = parse_status
+
+    worst_per_comp: dict[tuple[int, str], SummerLeagueRawFileStatus] = {}
+    for (game_id, source_kind), status in worst_per_game.items():
+        comp_id = comp_by_game[game_id]
+        inputs[comp_id].game_parse_status[game_id][source_kind] = status.value
+        comp_key = (comp_id, source_kind)
+        current_comp = worst_per_comp.get(comp_key)
+        if (
+            current_comp is None
+            or _PARSE_STATUS_RANK[status] > _PARSE_STATUS_RANK[current_comp]
+        ):
+            worst_per_comp[comp_key] = status
+    for (comp_id, source_kind), status in worst_per_comp.items():
+        inputs[comp_id].parse_status_by_source[source_kind] = status.value
 
 
 @dataclass
@@ -1069,6 +1446,15 @@ class _PlayerAttributes:
     draft_pick: Optional[int] = None
     canonical_position: Optional[str] = None
     first_sl_year: Optional[int] = None
+    # Every distinct Summer League calendar year the player has appeared in
+    # (positive minutes, any competition, FINAL game), sorted ascending --
+    # global across every competition, not just those in the current rebuild
+    # request. A profile's appearance-number distribution (contract §5:
+    # "appearance rank is the player's distinct Summer League calendar-year
+    # rank across all competitions") derives the rank for a given scope year
+    # as ``count(y for y in sl_years if y <= scope_year)`` -- computed once
+    # here and reused for every scope year a rebuild touches.
+    sl_years: tuple[int, ...] = ()
 
 
 async def _load_player_attributes(
@@ -1106,13 +1492,16 @@ async def _load_player_attributes(
             draft_pick=draft_pick,
             canonical_position=position_code,
         )
-    # Rookie/returner needs the player's earliest Summer League appearance year
-    # across *all* competitions (not just those in scope): one set-based query.
+    # Rookie/returner and the appearance-number distribution both need every
+    # distinct Summer League calendar year a player has appeared in *across
+    # all competitions* (not just those in the current rebuild request): one
+    # set-based query, deduplicated in Python rather than two separate
+    # aggregate queries.
     pgl = SummerLeaguePlayerGameLog
     game = SummerLeagueGame
-    first_year_rows = (
+    year_rows = (
         await db.execute(
-            select(pgl.player_id, func.min(SummerLeagueCompetition.year))  # type: ignore[call-overload]
+            select(pgl.player_id, SummerLeagueCompetition.year)  # type: ignore[call-overload]
             .join(game, col(game.id) == col(pgl.game_id))
             .join(
                 SummerLeagueCompetition,
@@ -1123,12 +1512,18 @@ async def _load_player_attributes(
                 col(pgl.minutes_seconds) > 0,
                 col(pgl.player_id).in_(ids),
             )
-            .group_by(pgl.player_id)
+            .distinct()
         )
     ).all()
-    for pid, first_year in first_year_rows:
-        if pid is not None and int(pid) in attributes:
-            attributes[int(pid)].first_sl_year = int(first_year)
+    years_by_player: dict[int, set[int]] = defaultdict(set)
+    for pid, year in year_rows:
+        if pid is not None:
+            years_by_player[int(pid)].add(int(year))
+    for pid, years in years_by_player.items():
+        if pid in attributes:
+            ordered = tuple(sorted(years))
+            attributes[pid].sl_years = ordered
+            attributes[pid].first_sl_year = ordered[0]
     return attributes
 
 
@@ -1160,6 +1555,7 @@ class _PooledScope:
     team_minutes: float = 0.0
     total_possessions: float = 0.0
     team_ortgs: list[float] = field(default_factory=list)
+    team_points: list[float] = field(default_factory=list)
     margin_abs_sum: float = 0.0
     close_games: int = 0
     overtime_games: int = 0
@@ -1185,6 +1581,14 @@ class _PooledScope:
         default_factory=lambda: defaultdict(_SourceProvenance)
     )
 
+    # Exact raw-source references (contract: trace a profile to exact
+    # contributing raw run/source references) and their aggregated status
+    # disclosures (contract: populate parse status and source status where
+    # modeled).
+    raw_run_ids: set[int] = field(default_factory=set)
+    raw_run_status: Optional[str] = None
+    parse_status_by_source: dict[str, str] = field(default_factory=dict)
+
     def pool(self) -> None:
         """Sum every member competition's numerators/denominators into this scope."""
         for member in self.members:
@@ -1201,6 +1605,7 @@ class _PooledScope:
             self.team_minutes += member.team_minutes
             self.total_possessions += member.total_possessions
             self.team_ortgs.extend(member.team_ortgs)
+            self.team_points.extend(member.team_points)
             self.margin_abs_sum += member.margin_abs_sum
             self.close_games += member.close_games
             self.overtime_games += member.overtime_games
@@ -1226,6 +1631,19 @@ class _PooledScope:
                 bucket = self.provenance[source_kind]
                 bucket.row_count += prov.row_count
                 bucket.watermark = _max_dt(bucket.watermark, prov.watermark)
+            if member.raw_run_id is not None:
+                self.raw_run_ids.add(member.raw_run_id)
+            if member.raw_run_status is not None:
+                self.raw_run_status = _worse_status(
+                    self.raw_run_status,
+                    member.raw_run_status,
+                    _RAW_RUN_STATUS_VALUE_RANK,
+                )
+            for source_kind, status in member.parse_status_by_source.items():
+                current_status = self.parse_status_by_source.get(source_kind)
+                self.parse_status_by_source[source_kind] = _worse_status(
+                    current_status, status, _PARSE_STATUS_VALUE_RANK
+                )
 
     @property
     def watermark(self) -> Optional[datetime]:
@@ -1307,7 +1725,9 @@ def _environment_metric_values(pooled: _PooledScope) -> dict[str, Optional[float
     values["three_fg_pct"] = safe_ratio(box.fg3m, box.fg3a)
     values["free_throw_rate"] = safe_ratio(box.fta, box.fga)
     values["offensive_rebound_rate"] = safe_ratio(box.oreb, box.oreb + box.dreb)
-    values["turnover_rate"] = safe_ratio(box.tov, poss)
+    # Frozen contract formula (§4): FGA + 0.44*FTA + TOV, not the pooled
+    # opponent-adjusted possession estimate (`poss`) used for pace/ORtg above.
+    values["turnover_rate"] = safe_ratio(box.tov, box.fga + 0.44 * box.fta + box.tov)
     values["assisted_fg_rate"] = safe_ratio(box.ast, box.fgm)
     values["rim_attempt_share"] = safe_ratio(pooled.rim_fga, pooled.mapped_fga)
     values["rim_fg_pct"] = safe_ratio(pooled.rim_fgm, pooled.rim_fga)
@@ -1320,12 +1740,21 @@ def _environment_metric_values(pooled: _PooledScope) -> dict[str, Optional[float
     )
 
     # Performance landscape.
-    if len(pooled.team_ortgs) >= MIN_ORTG_SAMPLE:
+    if len(pooled.team_ortgs) >= MIN_LANDSCAPE_SAMPLE:
         values["team_ortg_iqr"] = _percentile(pooled.team_ortgs, 0.75) - _percentile(
             pooled.team_ortgs, 0.25
         )
     else:
         values["team_ortg_iqr"] = None
+    # Scoring distribution: the same IQR treatment applied to raw team points
+    # rather than offensive rating -- distinct signal (a high-pace/low-ORtg
+    # environment can still have a tight scoring spread, and vice versa).
+    if len(pooled.team_points) >= MIN_LANDSCAPE_SAMPLE:
+        values["team_points_iqr"] = _percentile(pooled.team_points, 0.75) - _percentile(
+            pooled.team_points, 0.25
+        )
+    else:
+        values["team_points_iqr"] = None
     values["top_decile_minutes_share"] = _top_decile_share(pooled.minutes_by_identity)
     values["top_decile_points_share"] = _top_decile_share(pooled.points_by_identity)
     return values
@@ -1352,11 +1781,49 @@ class _FieldComposition:
     returner_count: int
     drafted_count: int
     undrafted_count: int
+    not_yet_drafted_count: int
     first_round_count: int
     second_round_count: int
     lottery_count: int
     median_age: Optional[float]
+    repeat_participants: Optional[int]
     attributes: dict[str, dict[str, Any]]
+
+
+# Appearance-rank bucket order (contract §5: rank 1 is first-time).
+_APPEARANCE_BUCKET_ORDER: tuple[str, ...] = ("1", "2", "3", "4+")
+
+
+def _appearance_bucket(rank: int) -> str:
+    """Map a distinct-calendar-year appearance rank to its display bucket."""
+    return str(rank) if rank <= 3 else "4+"
+
+
+def _ordered_buckets(
+    distribution: dict[str, int], order: tuple[str, ...]
+) -> Optional[dict[str, int]]:
+    """Rebuild ``distribution`` in a fixed display order.
+
+    Keys not in ``order`` are appended afterward (defensive; every producer
+    here only emits keys in ``order``). Returns ``None`` when empty, never an
+    empty dict.
+    """
+    if not distribution:
+        return None
+    ordered = {k: distribution[k] for k in order if k in distribution}
+    for k, v in distribution.items():
+        if k not in ordered:
+            ordered[k] = v
+    return ordered
+
+
+def _year_buckets(distribution: dict[str, int]) -> Optional[dict[str, int]]:
+    """Draft-class year buckets sorted ascending, with 'unknown' trailing."""
+    if not distribution:
+        return None
+    return dict(
+        sorted(distribution.items(), key=lambda kv: (kv[0] == "unknown", kv[0]))
+    )
 
 
 def _field_composition(
@@ -1368,6 +1835,18 @@ def _field_composition(
     age is the event-time age at the competition start (or a player's first
     eligible appearance date for a season scope, falling back to July 1). Unknown
     attributes stay visible — they are never dropped from a denominator silently.
+
+    Beyond the base draft/age/position/origin attributes, this also derives:
+
+    * ``draft_class`` — the player's draft-year cohort (independent of
+      event-time drafted/undrafted/not-yet status).
+    * ``appearance`` — the distinct-calendar-year appearance-rank distribution
+      (contract §5), a finer-grained sibling to the rookie/returner binary.
+    * ``age_reference`` / ``position_source`` — disclosure of *which source*
+      resolved the base ``age`` / ``position`` value: known = the preferred
+      event-time source; unknown = a documented fallback was used (July 1 for
+      age, canonical ``player_status`` position for position). These are
+      distinct from whether the base attribute itself is known at all.
     """
     year = pooled.scope.year
     resolved = sorted(pooled.resolved_player_ids)
@@ -1377,9 +1856,15 @@ def _field_composition(
     drafted = undrafted = not_yet = draft_unknown = 0
     first_round = second_round = lottery = 0
     draft_distribution: dict[str, int] = defaultdict(int)
+    draft_class_distribution: dict[str, int] = defaultdict(int)
+    draft_class_known = draft_class_unknown = 0
     position_distribution: dict[str, int] = defaultdict(int)
     position_known = 0
+    position_event_time = position_fallback = 0
     ages: list[float] = []
+    age_reference_known = age_reference_fallback = 0
+    appearance_distribution: dict[str, int] = defaultdict(int)
+    appearance_known = appearance_unknown = 0
 
     for player_id in resolved:
         attr = attributes.get(player_id, _PlayerAttributes())
@@ -1389,6 +1874,17 @@ def _field_composition(
             returner += 1
         else:
             rookie += 1
+
+        # Appearance-number distribution: the finer-grained rank behind the
+        # rookie/returner binary above -- how many distinct SL calendar years
+        # (across every competition) the player has reached, up to and
+        # including this profile's year.
+        rank = sum(1 for y in attr.sl_years if y <= year) if attr.sl_years else 0
+        if rank > 0:
+            appearance_distribution[_appearance_bucket(rank)] += 1
+            appearance_known += 1
+        else:
+            appearance_unknown += 1
 
         # Draft status at event time.
         if attr.draft_year is None:
@@ -1412,21 +1908,48 @@ def _field_composition(
             draft_unknown += 1
             draft_distribution["unknown"] += 1
 
-        # Position: event-time first, canonical fallback.
-        position = (
-            pooled.event_position_by_player.get(player_id) or attr.canonical_position
-        )
+        # Draft-class: the player's draft-year cohort, independent of the
+        # event-time drafted/undrafted/not-yet status computed above.
+        if attr.draft_year is not None:
+            draft_class_distribution[str(attr.draft_year)] += 1
+            draft_class_known += 1
+        else:
+            draft_class_unknown += 1
+
+        # Position: event-time first, canonical fallback -- disclosed which
+        # source resolved it (contract §5: "current canonical position is a
+        # labeled fallback").
+        event_position = pooled.event_position_by_player.get(player_id)
+        position = event_position or attr.canonical_position
         if position:
             position_known += 1
             position_distribution[str(position)] += 1
+            if event_position:
+                position_event_time += 1
+            else:
+                position_fallback += 1
 
-        # Age at event time.
+        # Age at event time -- disclosed whether the July 1 fallback was used.
         if attr.birthdate is not None:
-            reference = _age_reference_date(pooled, player_id)
+            reference, used_fallback = _age_reference_info(pooled, player_id)
             ages.append(_age_years(attr.birthdate, reference))
+            if used_fallback:
+                age_reference_fallback += 1
+            else:
+                age_reference_known += 1
 
     median_age = round(_percentile(ages, 0.5), 1) if ages else None
     age_known = len(ages)
+
+    # Repeat participants: canonical players appearing in more than one member
+    # competition within a season profile (contract §5). Not applicable to a
+    # single-competition scope, so it is disclosed as None rather than 0.
+    repeat_participants: Optional[int] = None
+    if pooled.scope.scope_kind == "season_all_competitions":
+        member_counts: Counter[int] = Counter()
+        for member in pooled.members:
+            member_counts.update(member.resolved_player_ids)
+        repeat_participants = sum(1 for c in member_counts.values() if c > 1)
 
     attributes_out: dict[str, dict[str, Any]] = {
         "draft": {
@@ -1434,18 +1957,58 @@ def _field_composition(
             "unknown": draft_unknown,
             "total": appeared,
             "distribution": dict(draft_distribution) or None,
+            "reason": None,
+        },
+        "draft_class": {
+            "known": draft_class_known,
+            "unknown": draft_class_unknown,
+            "total": appeared,
+            "distribution": _year_buckets(dict(draft_class_distribution)),
+            "reason": None,
         },
         "age": {
             "known": age_known,
             "unknown": appeared - age_known,
             "total": appeared,
             "distribution": None,
+            "reason": None,
+        },
+        "age_reference": {
+            "known": age_reference_known,
+            "unknown": age_reference_fallback,
+            "total": age_known,
+            "distribution": None,
+            "reason": (
+                "known = age computed at the exact competition/appearance "
+                "date; unknown = July 1 fallback used because the event date "
+                "was unavailable."
+            ),
         },
         "position": {
             "known": position_known,
             "unknown": appeared - position_known,
             "total": appeared,
             "distribution": dict(position_distribution) or None,
+            "reason": None,
+        },
+        "position_source": {
+            "known": position_event_time,
+            "unknown": position_fallback,
+            "total": position_known,
+            "distribution": None,
+            "reason": (
+                "known = event-time roster/starter position; unknown = "
+                "canonical player_status position used as a labeled fallback."
+            ),
+        },
+        "appearance": {
+            "known": appearance_known,
+            "unknown": appearance_unknown,
+            "total": appeared,
+            "distribution": _ordered_buckets(
+                dict(appearance_distribution), _APPEARANCE_BUCKET_ORDER
+            ),
+            "reason": None,
         },
         # Origin (pre-event college/international affiliation) has insufficient
         # provenance for v1; disclosed as fully unknown rather than inferred from
@@ -1455,6 +2018,12 @@ def _field_composition(
             "unknown": appeared,
             "total": appeared,
             "distribution": None,
+            "reason": (
+                "Pre-event college/international affiliation provenance is "
+                "not yet sufficient to certify this distribution in v1; "
+                "disclosed as fully unavailable rather than inferred from "
+                "current biography."
+            ),
         },
     }
 
@@ -1465,31 +2034,34 @@ def _field_composition(
         returner_count=returner,
         drafted_count=drafted,
         undrafted_count=undrafted,
+        not_yet_drafted_count=not_yet,
         first_round_count=first_round,
         second_round_count=second_round,
         lottery_count=lottery,
         median_age=median_age,
+        repeat_participants=repeat_participants,
         attributes=attributes_out,
     )
 
 
-def _age_reference_date(pooled: _PooledScope, player_id: int) -> date:
+def _age_reference_info(pooled: _PooledScope, player_id: int) -> tuple[date, bool]:
     """Event-time reference date for a player's age in a scope.
 
-    Competition scope uses the competition start; a season scope uses the
-    player's first eligible appearance date that year. Either falls back to
-    July 1 of the profile year when the date is absent.
+    Also reports whether the July 1 fallback was used (contract §5: "expose
+    fallback coverage"). Competition scope uses the competition start; a
+    season scope uses the player's first eligible appearance date that year.
+    Either falls back to July 1 of the profile year when the date is absent.
     """
     year = pooled.scope.year
     if pooled.scope.scope_kind == "competition":
         member = pooled.members[0] if pooled.members else None
         if member is not None and member.starts_on is not None:
-            return member.starts_on
+            return member.starts_on, False
     else:
         appearance = pooled.first_date_by_player.get(player_id)
         if appearance is not None:
-            return appearance
-    return date(year, *FALLBACK_MONTH_DAY)
+            return appearance, False
+    return date(year, *FALLBACK_MONTH_DAY), True
 
 
 # ---------------------------------------------------------------------------
@@ -1531,6 +2103,20 @@ def _build_candidate(
     env_values = _environment_metric_values(pooled)
     composition = _field_composition(pooled, attributes)
     scope = pooled.scope
+
+    # Identity dates (contract: "competition start/end dates"). Competition
+    # scope uses its one member's dates; a season scope spans the earliest
+    # start / latest end among members that have a known date, so one missing
+    # member date never blanks the whole window.
+    if scope.scope_kind == "competition":
+        member0 = pooled.members[0] if pooled.members else None
+        starts_on = member0.starts_on if member0 is not None else None
+        ends_on = member0.ends_on if member0 is not None else None
+    else:
+        member_starts = [m.starts_on for m in pooled.members if m.starts_on is not None]
+        member_ends = [m.ends_on for m in pooled.members if m.ends_on is not None]
+        starts_on = min(member_starts) if member_starts else None
+        ends_on = max(member_ends) if member_ends else None
 
     # Per-metric coverage verdicts (disclosure for every registered metric).
     coverage_rows: list[SummerLeagueEnvironmentMetricCoverage] = []
@@ -1587,9 +2173,12 @@ def _build_candidate(
         competition_id=scope.competition_id,
         venue_slug=pooled.venue_slug if scope.scope_kind == "competition" else None,
         display_name=pooled.display_name,
+        starts_on=starts_on,
+        ends_on=ends_on,
         version=0,  # assigned at publication
         is_current=False,  # flipped at publication
         registry_version=REGISTRY_VERSION,
+        calculation_version=CALCULATION_VERSION,
         included_competitions=max(1, len(pooled.members)),
         final_games=pooled.final_games,
         # The persisted column is the "Scheduled / not-final" disclosure
@@ -1613,12 +2202,15 @@ def _build_candidate(
         returner_count=composition.returner_count,
         drafted_count=composition.drafted_count,
         undrafted_count=composition.undrafted_count,
+        not_yet_drafted_count=composition.not_yet_drafted_count,
         first_round_count=composition.first_round_count,
         second_round_count=composition.second_round_count,
         lottery_count=composition.lottery_count,
         teams_represented=len(pooled.team_entry_ids),
         median_age=composition.median_age,
+        repeat_participants=composition.repeat_participants,
         source_watermark=pooled.watermark,
+        raw_run_ids=sorted(pooled.raw_run_ids) or None,
         **stored_values,  # type: ignore[arg-type]
     )
 
@@ -1629,6 +2221,7 @@ def _build_candidate(
             unknown=payload["unknown"],
             total=payload["total"],
             distribution=payload["distribution"],
+            reason=payload.get("reason"),
         )
         for attribute_key, payload in composition.attributes.items()
     ]
@@ -1638,6 +2231,8 @@ def _build_candidate(
             source_kind=source_kind,
             watermark_at=prov.watermark,
             row_count=prov.row_count,
+            parse_status=pooled.parse_status_by_source.get(source_kind),
+            source_status=pooled.raw_run_status,
         )
         for source_kind, prov in sorted(pooled.provenance.items())
     ]
@@ -1697,6 +2292,12 @@ def _validate_candidate(candidate: _ScopeCandidate) -> None:
         )
     if profile.appeared_players < 0 or profile.appeared_unresolved < 0:
         raise ValueError(f"{candidate.scope.scope_key}: negative appeared-player count")
+    if profile.not_yet_drafted_count < 0:
+        raise ValueError(f"{candidate.scope.scope_key}: negative not-yet-drafted count")
+    if profile.repeat_participants is not None and profile.repeat_participants < 0:
+        raise ValueError(
+            f"{candidate.scope.scope_key}: negative repeat-participant count"
+        )
 
 
 async def _publish_candidate(db: AsyncSession, candidate: _ScopeCandidate) -> int:
@@ -1763,7 +2364,7 @@ class EnvironmentRebuildResult:
     failed_scopes: int = 0
     metric_coverage_complete: int = 0
     registry_version: str = REGISTRY_VERSION
-    calculation_version: str = REGISTRY_VERSION
+    calculation_version: str = CALCULATION_VERSION
     input_watermark: Optional[datetime] = None
     duration_seconds: float = 0.0
     published_scope_keys: list[str] = field(default_factory=list)

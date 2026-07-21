@@ -47,11 +47,16 @@
       {% else %}
       <div><dt>Included competitions</dt><dd>{{ detail.included_competitions }}</dd></div>
       {% endif %}
+      <div><dt>Dates</dt><dd>{{ detail.starts_on.strftime('%Y-%m-%d') if detail.starts_on else '—' }} &ndash; {{ detail.ends_on.strftime('%Y-%m-%d') if detail.ends_on else '—' }}</dd></div>
       <div><dt>Final games</dt><dd>{{ detail.final_games }}</dd></div>
       <div><dt>Scheduled / not-final</dt><dd>{{ detail.scheduled_games }}</dd></div>
       <div><dt>Teams</dt><dd>{{ detail.distinct_teams }}</dd></div>
       <div><dt>Players (resolved)</dt><dd>{{ detail.appeared_players }}{% if detail.appeared_unresolved %} <span class="slg-comp-unresolved">+{{ detail.appeared_unresolved }} unresolved</span>{% endif %}</dd></div>
+      <div><dt>Participation (roster)</dt><dd>{{ detail.participation_count if detail.participation_count is not none else 'not modeled' }}</dd></div>
       <div><dt>Player-games</dt><dd>{{ detail.player_games }}</dd></div>
+      {% if detail.scope_kind == 'season_all_competitions' %}
+      <div><dt>Repeat participants</dt><dd>{{ detail.repeat_participants if detail.repeat_participants is not none else '—' }}</dd></div>
+      {% endif %}
     </dl>
     {% if detail.scope_kind == 'season_all_competitions' and detail.membership %}
     <div class="slg-comp-membership">
@@ -79,6 +84,9 @@
       <div class="slg-comp-attr">
         <span class="slg-comp-attr__label">{{ a.label }}</span>
         <span class="slg-comp-attr__counts">{{ a.known }} known · {{ a.unknown }} unknown · {{ a.total }} total</span>
+        {% if a.reason %}
+        <p class="slg-comp-attr__reason">{{ a.reason }}</p>
+        {% endif %}
         {% if a.distribution %}
         <ul class="slg-comp-attr__dist">
           {% for bucket, count in a.distribution.items() %}
@@ -107,9 +115,32 @@
   {% if landscape_section %}
   <div class="slg-comp-section">
     <h3 class="slg-comp-section__title">Performance landscape</h3>
-    <p class="slg-comp-section__lede">Descriptive spread and concentration — not a player-development conclusion.
-      <a href="/stats/summer-league/leaders?year={{ detail.year }}{% if detail.venue_slug %}&venue={{ detail.venue_slug }}{% endif %}">See leaders for this scope →</a></p>
+    <p class="slg-comp-section__lede">Descriptive spread and concentration — not a player-development conclusion.</p>
     {{ metric_section(landscape_section) }}
+    <div class="slg-comp-leaders">
+      <h4 class="slg-comp-leaders__title">Leaders in this scope</h4>
+      {% if detail.leaders %}
+      <p class="slg-comp-leaders__lede">Same Players Explorer eligibility (2+ games, 60+ minutes, per-game).</p>
+      <div class="slg-comp-leaders__grid">
+        {% for board in detail.leaders %}
+        <div class="slg-comp-leaders__board">
+          <a class="slg-comp-leaders__board-title" href="{{ board.explorer_href }}">{{ board.label }} →</a>
+          <ol class="slg-comp-leaders__list">
+            {% for row in board.rows %}
+            <li class="slg-comp-leaders__row">
+              <span class="slg-comp-leaders__rank">{{ row.rank }}</span>
+              {% if row.href %}<a href="{{ row.href }}">{{ row.label }}</a>{% else %}<span>{{ row.label }}</span>{% endif %}
+              <span class="slg-comp-leaders__value">{{ row.formatted_value }}</span>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="slg-comp-leaders__empty">{{ detail.leaders_unavailable_reason }}</p>
+      {% endif %}
+    </div>
   </div>
   {% endif %}
 
@@ -127,9 +158,27 @@
     <dl class="slg-comp-facts slg-comp-facts--freshness">
       <div><dt>Calculated</dt><dd>{{ detail.calculated_at.strftime('%Y-%m-%d %H:%M UTC') if detail.calculated_at else '—' }}</dd></div>
       <div><dt>Source watermark</dt><dd>{{ detail.source_watermark.strftime('%Y-%m-%d %H:%M UTC') if detail.source_watermark else '—' }}</dd></div>
-      <div><dt>Calc version</dt><dd>v{{ detail.version }}</dd></div>
+      <div><dt>Publication version</dt><dd>v{{ detail.version }}</dd></div>
+      <div><dt>Calc version</dt><dd>{{ detail.calculation_version }}</dd></div>
       <div><dt>Registry</dt><dd>{{ detail.registry_version }}</dd></div>
+      <div><dt>Raw run(s)</dt><dd>{{ detail.raw_run_ids | join(', ') if detail.raw_run_ids else '—' }}</dd></div>
     </dl>
+    {% if detail.provenance %}
+    <div class="slg-comp-prov">
+      <h4 class="slg-comp-prov__title">Source references</h4>
+      <ul class="slg-comp-prov__list">
+        {% for p in detail.provenance %}
+        <li class="slg-comp-prov__row">
+          <span class="slg-comp-prov__label">{{ p.label }}</span>
+          <span class="slg-comp-prov__watermark">{{ p.watermark_at.strftime('%Y-%m-%d %H:%M UTC') if p.watermark_at else '—' }}</span>
+          <span class="slg-comp-prov__rows">{{ p.row_count }} rows</span>
+          {% if p.parse_status %}<span class="slg-comp-prov__status">parse: {{ p.parse_status }}</span>{% endif %}
+          {% if p.source_status %}<span class="slg-comp-prov__status">source: {{ p.source_status }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
     <p class="slg-comp-conf__scopekey">Stable scope key: <code>{{ detail.scope_key }}</code></p>
   </div>
 </section>

@@ -47,7 +47,8 @@
 
   <dl class="slg-comp-facts slg-comp-facts--freshness">
     <div><dt>Calculated</dt><dd>{{ profile.calculated_at.strftime('%Y-%m-%d %H:%M UTC') if profile.calculated_at else '—' }}</dd></div>
-    <div><dt>Calc version</dt><dd>v{{ profile.version }}</dd></div>
+    <div><dt>Publication version</dt><dd>v{{ profile.version }}</dd></div>
+    <div><dt>Calc version</dt><dd>{{ profile.calculation_version }}</dd></div>
     <div><dt>Registry</dt><dd>{{ profile.registry_version }}</dd></div>
   </dl>
   <p class="slg-comp-conf__scopekey">Stable scope key: <code>{{ profile.scope_key }}</code></p>
