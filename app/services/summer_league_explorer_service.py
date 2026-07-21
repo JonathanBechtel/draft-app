@@ -66,6 +66,7 @@ from app.schemas.summer_league import (
 )
 from app.schemas.summer_league_environment import (
     COVERAGE_COMPLETE,
+    COVERAGE_UNAVAILABLE,
     SCOPE_KIND_COMPETITION,
     SCOPE_KIND_SEASON,
     SummerLeagueEnvironmentFieldComposition,
@@ -90,6 +91,7 @@ from app.services.summer_league_environment_registry import (
     is_profile_stale,
     metrics_for_scope,
     sortable_metric_keys,
+    unit_label,
 )
 from app.services.summer_league_environment_service import (
     coverage_for_source,
@@ -1892,11 +1894,20 @@ class CompetitionDetail:
 
 @dataclass(frozen=True)
 class TrendPoint:
-    """One trend-chart point; ``value is None`` renders as a visible gap."""
+    """One trend-chart point; ``value is None`` renders as a visible gap.
+
+    ``has_profile`` is ``False`` for a calendar year with no current profile
+    at all (the year is still emitted as an explicit point so the chart
+    line breaks and the point is positioned on the real year axis — contract
+    §6) as opposed to a year whose profile exists but the specific metric is
+    null/partial, where ``has_profile`` is ``True`` and ``coverage`` carries
+    the metric-level reason instead.
+    """
 
     year: int
     value: Optional[float]
     coverage: str
+    has_profile: bool = True
 
 
 @dataclass
@@ -1907,6 +1918,10 @@ class CompetitionTrend:
     label: str
     scope_kind: str  # "season_all_competitions" | "competition"
     venue_slug: Optional[str]
+    # Short display unit (e.g. "%", "pts", "pace/48") shared by the chart
+    # heading, accessible description, and text/table fallback so the unit
+    # is never carried by color/shape alone (contract §6 / QA accessibility).
+    unit: str = ""
     points: list[TrendPoint] = field(default_factory=list)
 
 
@@ -4062,27 +4077,73 @@ def _build_trend(
     *,
     scope_kind: str,
     venue_slug: Optional[str],
+    year_min: Optional[int] = None,
+    year_max: Optional[int] = None,
 ) -> CompetitionTrend:
-    """One chart point per surviving year (contract §6): gaps stay visible.
+    """One chart point per year in the filtered domain (contract §6).
 
-    A "surviving" year is one with a current profile in ``views``; among
-    those, ``value`` is ``None`` (a gap) whenever that year's metric is not
-    ``complete`` — never coerced to zero and never interpolated.
+    The year domain is the complete run of calendar years between
+    ``year_min``/``year_max`` (the caller's active year-range filter, when
+    set) and, absent an explicit bound, the min/max year among the
+    surviving ``views``. Every year in that domain gets an explicit point —
+    including a year with **no current profile at all** — before any metric
+    value is attached, so a year that was never omitted from the query is
+    never silently omitted from the chart either:
+
+    * no profile for that year at all -> ``value=None``,
+      ``has_profile=False``, ``coverage="unavailable"`` (a distinct case
+      from a year whose profile exists but the metric itself is null);
+    * a profile exists but the metric is not ``complete`` -> ``value=None``,
+      ``has_profile=True``, ``coverage`` carries the metric-level reason.
+
+    Building the full domain (rather than only the years present in
+    ``views``) is what prevents two adjacent *available* years from being
+    visually connected across an intervening missing year, and lets the
+    template position each point by its actual year offset instead of by
+    array index — so uneven year intervals render truthfully.
     """
-    ordered = sorted(views, key=lambda v: v.year)
-    points = [
-        TrendPoint(
-            year=v.year,
-            value=_scaled_registry_value(definition, v.raw_values.get(metric_key)),
-            coverage=v.coverage[metric_key].coverage,
-        )
-        for v in ordered
-    ]
+    by_year = {v.year: v for v in views}
+    years_present = sorted(by_year)
+    lo = (
+        year_min
+        if year_min is not None
+        else (years_present[0] if years_present else None)
+    )
+    hi = (
+        year_max
+        if year_max is not None
+        else (years_present[-1] if years_present else None)
+    )
+    points: list[TrendPoint] = []
+    if lo is not None and hi is not None:
+        for year in range(lo, hi + 1):
+            v = by_year.get(year)
+            if v is None:
+                points.append(
+                    TrendPoint(
+                        year=year,
+                        value=None,
+                        coverage=COVERAGE_UNAVAILABLE,
+                        has_profile=False,
+                    )
+                )
+            else:
+                points.append(
+                    TrendPoint(
+                        year=year,
+                        value=_scaled_registry_value(
+                            definition, v.raw_values.get(metric_key)
+                        ),
+                        coverage=v.coverage[metric_key].coverage,
+                        has_profile=True,
+                    )
+                )
     return CompetitionTrend(
         metric_key=metric_key,
         label=definition.label,
         scope_kind=scope_kind,
         venue_slug=venue_slug,
+        unit=unit_label(definition.unit),
         points=points,
     )
 
@@ -4306,6 +4367,8 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
                 filtered_views,
                 scope_kind=SCOPE_KIND_SEASON,
                 venue_slug=None,
+                year_min=q.year_min,
+                year_max=q.year_max,
             )
         else:
             resolved_venue = q.venue or (
@@ -4338,6 +4401,8 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
                     series_views,
                     scope_kind=SCOPE_KIND_COMPETITION,
                     venue_slug=resolved_venue,
+                    year_min=q.year_min,
+                    year_max=q.year_max,
                 )
             # else: unfiltered competition table — prompt for a venue rather
             # than blending unrelated competitions into one line (no trend).

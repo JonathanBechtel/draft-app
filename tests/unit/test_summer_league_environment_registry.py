@@ -292,6 +292,17 @@ def test_format_metric_value() -> None:
     assert reg.format_metric_value("distinct_teams", 8) == "8"
 
 
+def test_unit_label_covers_every_metric_unit() -> None:
+    """``unit_label`` resolves a short display unit for every ``MetricUnit`` (#642)."""
+    for unit in MetricUnit:
+        label = reg.unit_label(unit)
+        assert isinstance(label, str)
+        assert label != ""
+    assert reg.unit_label(MetricUnit.RATIO) == "%"
+    assert reg.unit_label(MetricUnit.PACE) == "pace/48"
+    assert reg.unit_label(MetricUnit.YEARS) == "yrs"
+
+
 def test_metrics_for_scope_returns_both_eligible() -> None:
     """All v1 metrics are eligible for both scope kinds."""
     season = {d.key for d in reg.metrics_for_scope("season_all_competitions")}

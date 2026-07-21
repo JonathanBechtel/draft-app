@@ -49,38 +49,45 @@
   {%- set vmax = ns.vals | max if has_values else 1 -%}
   {%- set vmin = ns.vals | min if has_values else 0 -%}
   {%- set vspan = (vmax - vmin) if (vmax - vmin) > 0 else 1 -%}
-  {%- set n = trend.points | length -%}
+  {# Points are positioned by their real calendar-year offset (not array
+     index) so uneven year intervals render truthfully; with the full
+     year-domain fill below this is also what keeps a missing-profile year
+     from ever being skipped over when spacing the axis. #}
+  {%- set year_lo = trend.points[0].year -%}
+  {%- set year_hi = trend.points[-1].year -%}
+  {%- set year_span = (year_hi - year_lo) if (year_hi - year_lo) > 0 else 1 -%}
   {%- set W = 680 -%}{%- set H = 240 -%}
   {%- set pl = 46 -%}{%- set pr = 16 -%}{%- set pt = 16 -%}{%- set pb = 30 -%}
   {%- set pw = W - pl - pr -%}{%- set ph = H - pt - pb -%}
 
   <figure class="slg-comp-trend__figure">
     <figcaption class="slg-comp-trend__cap">
-      {{ trend.label }}{% if trend.venue_slug %} · {{ result.competition_detail.venue_label if result.competition_detail else trend.venue_slug }}{% endif %}
-      — {{ trend.points[0].year }}–{{ trend.points[-1].year }} ({{ 'venue series' if trend.scope_kind == 'competition' else 'all competitions' }})
+      {{ trend.label }}{% if trend.unit %} <span class="slg-comp-trend__unit">({{ trend.unit }})</span>{% endif %}{% if trend.venue_slug %} · {{ result.competition_detail.venue_label if result.competition_detail else trend.venue_slug }}{% endif %}
+      — {{ year_lo }}–{{ year_hi }} ({{ 'venue series' if trend.scope_kind == 'competition' else 'all competitions' }})
     </figcaption>
     <svg class="slg-comp-trend__svg" viewBox="0 0 {{ W }} {{ H }}" role="img"
-         aria-label="{{ trend.label }} by year, {{ trend.points[0].year }} to {{ trend.points[-1].year }}. Full values in the table below.">
+         aria-label="{{ trend.label }} in {{ trend.unit }} by year, {{ year_lo }} to {{ year_hi }}. Years with no profile or an unavailable metric show as a gap and never connect across the line. Full values in the table below.">
       {# Axis frame #}
       <line x1="{{ pl }}" y1="{{ pt }}" x2="{{ pl }}" y2="{{ pt + ph }}" class="slg-comp-trend__axis"/>
       <line x1="{{ pl }}" y1="{{ pt + ph }}" x2="{{ pl + pw }}" y2="{{ pt + ph }}" class="slg-comp-trend__axis"/>
       {# y bounds labels #}
       <text x="{{ pl - 6 }}" y="{{ pt + 4 }}" class="slg-comp-trend__ytick" text-anchor="end">{{ '%.1f' % vmax }}</text>
       <text x="{{ pl - 6 }}" y="{{ pt + ph }}" class="slg-comp-trend__ytick" text-anchor="end">{{ '%.1f' % vmin }}</text>
-      {%- set ns2 = namespace(prev_x=none, prev_y=none, prev_i=none) -%}
+      {%- set ns2 = namespace(prev_x=none, prev_y=none, prev_year=none) -%}
       {% for p in trend.points %}
-        {%- set x = pl + (pw * (loop.index0) / ((n - 1) if n > 1 else 1)) -%}
+        {%- set x = pl + (pw * (p.year - year_lo) / year_span) -%}
         {%- if p.value is not none -%}
           {%- set y = pt + ph * (1 - (p.value - vmin) / vspan) -%}
-          {%- if ns2.prev_x is not none and ns2.prev_i == loop.index0 - 1 -%}
+          {%- if ns2.prev_x is not none and ns2.prev_year == p.year - 1 -%}
           <line x1="{{ ns2.prev_x }}" y1="{{ ns2.prev_y }}" x2="{{ x }}" y2="{{ y }}" class="slg-comp-trend__line"/>
           {%- endif -%}
-          <circle cx="{{ x }}" cy="{{ y }}" r="4" class="slg-comp-trend__pt"><title>{{ p.year }}: {{ '%.1f' % p.value }}</title></circle>
-          {%- set ns2.prev_x = x -%}{%- set ns2.prev_y = y -%}{%- set ns2.prev_i = loop.index0 -%}
+          <circle cx="{{ x }}" cy="{{ y }}" r="4" class="slg-comp-trend__pt"><title>{{ p.year }}: {{ '%.1f' % p.value }} {{ trend.unit }}</title></circle>
+          {%- set ns2.prev_x = x -%}{%- set ns2.prev_y = y -%}{%- set ns2.prev_year = p.year -%}
         {%- else -%}
-          {# Gap year: visible tick on the axis, no point, line breaks. #}
-          <line x1="{{ x }}" y1="{{ pt + ph - 4 }}" x2="{{ x }}" y2="{{ pt + ph + 4 }}" class="slg-comp-trend__gap"><title>{{ p.year }}: no data</title></line>
-          {%- set ns2.prev_x = none -%}{%- set ns2.prev_i = none -%}
+          {# Gap: no profile for the year, or a profile with an unavailable/
+             partial metric — either way, no point and the line breaks. #}
+          <line x1="{{ x }}" y1="{{ pt + ph - 4 }}" x2="{{ x }}" y2="{{ pt + ph + 4 }}" class="slg-comp-trend__gap"><title>{{ p.year }}: {{ 'no profile' if not p.has_profile else 'no data' }}</title></line>
+          {%- set ns2.prev_x = none -%}{%- set ns2.prev_year = none -%}
         {%- endif -%}
         <text x="{{ x }}" y="{{ pt + ph + 18 }}" class="slg-comp-trend__xtick" text-anchor="middle">{{ p.year }}</text>
       {% endfor %}
@@ -88,13 +95,13 @@
   </figure>
 
   <table class="sl-stats-table slg-comp-trend__table">
-    <caption class="slg-comp-trend__tablecap">{{ trend.label }} by year (data table)</caption>
-    <thead><tr><th scope="col">Year</th><th scope="col">{{ trend.label }}</th><th scope="col">Coverage</th></tr></thead>
+    <caption class="slg-comp-trend__tablecap">{{ trend.label }}{% if trend.unit %} ({{ trend.unit }}){% endif %} by year (data table)</caption>
+    <thead><tr><th scope="col">Year</th><th scope="col">{{ trend.label }}{% if trend.unit %} ({{ trend.unit }}){% endif %}</th><th scope="col">Coverage</th></tr></thead>
     <tbody>
       {% for p in trend.points %}
       <tr>
         <th scope="row">{{ p.year }}</th>
-        <td>{% if p.value is none %}<span class="slg-comp-na">— (gap)</span>{% else %}{{ '%.1f' % p.value }}{% endif %}</td>
+        <td>{% if p.value is none %}<span class="slg-comp-na">{{ '— (no profile)' if not p.has_profile else '— (gap)' }}</span>{% else %}{{ '%.1f' % p.value }}{% endif %}</td>
         <td>{{ p.coverage }}</td>
       </tr>
       {% endfor %}

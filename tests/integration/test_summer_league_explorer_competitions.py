@@ -613,6 +613,82 @@ async def test_trend_and_table_agree(
     assert resp.text.count("104.9") >= 2
 
 
+async def test_trend_widened_range_shows_explicit_missing_year_gap(
+    db_session: AsyncSession,
+) -> None:
+    """A calendar year with no profile at all still gets an explicit point (#642).
+
+    The deterministic seed has season profiles for 2023-2025 only. Widening
+    the trend's year range to 2021-2025 must not omit 2021/2022 — each must
+    appear as its own gap point (``has_profile=False``) rather than letting
+    the chart connect 2023 straight through to whatever came before it.
+    """
+    await _seed(db_session)
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "season",
+            "trend_metric": "pace_per_48",
+            "year_min": "2021",
+            "year_max": "2025",
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    trend = result.competition_trend
+    assert trend is not None
+    years = [p.year for p in trend.points]
+    assert years == [2021, 2022, 2023, 2024, 2025]
+    by_year = {p.year: p for p in trend.points}
+    assert by_year[2021].value is None
+    assert by_year[2021].has_profile is False
+    assert by_year[2022].value is None
+    assert by_year[2022].has_profile is False
+    # 2023 is a genuinely different case: a profile exists, but the metric
+    # itself is box-partial -> null. Distinguish it from the missing years.
+    assert by_year[2023].has_profile is True
+    assert by_year[2023].value is None
+
+
+async def test_venue_trend_missing_year_is_a_gap_not_a_bridge(
+    db_session: AsyncSession,
+) -> None:
+    """A venue series with a gap year renders that year explicitly, isolated per venue."""
+    await _seed(db_session)
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "venue": "las_vegas",
+            "trend_metric": "pace_per_48",
+            "year_min": "2020",
+            "year_max": "2025",
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    trend = result.competition_trend
+    assert trend is not None
+    assert trend.venue_slug == "las_vegas"
+    by_year = {p.year: p for p in trend.points}
+    for missing_year in (2020, 2021, 2022):
+        assert by_year[missing_year].has_profile is False
+        assert by_year[missing_year].value is None
+
+
+async def test_trend_chart_displays_the_metric_unit(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The trend heading, accessible SVG description, and table all show the unit."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=season&trend_metric=three_fg_pct"
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    # Ratio metrics display "%" as their unit everywhere the unit is shown.
+    assert "(%)" in html  # figcaption + table caption/header
+    assert 'in %' in html or "in % by year" in html  # accessible svg description
+
+
 # --------------------------------------------------------------------------- #
 # Partial / CSV parity
 # --------------------------------------------------------------------------- #
