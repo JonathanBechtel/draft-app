@@ -484,6 +484,15 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
     ) -> None:
         return None
 
+    async def fake_empty_source_map(
+        *_args: object, **_kwargs: object
+    ) -> dict[str, object]:
+        # This fixture's teams/games are seeded entirely from this batch's
+        # gamelog/box rows below (#633's full-competition seed has nothing to
+        # add here); empty avoids requiring a real ``AsyncSession.scalars()``
+        # on ``FakeDb``.
+        return {}
+
     monkeypatch.setattr(service, "_get_raw_run", fake_get_raw_run)
     monkeypatch.setattr(service, "_get_raw_files", fake_get_raw_files)
     monkeypatch.setattr(service, "_upsert_competition", fake_upsert_competition)
@@ -498,6 +507,8 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
     monkeypatch.setattr(
         service, "refresh_competition_date_window", fake_refresh_competition_date_window
     )
+    monkeypatch.setattr(service, "_teams_by_source_id", fake_empty_source_map)
+    monkeypatch.setattr(service, "_games_by_source_id", fake_empty_source_map)
 
     report = await normalize_competition_games(
         FakeDb(),  # type: ignore[arg-type]
