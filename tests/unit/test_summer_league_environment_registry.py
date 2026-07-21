@@ -42,6 +42,7 @@ EXPECTED_LANDSCAPE_KEYS = {
     "top_decile_points_share",
 }
 EXPECTED_COMPOSITION_KEYS = {
+    "distinct_teams",
     "rookie_share",
     "returner_share",
     "drafted_share",
@@ -157,6 +158,15 @@ def test_every_definition_carries_required_metadata() -> None:
             1,
             CoverageSource.IDENTITY,
         ),
+        (
+            "distinct_teams",
+            "count(distinct team_entry_id) pooled over box-complete final games",
+            "N/A",
+            MetricUnit.COUNT,
+            1.0,
+            0,
+            CoverageSource.BOX,
+        ),
     ],
 )
 def test_exact_metric_definitions(
@@ -184,6 +194,39 @@ def test_assisted_fg_rate_is_box_ast_over_fgm_not_ast_pct() -> None:
     assert d.source_fields == ("ast", "fgm")
     assert d.coverage_source is CoverageSource.BOX
     assert "AST%" in d.interpretation  # explicitly distinguishes it
+
+
+def test_team_count_is_stored_filterable_and_matches_profile_column() -> None:
+    """Team count (#640) reuses the existing distinct_teams profile column.
+
+    Ticket #640: expose the existing distinct_teams projection field through
+    the generic fcol/fop/fval threshold contract rather than a new one-off
+    param. The metric key must equal the stored column name so
+    ``registry_raw_value`` resolves it via ``getattr`` with no extra mapping.
+    """
+    d = reg.get_metric("distinct_teams")
+    assert d.key == "distinct_teams"
+    assert d.stored is True
+    assert d.filterable is True
+    assert d.sortable is True
+    assert d.section is MetricSection.COMPOSITION
+    assert d.scope_eligibility is ScopeEligibility.BOTH
+    columns = set(SummerLeagueEnvironmentProfile.__table__.columns.keys())  # type: ignore[attr-defined]
+    assert d.key in columns
+
+
+def test_team_count_season_scope_meaning_is_documented() -> None:
+    """The season-scope team-count meaning is decided and documented (#640).
+
+    A season profile pools ``team_entry_ids`` (a set union) across every
+    member competition rather than computing a new franchise-deduplicated
+    meaning at request time -- so the same NBA franchise fielding rosters at
+    two venues in one summer counts as two team entries. This is asserted in
+    the registry's interpretation text so the decision cannot silently drift.
+    """
+    d = reg.get_metric("distinct_teams")
+    assert "season profile" in d.interpretation
+    assert "team entries" in d.interpretation
 
 
 def test_no_v1_metric_is_gated_by_pbp() -> None:
@@ -245,6 +288,8 @@ def test_format_metric_value() -> None:
     assert reg.format_metric_value("average_score_margin", 12.44) == "12.4"
     # Missing coverage renders as an em dash.
     assert reg.format_metric_value("pace_per_48", None) == "—"
+    # Count metric (team count), no decimals, no percent suffix.
+    assert reg.format_metric_value("distinct_teams", 8) == "8"
 
 
 def test_metrics_for_scope_returns_both_eligible() -> None:

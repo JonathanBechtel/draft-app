@@ -823,6 +823,63 @@ def test_passes_metric_filter_rejects_null_and_partial_values() -> None:
     )
 
 
+def test_team_count_is_filterable_via_generic_fcol_contract() -> None:
+    """Team count (#640) is a registered registry metric reachable through the
+    existing fcol/fop/fval contract -- not a one-off team_count= param."""
+    assert "distinct_teams" in _COMPETITION_FILTERABLE_KEYS
+    filters = parse_metric_filters(
+        {"fcol0": "distinct_teams", "fop0": "gte", "fval0": "8"},
+        _COMPETITION_FILTERABLE_KEYS,
+    )
+    assert filters == [MetricFilter(col="distinct_teams", op=">=", value=8.0)]
+
+
+def test_team_count_column_is_filterable_and_sortable_in_competition_columns() -> None:
+    cols = {c.key: c for c in competition_columns("competition")}
+    assert cols["distinct_teams"].filterable is True
+    assert cols["distinct_teams"].sortable is True
+    assert cols["distinct_teams"].fmt == "int"
+
+
+def test_passes_metric_filter_team_count_rejects_partial_box_coverage() -> None:
+    """A team-count threshold never fires on a box-partial profile, even though
+    distinct_teams itself is a non-nullable column (never widens results)."""
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    defs = metrics_for_scope("season_all_competitions")
+    definition = get_metric("distinct_teams")
+    f = MetricFilter(col="distinct_teams", op=">=", value=1.0)
+
+    partial_view = _build_profile_view(
+        _profile(final_games=20, box_complete_games=5, distinct_teams=8), defs
+    )
+    assert _passes_metric_filter(partial_view, definition, f) is False
+
+    complete_view = _build_profile_view(
+        _profile(final_games=20, box_complete_games=20, distinct_teams=8), defs
+    )
+    assert _passes_metric_filter(complete_view, definition, f) is True
+    assert (
+        _passes_metric_filter(
+            complete_view, definition, MetricFilter(col="distinct_teams", op=">=", value=9.0)
+        )
+        is False
+    )
+
+
+def test_view_to_row_carries_team_count_unscaled() -> None:
+    """Team count is a plain count (scale=1.0), unlike ratio metrics."""
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    defs = metrics_for_scope("season_all_competitions")
+    metric_by_key = {d.key: d for d in defs}
+    view = _build_profile_view(
+        _profile(final_games=20, box_complete_games=20, distinct_teams=10), defs
+    )
+    row = _view_to_row(view, metric_by_key)
+    assert row.values["distinct_teams"] == 10.0
+
+
 def test_sort_competition_views_nulls_last_both_directions() -> None:
     from app.services.summer_league_environment_registry import metrics_for_scope
 

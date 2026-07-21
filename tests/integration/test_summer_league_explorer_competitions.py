@@ -206,6 +206,129 @@ async def test_malformed_year_range_recorded_year_max_still_applies(
 
 
 # --------------------------------------------------------------------------- #
+# Team count filter (ticket #640) — reuses the existing fcol/fop/fval
+# threshold contract; no parallel team_count= param.
+# --------------------------------------------------------------------------- #
+
+
+async def test_team_count_filter_matches_covered_profiles(
+    db_session: AsyncSession,
+) -> None:
+    """A team-count threshold keeps box-complete profiles at/over the value.
+
+    Every seeded profile with a final game gets distinct_teams=8 (see
+    environment_fixtures._profile); season2023 also has raw distinct_teams=8
+    but is box-partial, so a >=8 threshold must exclude it on coverage alone,
+    never on the value itself.
+    """
+    await _seed(db_session)
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "season",
+            "fcol0": "distinct_teams",
+            "fop0": "gte",
+            "fval0": "8",
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    labels = {r.label for r in result.rows}
+    assert "2024 Summer League (all competitions)" in labels
+    assert "2025 Summer League (all competitions)" in labels
+    # Box-partial: distinct_teams is stored (8), but coverage is not complete.
+    assert "2023 Summer League (all competitions)" not in labels
+
+
+async def test_team_count_filter_never_broadens_above_actual_max(
+    db_session: AsyncSession,
+) -> None:
+    """A threshold above every profile's actual team count excludes everything
+    — the filter never broadens past what the data supports."""
+    await _seed(db_session)
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "fcol0": "distinct_teams",
+            "fop0": "gte",
+            "fval0": "9",
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    assert result.total == 0
+
+
+async def test_invalid_team_count_value_recorded_and_never_broadens(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A non-numeric team-count threshold is visibly ignored, never silently
+    dropped into an unfiltered broadened list (reuses the #636 pattern)."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&fcol0=distinct_teams&fop0=gte&fval0=notanumber"
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    assert "could not be applied and were ignored" in html
+    assert "notanumber" in html
+    assert "2024 Summer League" in html  # unfiltered list still renders
+
+
+async def test_team_count_filter_option_present_in_controls(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Team Count is offered in the metric-filter dropdown (JS-off form works
+    off real <option> elements, not JS-injected choices)."""
+    await _seed(db_session)
+    resp = await app_client.get(f"{EXPLORER}?subject=competitions")
+    assert resp.status_code == 200
+    assert '<option value="distinct_teams">Team Count</option>' in resp.text
+
+
+async def test_team_count_column_renders_as_clean_integer(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The results-table Team Count cell renders '8', not '8.0'."""
+    await _seed(db_session)
+    resp = await app_client.get(f"{EXPLORER}?subject=competitions&profile_scope=season")
+    assert resp.status_code == 200
+    html = resp.text
+    assert ">Team Count<" in html
+    assert "8.0<" not in html
+
+
+async def test_team_count_csv_includes_column(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """CSV export exposes the same Team Count values as the HTML table."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=season&format=csv"
+    )
+    assert resp.status_code == 200
+    reader = list(csv.reader(io.StringIO(resp.text)))
+    header = reader[0]
+    assert "Team Count" in header
+    idx = header.index("Team Count")
+    row = next(r for r in reader if r and r[0].startswith("2024 Summer League"))
+    assert row[idx] == "8.0"
+    assert any(r and r[0] == "distinct_teams" for r in reader)  # in the definitions trailer
+
+
+async def test_team_count_selectable_as_trend_metric(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Team count can also chart as a trend series, consistent with every
+    other registry metric (contract §6: no parallel per-metric machinery)."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=season&trend_metric=distinct_teams"
+    )
+    assert resp.status_code == 200
+    assert "Team Count" in resp.text
+
+
+# --------------------------------------------------------------------------- #
 # Detail — identity, five sections, membership, definitions, coverage
 # --------------------------------------------------------------------------- #
 

@@ -182,6 +182,16 @@ V1 threshold filters include only registry-certified numeric field facts: team c
 first-time share, drafted-entering-event share, lottery share, and median age. Expanded
 categorical composition filters and origin breakdown filters are second-wave controls.
 
+**Team count (#640 addendum).** Team count is the registry's `distinct_teams` metric — a
+direct read of `SummerLeagueEnvironmentProfile.distinct_teams`, gated by `CoverageSource.BOX`
+like every other box-derived count. It is the existing stored `team_entry_ids` set-union
+definition, not a value computed fresh at request time: a **season** profile pools
+`team_entry_ids` (a set union) across every member competition, so the same NBA franchise
+fielding rosters at two venues in one summer counts as **two** team entries, not one
+deduplicated franchise. This mirrors how every other season-scope metric pools raw member
+totals rather than averaging or deduplicating across competitions (§2), and it is asserted in
+the registry's `distinct_teams` interpretation text so the decision cannot silently drift.
+
 ## 6. URL, detail, trend, and export contract
 
 Do not overload the existing player `grain` parameter. Competition state uses:
