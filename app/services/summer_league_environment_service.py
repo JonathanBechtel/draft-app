@@ -994,8 +994,11 @@ async def _load_team_boxes(
     metric-required field non-null (:func:`_box_row_usable`) -- a row with an
     unparsed field must never reach ``Box.add_row`` and silently zero-fill
     (contract §3). Possessions reuse :meth:`Box.poss` — the shared
-    opponent-adjusted estimate — so pace, ORtg and turnover rate never invent a
-    competing possession formula (contract §4).
+    opponent-adjusted estimate — so pace and ORtg never invent a competing
+    possession formula (contract §4). Turnover rate deliberately does **not**
+    use this possession estimate; its denominator is the frozen
+    ``FGA + 0.44*FTA + TOV`` plays formula, computed independently in
+    :func:`_environment_metric_values`.
     """
     tgl = SummerLeagueTeamGameLog
     game = SummerLeagueGame
@@ -1677,7 +1680,9 @@ def _environment_metric_values(pooled: _PooledScope) -> dict[str, Optional[float
     values["three_fg_pct"] = safe_ratio(box.fg3m, box.fg3a)
     values["free_throw_rate"] = safe_ratio(box.fta, box.fga)
     values["offensive_rebound_rate"] = safe_ratio(box.oreb, box.oreb + box.dreb)
-    values["turnover_rate"] = safe_ratio(box.tov, poss)
+    # Frozen contract formula (§4): FGA + 0.44*FTA + TOV, not the pooled
+    # opponent-adjusted possession estimate (`poss`) used for pace/ORtg above.
+    values["turnover_rate"] = safe_ratio(box.tov, box.fga + 0.44 * box.fta + box.tov)
     values["assisted_fg_rate"] = safe_ratio(box.ast, box.fgm)
     values["rim_attempt_share"] = safe_ratio(pooled.rim_fga, pooled.mapped_fga)
     values["rim_fg_pct"] = safe_ratio(pooled.rim_fgm, pooled.rim_fga)

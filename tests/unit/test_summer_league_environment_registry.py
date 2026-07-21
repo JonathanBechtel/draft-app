@@ -131,6 +131,15 @@ def test_every_definition_carries_required_metadata() -> None:
             CoverageSource.SHOT,
         ),
         (
+            "turnover_rate",
+            "sum(tov) / (sum(fga) + 0.44 * sum(fta) + sum(tov))",
+            "field-goal attempts + 0.44 * free-throw attempts",
+            MetricUnit.RATIO,
+            100.0,
+            1,
+            CoverageSource.BOX,
+        ),
+        (
             "close_game_share",
             "count(abs(margin) <= 5) / games_with_score",
             "final games with a known score",
@@ -184,6 +193,16 @@ def test_assisted_fg_rate_is_box_ast_over_fgm_not_ast_pct() -> None:
     assert d.source_fields == ("ast", "fgm")
     assert d.coverage_source is CoverageSource.BOX
     assert "AST%" in d.interpretation  # explicitly distinguishes it
+
+
+def test_turnover_rate_is_plays_based_not_possession_based() -> None:
+    """Turnover rate's denominator is FGA + 0.44*FTA + TOV (contract §4's frozen
+    plays-based TOV% estimate), never the opponent-adjusted Box.poss estimate
+    used for pace/ORtg."""
+    d = reg.get_metric("turnover_rate")
+    assert d.source_fields == ("tov", "fga", "fta")
+    assert "possession" not in d.formula
+    assert d.coverage_source is CoverageSource.BOX
 
 
 def test_no_v1_metric_is_gated_by_pbp() -> None:

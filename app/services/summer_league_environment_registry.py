@@ -102,7 +102,7 @@ REGISTRY_VERSION = "2026.07.1"
 # calculation_version than the current constant was built under different
 # aggregation logic and is a candidate for rebuild even if its registry_version
 # still matches.
-CALCULATION_VERSION = "2026.07.3"
+CALCULATION_VERSION = "2026.07.4"
 
 # A literal threshold value for tests that want to assert boundary behavior
 # at a known number (see is_profile_stale's stale_after_hours override).
@@ -356,9 +356,14 @@ _ENVIRONMENT: tuple[MetricDefinition, ...] = (
         key="turnover_rate",
         label="Turnover Rate",
         section=MetricSection.ENVIRONMENT,
-        source_fields=("tov", "fga", "oreb", "fta"),
-        formula="sum(tov) / sum(possessions)",
-        denominator="estimated possessions; 0 -> None",
+        source_fields=("tov", "fga", "fta"),
+        # Frozen contract formula (§4): the plays-based TOV% estimate, not the
+        # opponent-adjusted Box.poss possession estimate used for pace/ORtg.
+        # Deliberately its own denominator so it never moves when the
+        # possession formula is recalibrated.
+        formula="sum(tov) / (sum(fga) + 0.44 * sum(fta) + sum(tov))",
+        denominator="field-goal attempts + 0.44 * free-throw attempts + "
+        "turnovers; 0 -> None",
         unit=MetricUnit.RATIO,
         scale=100.0,
         rounding=1,
@@ -366,7 +371,7 @@ _ENVIRONMENT: tuple[MetricDefinition, ...] = (
         sortable=True,
         filterable=True,
         scope_eligibility=_R,
-        interpretation="Share of possessions ending in a turnover.",
+        interpretation="Share of team plays (FGA + 0.44*FTA + TOV) ending in a turnover.",
     ),
     MetricDefinition(
         key="assisted_fg_rate",

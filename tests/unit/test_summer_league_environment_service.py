@@ -195,7 +195,8 @@ def test_environment_formulas_match_registry() -> None:
     assert values["three_fg_pct"] == pytest.approx(0.40)  # 24/60
     assert values["free_throw_rate"] == pytest.approx(0.25)  # 50/200
     assert values["offensive_rebound_rate"] == pytest.approx(0.25)  # 40/160
-    assert values["turnover_rate"] == pytest.approx(0.10)  # 20/200
+    # 20 / (200 + 0.44*50 + 20) = 20/242 (frozen contract §4 formula, not poss).
+    assert values["turnover_rate"] == pytest.approx(20.0 / 242.0)
     assert values["assisted_fg_rate"] == pytest.approx(0.70)  # 63/90
     assert values["rim_attempt_share"] == pytest.approx(0.40)  # 60/150
     assert values["rim_fg_pct"] == pytest.approx(0.60)  # 36/60
@@ -232,6 +233,47 @@ def test_zero_denominators_return_none_not_zero() -> None:
         "overtime_share",
     ):
         assert values[key] is None, key
+
+
+def test_turnover_rate_zero_plays_returns_none_even_with_possessions() -> None:
+    """turnover_rate's denominator is FGA + 0.44*FTA + TOV, not pooled
+    possessions -- a pool with zero plays but nonzero estimated possessions
+    must still disclose None, never a value borrowed from ``poss``."""
+    from app.services.summer_league_environment_service import (
+        _environment_metric_values,
+    )
+
+    pool = _season_pool(
+        pooled_box=_box(tov=0, fga=0, fta=0),
+        total_possessions=50.0,
+        team_game_rows=2,
+    )
+    assert _environment_metric_values(pool)["turnover_rate"] is None
+
+
+def test_turnover_rate_uses_plays_denominator_not_possessions() -> None:
+    """turnover_rate is decoupled from the pooled opponent-adjusted possession
+    estimate: two unequal-volume pools with the same (deliberately different)
+    ``total_possessions`` still resolve to distinct, formula-exact ratios."""
+    from app.services.summer_league_environment_service import (
+        _environment_metric_values,
+    )
+
+    high_volume = _season_pool(
+        pooled_box=_box(fga=100, fta=40, tov=15), total_possessions=999.0
+    )
+    # 15 / (100 + 0.44*40 + 15) = 15/132.6
+    assert _environment_metric_values(high_volume)["turnover_rate"] == pytest.approx(
+        15.0 / 132.6
+    )
+
+    low_volume = _season_pool(
+        pooled_box=_box(fga=50, fta=10, tov=8), total_possessions=999.0
+    )
+    # 8 / (50 + 0.44*10 + 8) = 8/62.4
+    assert _environment_metric_values(low_volume)["turnover_rate"] == pytest.approx(
+        8.0 / 62.4
+    )
 
 
 def test_overtime_unknown_state_is_none() -> None:

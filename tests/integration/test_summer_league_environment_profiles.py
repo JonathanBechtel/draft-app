@@ -387,6 +387,14 @@ async def test_competition_projection_matches_pooled_source(
     assert profile.offensive_rating == pytest.approx(
         100.0 * pooled_pts / total_poss, abs=0.05
     )
+    # Frozen contract §4 formula: FGA + 0.44*FTA + TOV, independent of poss.
+    pooled_fga = n_games * (box_a.fga + box_b.fga)
+    pooled_fta = n_games * (box_a.fta + box_b.fta)
+    pooled_tov = n_games * (box_a.tov + box_b.tov)
+    expected_turnover_rate = pooled_tov / (
+        pooled_fga + 0.44 * pooled_fta + pooled_tov
+    )
+    assert profile.turnover_rate == pytest.approx(expected_turnover_rate, abs=0.05)
     # Isolated by competition id: no season profile was built by a competition rebuild.
     season = await get_environment_profile(
         db_session, EnvironmentScope.for_season(2025)
