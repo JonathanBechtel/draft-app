@@ -242,6 +242,13 @@ class SummerLeagueEnvironmentProfile(SQLModel, table=True):  # type: ignore[call
 
     # --- Typed performance-landscape metric values ---
     team_ortg_iqr: Optional[float] = Field(default=None)
+    team_points_iqr: Optional[float] = Field(
+        default=None,
+        description=(
+            "Interquartile spread of team points per team-game -- the "
+            "scoring-distribution companion to team_ortg_iqr"
+        ),
+    )
     top_decile_minutes_share: Optional[float] = Field(default=None)
     top_decile_points_share: Optional[float] = Field(default=None)
 

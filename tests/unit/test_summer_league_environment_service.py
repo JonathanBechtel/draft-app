@@ -169,6 +169,7 @@ def _rich_pool() -> _PooledScope:
         team_minutes=800.0,
         total_possessions=200.0,
         team_ortgs=[95.0, 105.0, 110.0, 120.0, 130.0],
+        team_points=[50.0, 55.0, 58.0, 65.0, 70.0],
         margin_abs_sum=40.0,
         close_games=3,
         games_with_score=8,
@@ -208,6 +209,8 @@ def test_environment_formulas_match_registry() -> None:
     assert values["overtime_share"] == pytest.approx(0.25)  # 2/8
     # IQR of [95,105,110,120,130]: Q3(120) - Q1(105) = 15.
     assert values["team_ortg_iqr"] == pytest.approx(15.0)
+    # IQR of [50,55,58,65,70]: Q3(65) - Q1(55) = 10 (scoring-distribution companion).
+    assert values["team_points_iqr"] == pytest.approx(10.0)
     # Top decile of 4 identities = ceil(0.4)=1 → busiest.
     assert values["top_decile_minutes_share"] == pytest.approx(100.0 / 200.0)
     assert values["top_decile_points_share"] == pytest.approx(200.0 / 320.0)
@@ -297,6 +300,16 @@ def test_ortg_iqr_needs_minimum_sample() -> None:
 
     pool = _season_pool(team_ortgs=[100.0, 110.0, 120.0])
     assert _environment_metric_values(pool)["team_ortg_iqr"] is None
+
+
+def test_points_iqr_needs_minimum_sample() -> None:
+    """Fewer than four team-game point totals cannot report a scoring spread."""
+    from app.services.summer_league_environment_service import (
+        _environment_metric_values,
+    )
+
+    pool = _season_pool(team_points=[60.0, 70.0, 80.0])
+    assert _environment_metric_values(pool)["team_points_iqr"] is None
 
 
 def test_unmapped_shot_zone_excluded_from_rim_share() -> None:

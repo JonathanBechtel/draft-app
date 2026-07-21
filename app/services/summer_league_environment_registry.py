@@ -89,7 +89,7 @@ class ScopeEligibility(str, Enum):
 
 # Definition version stamped onto every profile built under this registry.
 # Bump when any formula/denominator/rounding/coverage rule changes.
-REGISTRY_VERSION = "2026.07.2"
+REGISTRY_VERSION = "2026.07.3"
 
 # Aggregation/calculation-algorithm version stamped onto every profile,
 # distinct from REGISTRY_VERSION (metric definitions/formulas/coverage rules,
@@ -102,7 +102,7 @@ REGISTRY_VERSION = "2026.07.2"
 # calculation_version than the current constant was built under different
 # aggregation logic and is a candidate for rebuild even if its registry_version
 # still matches.
-CALCULATION_VERSION = "2026.07.5"
+CALCULATION_VERSION = "2026.07.6"
 
 # A literal threshold value for tests that want to assert boundary behavior
 # at a known number (see is_profile_stale's stale_after_hours override).
@@ -502,6 +502,23 @@ _LANDSCAPE: tuple[MetricDefinition, ...] = (
         scope_eligibility=_R,
         interpretation="Interquartile spread of team offensive ratings; "
         "how varied the offenses were.",
+    ),
+    MetricDefinition(
+        key="team_points_iqr",
+        label="Team Scoring Spread (IQR)",
+        section=MetricSection.LANDSCAPE,
+        source_fields=("pts",),
+        formula="Q3(team_points_per_game) - Q1(team_points_per_game)",
+        denominator="box-complete team-game point totals; <4 games -> None",
+        unit=MetricUnit.POINTS,
+        scale=1.0,
+        rounding=1,
+        coverage_source=CoverageSource.BOX,
+        sortable=True,
+        filterable=True,
+        scope_eligibility=_R,
+        interpretation="Interquartile spread of team scoring (points per team "
+        "game); the scoring-distribution companion to the ORtg spread above.",
     ),
     MetricDefinition(
         key="top_decile_minutes_share",

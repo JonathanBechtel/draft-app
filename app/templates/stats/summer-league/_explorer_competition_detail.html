@@ -115,9 +115,32 @@
   {% if landscape_section %}
   <div class="slg-comp-section">
     <h3 class="slg-comp-section__title">Performance landscape</h3>
-    <p class="slg-comp-section__lede">Descriptive spread and concentration — not a player-development conclusion.
-      <a href="/stats/summer-league/leaders?year={{ detail.year }}{% if detail.venue_slug %}&venue={{ detail.venue_slug }}{% endif %}">See leaders for this scope →</a></p>
+    <p class="slg-comp-section__lede">Descriptive spread and concentration — not a player-development conclusion.</p>
     {{ metric_section(landscape_section) }}
+    <div class="slg-comp-leaders">
+      <h4 class="slg-comp-leaders__title">Leaders in this scope</h4>
+      {% if detail.leaders %}
+      <p class="slg-comp-leaders__lede">Same Players Explorer eligibility (2+ games, 60+ minutes, per-game).</p>
+      <div class="slg-comp-leaders__grid">
+        {% for board in detail.leaders %}
+        <div class="slg-comp-leaders__board">
+          <a class="slg-comp-leaders__board-title" href="{{ board.explorer_href }}">{{ board.label }} →</a>
+          <ol class="slg-comp-leaders__list">
+            {% for row in board.rows %}
+            <li class="slg-comp-leaders__row">
+              <span class="slg-comp-leaders__rank">{{ row.rank }}</span>
+              {% if row.href %}<a href="{{ row.href }}">{{ row.label }}</a>{% else %}<span>{{ row.label }}</span>{% endif %}
+              <span class="slg-comp-leaders__value">{{ row.formatted_value }}</span>
+            </li>
+            {% endfor %}
+          </ol>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="slg-comp-leaders__empty">{{ detail.leaders_unavailable_reason }}</p>
+      {% endif %}
+    </div>
   </div>
   {% endif %}
 

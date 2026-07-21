@@ -38,6 +38,7 @@ EXPECTED_ENVIRONMENT_KEYS = {
 }
 EXPECTED_LANDSCAPE_KEYS = {
     "team_ortg_iqr",
+    "team_points_iqr",
     "top_decile_minutes_share",
     "top_decile_points_share",
 }

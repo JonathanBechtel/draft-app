@@ -26,8 +26,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+from sqlalchemy import select as _select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import SummerLeagueCompetition
 from app.schemas.summer_league_environment import (
     SCOPE_KIND_COMPETITION,
@@ -36,6 +38,7 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentProfile,
     SummerLeagueEnvironmentSeasonMembership,
 )
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league_environment_registry import (
     CALCULATION_VERSION,
     REGISTRY_VERSION,
@@ -74,6 +77,7 @@ _COMPLETE_METRICS: dict[str, Optional[float]] = {
     "close_game_share": 0.333,
     "overtime_share": 0.083,
     "team_ortg_iqr": 18.4,
+    "team_points_iqr": 12.5,
     "top_decile_minutes_share": 0.214,
     "top_decile_points_share": 0.271,
     "median_age": 22.1,
@@ -98,6 +102,7 @@ def _metrics(
             "turnover_rate",
             "assisted_fg_rate",
             "team_ortg_iqr",
+            "team_points_iqr",
             "top_decile_minutes_share",
             "top_decile_points_share",
         ):
@@ -306,8 +311,6 @@ async def seed_competition_context_demo(
     # Get-or-create by (year, league_id) so the demo script can re-seed a
     # throwaway database that already holds a prior run's competition rows
     # (integration tests always start from an empty schema, so this creates).
-    from sqlalchemy import select as _select
-
     for key, comp in comps.items():
         existing = (
             await session.execute(
@@ -597,5 +600,62 @@ async def seed_competition_context_demo(
     add_field_comp("cc2024", 48, unknown_pos=12, year=2024)
     add_field_comp("lv2025", 115, unknown_pos=20, year=2025)
 
+    # --- Leaders strip fixture (contract: leaders "presentation over
+    # existing Players Explorer results") -- a handful of real
+    # SummerLeaguePlayerSeason rows tied to the lv2024 competition so the
+    # Competition Context leaders boards (and the season2024 pool, which
+    # includes every 2024 competition) have real, distinct PTS/REB/AST
+    # leaders to render and assert against. cc2024/slc2024 deliberately carry
+    # no player-season rows: cc2024's detail is box-only anyway (a natural
+    # "no leaders yet" honest-unavailable case).
+    await _seed_leaders_players(session, competition_id=refs.competition_ids["lv2024"])
+
     await session.flush()
     return refs
+
+
+async def _seed_leaders_players(session: AsyncSession, *, competition_id: int) -> None:
+    """Seed a small, deterministic PTS/REB/AST leaderboard for one competition.
+
+    Five players with distinct per-game leaders in each category (idempotent:
+    skipped if this competition already has player-season rows, so re-seeding
+    a throwaway database stays deterministic).
+    """
+    existing = (
+        await session.execute(
+            _select(SummerLeaguePlayerSeason.id)  # type: ignore[call-overload]
+            .where(SummerLeaguePlayerSeason.competition_id == competition_id)
+            .limit(1)
+        )
+    ).first()
+    if existing is not None:
+        return
+
+    # (display_name, total pts, total reb, total ast) over gp=3 games —
+    # per-game leaders: Ace Scorer (PTS, 20.0), Bo Board (REB, 10.0),
+    # Cy Dish (AST, 5.0), each clearing the Players Explorer default
+    # eligibility floor (2+ games, 60+ minutes).
+    players = (
+        ("Ace Scorer", 60, 15, 9),
+        ("Bo Board", 45, 30, 6),
+        ("Cy Dish", 30, 9, 15),
+        ("Dee Wing", 51, 12, 3),
+        ("Eli Bench", 24, 6, 3),
+    )
+    for display_name, pts, reb, ast in players:
+        player = PlayerMaster(display_name=display_name)
+        session.add(player)
+        await session.flush()
+        session.add(
+            SummerLeaguePlayerSeason(
+                competition_id=competition_id,
+                player_id=player.id,
+                year=2024,
+                venue_slug="las_vegas",
+                gp=3,
+                minutes=90.0,
+                pts=pts,
+                reb=reb,
+                ast=ast,
+            )
+        )

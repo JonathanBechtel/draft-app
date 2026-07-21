@@ -119,8 +119,11 @@ _KNOWN_SHOT_ZONES: frozenset[str] = frozenset(
         BACKCOURT_ZONE,
     }
 )
-# Minimum team-game offensive ratings needed to report an IQR (registry).
-MIN_ORTG_SAMPLE = 4
+# Minimum team-game sample needed to report an IQR-based landscape metric
+# (registry): both team_ortg_iqr and team_points_iqr gate on this same floor
+# since each box-complete team-game contributes exactly one entry to both
+# pooled lists.
+MIN_LANDSCAPE_SAMPLE = 4
 # Fallback reference month/day when an event date is absent (contract §5 age).
 FALLBACK_MONTH_DAY = (7, 1)
 
@@ -849,6 +852,7 @@ class _CompetitionInputs:
     team_minutes: float = 0.0
     total_possessions: float = 0.0
     team_ortgs: list[float] = field(default_factory=list)
+    team_points: list[float] = field(default_factory=list)
     box_complete_games: int = 0
 
     # Score / overtime disclosure (final games).
@@ -1079,6 +1083,7 @@ async def _load_team_boxes(
             acc.total_possessions += poss
             if poss > 0:
                 acc.team_ortgs.append(100.0 * box.pts / poss)
+            acc.team_points.append(float(box.pts))
             acc.provenance["box"].observe(updated_at)
 
 
@@ -1533,6 +1538,7 @@ class _PooledScope:
     team_minutes: float = 0.0
     total_possessions: float = 0.0
     team_ortgs: list[float] = field(default_factory=list)
+    team_points: list[float] = field(default_factory=list)
     margin_abs_sum: float = 0.0
     close_games: int = 0
     overtime_games: int = 0
@@ -1582,6 +1588,7 @@ class _PooledScope:
             self.team_minutes += member.team_minutes
             self.total_possessions += member.total_possessions
             self.team_ortgs.extend(member.team_ortgs)
+            self.team_points.extend(member.team_points)
             self.margin_abs_sum += member.margin_abs_sum
             self.close_games += member.close_games
             self.overtime_games += member.overtime_games
@@ -1716,12 +1723,21 @@ def _environment_metric_values(pooled: _PooledScope) -> dict[str, Optional[float
     )
 
     # Performance landscape.
-    if len(pooled.team_ortgs) >= MIN_ORTG_SAMPLE:
+    if len(pooled.team_ortgs) >= MIN_LANDSCAPE_SAMPLE:
         values["team_ortg_iqr"] = _percentile(pooled.team_ortgs, 0.75) - _percentile(
             pooled.team_ortgs, 0.25
         )
     else:
         values["team_ortg_iqr"] = None
+    # Scoring distribution: the same IQR treatment applied to raw team points
+    # rather than offensive rating -- distinct signal (a high-pace/low-ORtg
+    # environment can still have a tight scoring spread, and vice versa).
+    if len(pooled.team_points) >= MIN_LANDSCAPE_SAMPLE:
+        values["team_points_iqr"] = _percentile(pooled.team_points, 0.75) - _percentile(
+            pooled.team_points, 0.25
+        )
+    else:
+        values["team_points_iqr"] = None
     values["top_decile_minutes_share"] = _top_decile_share(pooled.minutes_by_identity)
     values["top_decile_points_share"] = _top_decile_share(pooled.points_by_identity)
     return values

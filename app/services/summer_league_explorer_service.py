@@ -1879,6 +1879,39 @@ class MetricSectionView:
     metrics: list[MetricValueView]
 
 
+@dataclass(frozen=True)
+class LeaderRowView:
+    """One ranked player row in a Competition Context leaders board.
+
+    ``formatted_value`` and the ranking are read straight off the same
+    per-game career-grain values the Players Explorer computes for the
+    identical scope/eligibility (:func:`_build_player_career_stmt`,
+    :func:`_compute_player_values`) — this view never recomputes a metric.
+    """
+
+    rank: int
+    label: str
+    href: Optional[str]
+    formatted_value: str
+
+
+@dataclass(frozen=True)
+class LeaderBoardView:
+    """One compact leaders board (e.g. Points) for the performance-landscape section.
+
+    ``explorer_href`` carries the exact same scope (``competition_id`` or a
+    pinned ``year_min``/``year_max``) plus this board's sort into the Players
+    Explorer, so "see full list" always lands on the identical filtered/sorted
+    result a reader would need to verify the board (contract: "leader links
+    carry the same selected scope into existing Players Explorer results").
+    """
+
+    metric_key: str
+    label: str
+    rows: list[LeaderRowView]
+    explorer_href: str
+
+
 @dataclass
 class CompetitionDetail:
     """Full read-contract payload for one selected Competition Context profile.
@@ -1931,6 +1964,14 @@ class CompetitionDetail:
     # Exact per-source provenance (freshness + row count + parse/source
     # status) — the audit trail behind this published profile.
     provenance: list[ProvenanceSourceView] = field(default_factory=list)
+    # Compact PTS/REB/AST leaders boards for this exact scope, sourced from
+    # the same Players Explorer career-grain query/eligibility (contract:
+    # "presentation over existing Players Explorer results ... not stored as
+    # a second leaderboard source"). Empty when no player meets the shared
+    # eligibility floor for this scope yet (honest unavailable state, not an
+    # error) — see ``leaders_unavailable_reason``.
+    leaders: list[LeaderBoardView] = field(default_factory=list)
+    leaders_unavailable_reason: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -2579,11 +2620,17 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
     return sort_col
 
 
-async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """Aggregate career totals from ``summer_league_player_seasons`` via catalog roll-ups.
+def _build_player_career_stmt(q: ExplorerQuery) -> Any:
+    """Build the (unsorted, unpaginated) career-grain player statement.
 
-    Ticket #405 source switch: reads materialized season rows (one per
-    player-competition) rather than raw ``SummerLeaguePlayerGameLog`` records.
+    This is the single query-builder both the paginated Players Explorer
+    career table (:func:`_query_players`) and the Competition Context
+    leaders strip (:func:`_fetch_competition_leaders`) run — the leaders
+    strip is presentation over the same Players Explorer roll-up and
+    eligibility rules, never a second player-leader calculation (contract:
+    "not stored as a second leaderboard source"). Extracted from
+    :func:`_query_players` (ticket #639) with no behavior change: the exact
+    same SELECT/GROUP BY/HAVING clauses, filters, and roll-up expressions.
 
     Roll-up semantics per catalog bucket:
 
@@ -2765,6 +2812,13 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         having_expr = _career_metric_having(mf, ps)
         if having_expr is not None:
             stmt = stmt.having(having_expr)  # type: ignore[arg-type]
+
+    return stmt
+
+
+async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
+    """Paginated Players Explorer career table (see :func:`_build_player_career_stmt`)."""
+    stmt = _build_player_career_stmt(q)
 
     # Count total matching rows before slicing (wrapping subquery avoids fetching all rows).
     total = await _count_subquery(db, stmt)
@@ -4214,6 +4268,116 @@ async def _resolve_season_detail(
     return _build_profile_view(profile, metric_defs)
 
 
+# The compact leaders strip's stat categories, in display order. Values are
+# the exact per-game career-grain fields ``_compute_player_values`` already
+# produces (contract: "sourced from the same player metric definitions as
+# the Players Explorer").
+_LEADER_METRIC_KEYS: tuple[tuple[str, str], ...] = (
+    ("pts", "Points"),
+    ("reb", "Rebounds"),
+    ("ast", "Assists"),
+)
+_LEADER_BOARD_SIZE = 3
+_LEADER_UNAVAILABLE_REASON = (
+    "No player meets the Players Explorer minimum eligibility "
+    f"({DEFAULT_MIN_GAMES}+ games, {DEFAULT_MIN_MINUTES}+ minutes) for this "
+    "scope yet."
+)
+
+
+def _leaders_scope_qs(scope_kind: str, competition_id: Optional[int], year: int) -> str:
+    """The exact scope query-string fragment for a leaders Explorer handoff.
+
+    Mirrors the detail panel's own handoff shape (contract §6/§7): an
+    authoritative ``competition_id`` for a competition scope, a pinned
+    ``year_min``/``year_max`` for a season scope — never year+venue.
+    """
+    if scope_kind == SCOPE_KIND_COMPETITION:
+        return f"competition_id={competition_id}"
+    return f"year_min={year}&year_max={year}"
+
+
+async def _fetch_competition_leaders(
+    db: AsyncSession,
+    *,
+    scope_kind: str,
+    competition_id: Optional[int],
+    year: int,
+) -> list[LeaderBoardView]:
+    """Compact PTS/REB/AST leaders boards for one Competition Context scope.
+
+    Reuses :func:`_build_player_career_stmt` — the exact Players Explorer
+    career-grain query builder and its default eligibility (``min_games=2``,
+    ``min_minutes=60``, per-game mode) — with no ``LIMIT``/``OFFSET``/count
+    overhead, so a scope's leader values can never diverge from what the
+    Players Explorer itself would show for the identical scope and eligibility
+    rules, and this is never a second player-leader calculation (contract:
+    "not stored as a second leaderboard source"). One query total regardless
+    of how many stat boards are shown, keeping the Competition Context detail
+    request well inside its route budget (contract §9).
+
+    Args:
+        db: Async session.
+        scope_kind: ``"season_all_competitions"`` or ``"competition"``.
+        competition_id: The competition id for a competition scope; ignored
+            for a season scope.
+        year: The profile year (used for a season-scope handoff; the
+            competition scope resolves by ``competition_id`` alone).
+
+    Returns:
+        Up to three boards (Points/Rebounds/Assists); empty when no player in
+        the scope clears the shared eligibility floor yet.
+    """
+    is_competition = scope_kind == SCOPE_KIND_COMPETITION
+    leaders_q = ExplorerQuery(
+        subject="players",
+        competition_id=competition_id if is_competition else None,
+        year_min=None if is_competition else year,
+        year_max=None if is_competition else year,
+        min_games=DEFAULT_MIN_GAMES,
+        min_minutes=DEFAULT_MIN_MINUTES,
+        mode=DEFAULT_MODE,
+        paginate=False,
+    )
+    stmt = _build_player_career_stmt(leaders_q)
+    raw = list((await db.execute(stmt)).all())
+    if not raw:
+        return []
+
+    scored = [(r, _compute_player_values(r, DEFAULT_MODE)) for r in raw]
+    scope_qs = _leaders_scope_qs(scope_kind, competition_id, year)
+
+    boards: list[LeaderBoardView] = []
+    for key, label in _LEADER_METRIC_KEYS:
+        eligible = [(r, v) for r, v in scored if v.get(key) is not None]
+        ranked = sorted(eligible, key=lambda rv: rv[1][key], reverse=True)[
+            :_LEADER_BOARD_SIZE
+        ]
+        rows = [
+            LeaderRowView(
+                rank=i + 1,
+                label=r.display_name or "Player",
+                href=f"/players/{r.slug}" if r.slug else None,
+                formatted_value=f"{v[key]:.1f}",
+            )
+            for i, (r, v) in enumerate(ranked)
+        ]
+        if not rows:
+            continue
+        boards.append(
+            LeaderBoardView(
+                metric_key=key,
+                label=label,
+                rows=rows,
+                explorer_href=(
+                    "/stats/summer-league/explorer?subject=players&"
+                    f"{scope_qs}&sort={key}&dir=desc"
+                ),
+            )
+        )
+    return boards
+
+
 async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     """Read-only Competition Context query for subject="competitions".
 
@@ -4333,6 +4497,17 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
             _field_composition_views(field_rows),
             _provenance_views(provenance_rows),
         )
+        leaders = await _fetch_competition_leaders(
+            db,
+            scope_kind=detail_view.scope_kind,
+            competition_id=detail_view.competition_id,
+            year=detail_view.year,
+        )
+        result.competition_detail.leaders = leaders
+        if not leaders:
+            result.competition_detail.leaders_unavailable_reason = (
+                _LEADER_UNAVAILABLE_REASON
+            )
 
     # ---- Trend (contract §6: season = one line across years; competition =
     # only after a venue/series is resolved, never blending unrelated
