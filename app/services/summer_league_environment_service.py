@@ -1369,6 +1369,17 @@ async def _load_game_parse_status(
     provenance "parse status" disclosure. Score/OT-state/identity/
     participation/schedule have no directly-modeled per-file parse status and
     are left absent from both dicts.
+
+    A raw file's own ``raw_run_id`` is matched against the competition's
+    pinned ``SummerLeagueCompetition.raw_run_id`` (the exact scrape manifest
+    ``raw_run_ids`` provenance already traces the profile to -- see
+    ``_load_raw_run_status``). Without this, a stale file left behind by an
+    older/failed scrape re-run for the same NBA game id would pool into the
+    worst-case reduction alongside the file the current run actually
+    produced, silently uncertifying (or, worse, certifying) a game based on
+    a manifest that isn't the one contributing to this profile. Competitions
+    with no pinned ``raw_run_id`` (pre-audit legacy data) fall back to the
+    unscoped, game-id-only match.
     """
     raw_file = SummerLeagueRawFile
     game = SummerLeagueGame
@@ -1379,6 +1390,7 @@ async def _load_game_parse_status(
                 game.id,
                 raw_file.endpoint,
                 raw_file.parse_status,
+                raw_file.raw_run_id,
             )
             .join(game, col(game.nba_stats_game_id) == col(raw_file.game_id))
             .where(
@@ -1388,14 +1400,19 @@ async def _load_game_parse_status(
             )
         )
     ).all()
+    pinned_run_by_comp = {comp_id: acc.raw_run_id for comp_id, acc in inputs.items()}
     worst_per_game: dict[tuple[int, str], SummerLeagueRawFileStatus] = {}
     comp_by_game: dict[int, int] = {}
-    for comp_id, game_id, endpoint, parse_status in rows:
+    for comp_id, game_id, endpoint, parse_status, file_run_id in rows:
         source_kind = _ENDPOINT_SOURCE_KIND.get(endpoint)
         if source_kind is None:
             continue
+        comp_id = int(comp_id)
+        pinned_run_id = pinned_run_by_comp.get(comp_id)
+        if pinned_run_id is not None and int(file_run_id) != pinned_run_id:
+            continue
         gid = int(game_id)
-        comp_by_game[gid] = int(comp_id)
+        comp_by_game[gid] = comp_id
         key = (gid, source_kind)
         current = worst_per_game.get(key)
         if (

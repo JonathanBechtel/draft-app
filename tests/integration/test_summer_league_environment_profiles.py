@@ -508,6 +508,221 @@ async def test_profile_traces_to_raw_run_and_discloses_source_status(
     assert participation_row.parse_status is None
 
 
+async def test_shot_coverage_ignores_stale_run_failure(
+    db_session: AsyncSession,
+) -> None:
+    """A stale raw file left by an older, non-pinned scrape run must not
+    uncertify a game whose *current* pinned raw run parsed successfully.
+
+    Without scoping by ``SummerLeagueCompetition.raw_run_id``, the worst-case
+    reduction across every raw file matching a game id -- regardless of which
+    scrape manifest produced it -- would fold an unrelated older run's
+    ``PARSE_FAILED`` row into this competition's certification, contradicting
+    the exact-provenance guarantee ``raw_run_ids`` already makes (#641).
+    """
+    stale_run = SummerLeagueRawRun(
+        year=2025,
+        league_id="15",
+        venue_slug="las_vegas",
+        status=SummerLeagueRawRunStatus.COMPLETE,
+        manifest_path="s3://bucket/2025/las_vegas/manifest-stale.json",
+    )
+    current_run = SummerLeagueRawRun(
+        year=2025,
+        league_id="15",
+        venue_slug="las_vegas",
+        status=SummerLeagueRawRunStatus.COMPLETE,
+        manifest_path="s3://bucket/2025/las_vegas/manifest-current.json",
+    )
+    db_session.add_all([stale_run, current_run])
+    await db_session.flush()
+    assert stale_run.id is not None and current_run.id is not None
+
+    comp_id, _ = await _seed_competition(
+        db_session, year=2025, venue="las_vegas", league_id="15", n_games=1
+    )
+    comp = await db_session.get(SummerLeagueCompetition, comp_id)
+    assert comp is not None
+    comp.raw_run_id = current_run.id
+    await db_session.flush()
+
+    game = (
+        (
+            await db_session.execute(
+                select(SummerLeagueGame).where(
+                    SummerLeagueGame.competition_id == comp_id
+                )
+            )
+        )
+        .scalars()
+        .one()
+    )
+    team_id = (
+        await db_session.execute(
+            select(SummerLeagueTeamEntry.id)
+            .where(SummerLeagueTeamEntry.competition_id == comp_id)
+            .limit(1)
+        )
+    ).scalar_one()
+    source = (
+        (await db_session.execute(select(SummerLeagueSourcePlayer).limit(1)))
+        .scalars()
+        .first()
+    )
+    assert source is not None
+    db_session.add(
+        SummerLeagueShotEvent(
+            game_id=game.id,
+            competition_id=comp_id,
+            team_entry_id=team_id,
+            source_player_id=source.id,
+            player_id=source.canonical_player_id,
+            nba_stats_person_id=source.nba_stats_person_id,
+            nba_stats_game_id="shot-stale-run-failure",
+            nba_stats_game_event_id=1,
+            shot_zone_basic="Restricted Area",
+            made=True,
+        )
+    )
+    db_session.add_all(
+        [
+            SummerLeagueRawFile(
+                raw_run_id=stale_run.id,
+                year=2025,
+                league_id="15",
+                endpoint="shotchartdetail",
+                game_id=game.nba_stats_game_id,
+                relative_path=f"{game.nba_stats_game_id}/shotchartdetail-stale.json",
+                parse_status=SummerLeagueRawFileStatus.PARSE_FAILED,
+            ),
+            SummerLeagueRawFile(
+                raw_run_id=current_run.id,
+                year=2025,
+                league_id="15",
+                endpoint="shotchartdetail",
+                game_id=game.nba_stats_game_id,
+                relative_path=f"{game.nba_stats_game_id}/shotchartdetail-current.json",
+                parse_status=SummerLeagueRawFileStatus.PARSED,
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    async with db_session.begin():
+        await rebuild_environment_profiles(db_session, competition_id=comp_id)
+
+    profile = await get_environment_profile(
+        db_session, EnvironmentScope.for_competition(comp_id, 2025)
+    )
+    assert profile is not None
+    # The pinned (current) run parsed successfully -- the stale run's failure
+    # for the same game/endpoint must not leak into this profile's certification.
+    assert profile.shot_covered_games == 1
+
+
+async def test_shot_coverage_ignores_stale_run_success(
+    db_session: AsyncSession,
+) -> None:
+    """A successfully-parsed file from a stale, non-pinned scrape run must
+    not certify a game whose *current* pinned raw run has no matching file.
+
+    The inverse of ``test_shot_coverage_ignores_stale_run_failure``: without
+    raw-run scoping, a leftover parsed file from an old re-scrape would
+    falsely certify a game the current run never actually produced evidence
+    for, contradicting the profile's own ``raw_run_ids`` provenance.
+    """
+    stale_run = SummerLeagueRawRun(
+        year=2025,
+        league_id="15",
+        venue_slug="las_vegas",
+        status=SummerLeagueRawRunStatus.COMPLETE,
+        manifest_path="s3://bucket/2025/las_vegas/manifest-stale2.json",
+    )
+    current_run = SummerLeagueRawRun(
+        year=2025,
+        league_id="15",
+        venue_slug="las_vegas",
+        status=SummerLeagueRawRunStatus.COMPLETE,
+        manifest_path="s3://bucket/2025/las_vegas/manifest-current2.json",
+    )
+    db_session.add_all([stale_run, current_run])
+    await db_session.flush()
+    assert stale_run.id is not None and current_run.id is not None
+
+    comp_id, _ = await _seed_competition(
+        db_session, year=2025, venue="las_vegas", league_id="15", n_games=1
+    )
+    comp = await db_session.get(SummerLeagueCompetition, comp_id)
+    assert comp is not None
+    comp.raw_run_id = current_run.id
+    await db_session.flush()
+
+    game = (
+        (
+            await db_session.execute(
+                select(SummerLeagueGame).where(
+                    SummerLeagueGame.competition_id == comp_id
+                )
+            )
+        )
+        .scalars()
+        .one()
+    )
+    team_id = (
+        await db_session.execute(
+            select(SummerLeagueTeamEntry.id)
+            .where(SummerLeagueTeamEntry.competition_id == comp_id)
+            .limit(1)
+        )
+    ).scalar_one()
+    source = (
+        (await db_session.execute(select(SummerLeagueSourcePlayer).limit(1)))
+        .scalars()
+        .first()
+    )
+    assert source is not None
+    db_session.add(
+        SummerLeagueShotEvent(
+            game_id=game.id,
+            competition_id=comp_id,
+            team_entry_id=team_id,
+            source_player_id=source.id,
+            player_id=source.canonical_player_id,
+            nba_stats_person_id=source.nba_stats_person_id,
+            nba_stats_game_id="shot-stale-run-success",
+            nba_stats_game_event_id=1,
+            shot_zone_basic="Restricted Area",
+            made=True,
+        )
+    )
+    # Only the stale run has a shotchartdetail file for this game; the
+    # pinned current run never fetched/parsed one.
+    db_session.add(
+        SummerLeagueRawFile(
+            raw_run_id=stale_run.id,
+            year=2025,
+            league_id="15",
+            endpoint="shotchartdetail",
+            game_id=game.nba_stats_game_id,
+            relative_path=f"{game.nba_stats_game_id}/shotchartdetail-stale2.json",
+            parse_status=SummerLeagueRawFileStatus.PARSED,
+        )
+    )
+    await db_session.commit()
+
+    async with db_session.begin():
+        await rebuild_environment_profiles(db_session, competition_id=comp_id)
+
+    profile = await get_environment_profile(
+        db_session, EnvironmentScope.for_competition(comp_id, 2025)
+    )
+    assert profile is not None
+    # The pinned (current) run has no shotchartdetail evidence for this game
+    # -- a stale run's success must not certify it.
+    assert profile.shot_covered_games == 0
+    assert profile.rim_attempt_share is None
+
+
 async def test_non_final_games_disclosed_in_scheduled_count(
     db_session: AsyncSession,
 ) -> None:
