@@ -661,6 +661,84 @@ async def test_normalize_competition_games_populates_score_from_teamstats_when_g
 
 
 @pytest.mark.asyncio
+async def test_normalize_competition_games_teamstats_fallback_never_clobbers_existing_score(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """#633: the TeamStats fallback must not overwrite an already-persisted score.
+
+    Codex review on PR #652: the full-ingestion path treats an already-captured
+    per-game TeamStats file as permanent (``force=False`` skips re-fetching it),
+    so it can go stale relative to the game's actual current state -- e.g. a
+    scoreboard-ingest live read of ``scheduleleaguev2`` (or an earlier pass of
+    this same fallback) has already set a real, more current score. Re-running
+    the fallback from that stale on-disk snapshot must never regress it.
+    """
+    _write_fixture(tmp_path)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+    _rewrite_team_gamelog_empty(tmp_path)
+
+    competition = SummerLeagueCompetition(
+        year=2024,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2024 Las Vegas Summer League",
+    )
+    db_session.add(competition)
+    await db_session.flush()
+    assert competition.id is not None
+
+    orl = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id="1610612753",
+        raw_team_name="Orlando Magic",
+        team_slug="orlando-magic",
+    )
+    cle = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id="1610612739",
+        raw_team_name="Cleveland Cavaliers",
+        team_slug="cleveland-cavaliers",
+    )
+    db_session.add_all([orl, cle])
+    await db_session.flush()
+
+    # Scoreboard ingest already wrote a real, more current score (e.g. a
+    # since-finished game) before this normalize pass ever runs. The fixture's
+    # on-disk TeamStats box (106-79, written once and never re-fetched) is
+    # stale relative to this.
+    db_session.add(
+        SummerLeagueGame(
+            competition_id=competition.id,
+            nba_stats_game_id="1522400001",
+            status=SummerLeagueGameStatus.FINAL,
+            tip_datetime=datetime(2024, 7, 12, 20, 0),
+            home_nba_stats_team_id="1610612753",
+            away_nba_stats_team_id="1610612739",
+            home_score=118,
+            away_score=101,
+        )
+    )
+    await db_session.flush()
+
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    game = (
+        await db_session.execute(
+            select(SummerLeagueGame).where(
+                SummerLeagueGame.nba_stats_game_id == "1522400001"  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    assert game.home_score == 118
+    assert game.away_score == 101
+
+
+@pytest.mark.asyncio
 async def test_normalize_competition_games_is_idempotent(
     db_session: AsyncSession,
     tmp_path: Path,

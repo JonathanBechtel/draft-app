@@ -372,12 +372,23 @@ async def normalize_competition_games(
         # against the game's raw provider team ids (set by scoreboard ingest
         # independently of local team-entry resolution) rather than
         # ``box_team`` -- no ``MATCHUP`` string exists on a box row to
-        # otherwise tell home from away (contrast :func:`_home_row`).
-        if box_row.game_id not in game_rows:
-            if box_row.nba_stats_team_id == box_game.home_nba_stats_team_id:
+        # otherwise tell home from away (contrast :func:`_home_row`). Only
+        # fills a currently-null score -- never overwrites one already
+        # present (e.g. scoreboard ingest's own live read of
+        # ``scheduleleaguev2``, or an earlier pass here) with this on-disk
+        # per-game snapshot, which the full-ingestion path's ``force=False``
+        # can leave stale well behind the game's actual current state.
+        if box_row.game_id not in game_rows and box_row.pts is not None:
+            if (
+                box_row.nba_stats_team_id == box_game.home_nba_stats_team_id
+                and box_game.home_score is None
+            ):
                 box_game.home_score = box_row.pts
                 box_game.updated_at = _utc_now_naive()
-            elif box_row.nba_stats_team_id == box_game.away_nba_stats_team_id:
+            elif (
+                box_row.nba_stats_team_id == box_game.away_nba_stats_team_id
+                and box_game.away_score is None
+            ):
                 box_game.away_score = box_row.pts
                 box_game.updated_at = _utc_now_naive()
 
