@@ -221,7 +221,17 @@ def _extract_prose(
 def _effective_game_status(
     game: Optional[SummerLeagueGame], *, now: Optional[datetime]
 ) -> SummerLeagueGameStatus:
-    """Resolve a display status with the Desk's scheduled-tip live fallback."""
+    """Resolve a display status with the Desk's scheduled-tip live fallback.
+
+    A passed tip time alone is not evidence a game is actually live -- the
+    2026-07-19 incident showed a game stuck ``SCHEDULED`` with null scores and
+    zero player-game-log rows still get presented as ``IN_PROGRESS`` purely
+    because ``now`` had passed ``tip_datetime``. Promotion additionally
+    requires at least a persisted canonical score (the cheapest available
+    live evidence on this row); with no score, the game stays at its
+    persisted status (typically ``SCHEDULED``) rather than claim liveness the
+    read layer has nothing to back up.
+    """
     if game is None:
         return SummerLeagueGameStatus.UNKNOWN
     if (
@@ -229,6 +239,7 @@ def _effective_game_status(
         and game.tip_datetime is not None
         and now is not None
         and now >= game.tip_datetime
+        and (game.home_score is not None or game.away_score is not None)
     ):
         return SummerLeagueGameStatus.IN_PROGRESS
     return game.status

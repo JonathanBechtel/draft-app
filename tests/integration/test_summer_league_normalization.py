@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -536,6 +536,206 @@ async def test_normalize_competition_games_advances_scores_across_partial_passes
     assert second_game.home_score == 88
     assert second_game.status == SummerLeagueGameStatus.SCHEDULED
     assert second_game.id == first_game.id  # same row, updated in place
+
+
+def _rewrite_team_gamelog_empty(raw_root: Path) -> None:
+    """Overwrite ``leaguegamelog_team.json`` with zero rows.
+
+    Simulates the season-wide LeagueGameLog feed not having caught up to a
+    game yet, even though that game's per-game TeamStats box is already on
+    disk (#633) -- the July 19, 2026 incident's actual failure shape.
+    """
+    run_dir = raw_root / "2024" / "15"
+    run_dir.joinpath("leaguegamelog_team.json").write_text(
+        json.dumps({"resultSets": [_result_set("LeagueGameLog", [], [])]})
+    )
+
+
+@pytest.mark.asyncio
+async def test_normalize_competition_games_populates_score_from_teamstats_when_gamelog_lags(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """#633: a lagging season LeagueGameLog still gets a canonical score from TeamStats.
+
+    Mirrors the real production shape: scoreboard ingest (Job B step 0, which
+    always runs ahead of normalization) has already created the canonical
+    game and linked its raw provider ``home_nba_stats_team_id``/
+    ``away_nba_stats_team_id``, but the season-wide LeagueGameLog feed hasn't
+    reported this game yet this pass -- while its per-game TeamStats box
+    already has real scores on disk. Normalization must use the full
+    competition's canonical game/team mappings (not just this batch's
+    gamelog rows) to find the game and populate its score from that box data.
+    """
+    _write_fixture(tmp_path)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+    _rewrite_team_gamelog_empty(tmp_path)
+
+    competition = SummerLeagueCompetition(
+        year=2024,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2024 Las Vegas Summer League",
+    )
+    db_session.add(competition)
+    await db_session.flush()
+    assert competition.id is not None
+
+    orl = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id="1610612753",
+        raw_team_name="Orlando Magic",
+        team_slug="orlando-magic",
+    )
+    cle = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id="1610612739",
+        raw_team_name="Cleveland Cavaliers",
+        team_slug="cleveland-cavaliers",
+    )
+    db_session.add_all([orl, cle])
+    await db_session.flush()
+    assert orl.id is not None and cle.id is not None
+
+    db_session.add(
+        SummerLeagueGame(
+            competition_id=competition.id,
+            nba_stats_game_id="1522400001",
+            status=SummerLeagueGameStatus.SCHEDULED,
+            tip_datetime=datetime(2024, 7, 12, 20, 0),
+            home_nba_stats_team_id="1610612753",
+            away_nba_stats_team_id="1610612739",
+        )
+    )
+    await db_session.flush()
+
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    game = (
+        await db_session.execute(
+            select(SummerLeagueGame).where(
+                SummerLeagueGame.nba_stats_game_id == "1522400001"  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    assert game.home_score == 106
+    assert game.away_score == 79
+    # Score-population is normalization's job; live/passed-tip status display
+    # is the read layer's (see `desk_read._effective_game_status`) --
+    # normalize never touches status on its own here.
+    assert game.status == SummerLeagueGameStatus.SCHEDULED
+
+    team_logs = (
+        (
+            await db_session.execute(
+                select(SummerLeagueTeamGameLog).where(
+                    SummerLeagueTeamGameLog.game_id == game.id  # type: ignore[arg-type]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert {log.team_entry_id for log in team_logs} == {orl.id, cle.id}
+
+    # Once the season LeagueGameLog catches up with the real value, it takes
+    # precedence over the TeamStats fallback that seeded this game earlier.
+    _rewrite_team_gamelog_pts(tmp_path, magic_pts=112)
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+    updated_game = (
+        await db_session.execute(
+            select(SummerLeagueGame).where(
+                SummerLeagueGame.nba_stats_game_id == "1522400001"  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    assert updated_game.home_score == 112
+    assert updated_game.away_score == 79
+    assert updated_game.id == game.id
+
+
+@pytest.mark.asyncio
+async def test_normalize_competition_games_teamstats_fallback_never_clobbers_existing_score(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """#633: the TeamStats fallback must not overwrite an already-persisted score.
+
+    Codex review on PR #652: the full-ingestion path treats an already-captured
+    per-game TeamStats file as permanent (``force=False`` skips re-fetching it),
+    so it can go stale relative to the game's actual current state -- e.g. a
+    scoreboard-ingest live read of ``scheduleleaguev2`` (or an earlier pass of
+    this same fallback) has already set a real, more current score. Re-running
+    the fallback from that stale on-disk snapshot must never regress it.
+    """
+    _write_fixture(tmp_path)
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
+    _rewrite_team_gamelog_empty(tmp_path)
+
+    competition = SummerLeagueCompetition(
+        year=2024,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2024 Las Vegas Summer League",
+    )
+    db_session.add(competition)
+    await db_session.flush()
+    assert competition.id is not None
+
+    orl = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id="1610612753",
+        raw_team_name="Orlando Magic",
+        team_slug="orlando-magic",
+    )
+    cle = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id="1610612739",
+        raw_team_name="Cleveland Cavaliers",
+        team_slug="cleveland-cavaliers",
+    )
+    db_session.add_all([orl, cle])
+    await db_session.flush()
+
+    # Scoreboard ingest already wrote a real, more current score (e.g. a
+    # since-finished game) before this normalize pass ever runs. The fixture's
+    # on-disk TeamStats box (106-79, written once and never re-fetched) is
+    # stale relative to this.
+    db_session.add(
+        SummerLeagueGame(
+            competition_id=competition.id,
+            nba_stats_game_id="1522400001",
+            status=SummerLeagueGameStatus.FINAL,
+            tip_datetime=datetime(2024, 7, 12, 20, 0),
+            home_nba_stats_team_id="1610612753",
+            away_nba_stats_team_id="1610612739",
+            home_score=118,
+            away_score=101,
+        )
+    )
+    await db_session.flush()
+
+    await normalize_competition_games(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
+
+    game = (
+        await db_session.execute(
+            select(SummerLeagueGame).where(
+                SummerLeagueGame.nba_stats_game_id == "1522400001"  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    assert game.home_score == 118
+    assert game.away_score == 101
 
 
 @pytest.mark.asyncio
