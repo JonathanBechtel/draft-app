@@ -140,17 +140,43 @@ def test_hero_line_from_logs_wrong_game_id_degrades_to_pretip_line() -> None:
 
 
 def test_scheduled_game_past_tip_displays_in_progress_at_snapshot_time() -> None:
-    """The board applies the same past-tip live fallback as the Desk state machine."""
+    """The board applies the same past-tip live fallback as the Desk state machine.
+
+    Promotion requires persisted live evidence (#633) -- a passed tip time
+    alone is not enough, so this fixture carries a real score.
+    """
     game = SummerLeagueGame(
         competition_id=1,
         nba_stats_game_id="late-status",
+        tip_datetime=datetime(2026, 7, 14, 1, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+        home_score=10,
+        away_score=8,
+    )
+
+    assert (
+        _effective_game_status(game, now=datetime(2026, 7, 14, 1, 18))
+        == SummerLeagueGameStatus.IN_PROGRESS
+    )
+
+
+def test_scheduled_game_past_tip_with_no_score_stays_scheduled() -> None:
+    """#633: a passed-tip game with no persisted score must not display as live.
+
+    Regression for the 2026-07-19 incident -- a game stuck ``SCHEDULED`` with
+    null scores and zero player-game-log rows was presented as
+    ``IN_PROGRESS`` purely because ``now`` had passed ``tip_datetime``.
+    """
+    game = SummerLeagueGame(
+        competition_id=1,
+        nba_stats_game_id="no-evidence-yet",
         tip_datetime=datetime(2026, 7, 14, 1, 0),
         status=SummerLeagueGameStatus.SCHEDULED,
     )
 
     assert (
         _effective_game_status(game, now=datetime(2026, 7, 14, 1, 18))
-        == SummerLeagueGameStatus.IN_PROGRESS
+        == SummerLeagueGameStatus.SCHEDULED
     )
 
 

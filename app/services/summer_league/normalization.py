@@ -316,14 +316,20 @@ async def normalize_competition_games(
         parse_team_gamelog(raw_root / f"{year}/{league_id}/leaguegamelog_team.json"),
         limited_game_ids,
     )
-    teams_by_source_id: dict[str, SummerLeagueTeamEntry] = {}
+    # Seed both maps from the competition's full canonical set (#633) -- not
+    # just this batch's season-gamelog rows -- so a game/team already created
+    # by scoreboard ingest (which runs ahead of normalization every tick, see
+    # ``scoreboard_ingest.upsert_scoreboard_games``) is still found below even
+    # on a run where the season-wide LeagueGameLog feed hasn't caught up to
+    # that particular game yet.
+    teams_by_source_id = await _teams_by_source_id(db, competition.id)
+    games_by_source_id = await _games_by_source_id(db, competition.id)
     for row in team_gamelog_rows:
         team = await _upsert_team_entry(db, competition.id, row)
         await db.flush()
         teams_by_source_id[row.nba_stats_team_id] = team
 
     game_rows = _group_game_rows(team_gamelog_rows)
-    games_by_source_id: dict[str, SummerLeagueGame] = {}
     for game_id, rows in game_rows.items():
         game = await _upsert_game(
             db,
@@ -357,6 +363,23 @@ async def normalize_competition_games(
         )
         team_log_keys.add((box_row.game_id, box_row.nba_stats_team_id))
         team_log_count += 1
+        # Live-score fallback (#633): the season LeagueGameLog can lag well
+        # behind the per-game TeamStats endpoints while a game is in
+        # progress, leaving a scheduled, passed-tip game with null scores
+        # despite real box data already sitting on disk. A game LeagueGameLog
+        # *did* cover this batch already got the authoritative season value
+        # from ``_upsert_game`` above and must not be touched here. Matched
+        # against the game's raw provider team ids (set by scoreboard ingest
+        # independently of local team-entry resolution) rather than
+        # ``box_team`` -- no ``MATCHUP`` string exists on a box row to
+        # otherwise tell home from away (contrast :func:`_home_row`).
+        if box_row.game_id not in game_rows:
+            if box_row.nba_stats_team_id == box_game.home_nba_stats_team_id:
+                box_game.home_score = box_row.pts
+                box_game.updated_at = _utc_now_naive()
+            elif box_row.nba_stats_team_id == box_game.away_nba_stats_team_id:
+                box_game.away_score = box_row.pts
+                box_game.updated_at = _utc_now_naive()
 
     for gamelog_row in team_gamelog_rows:
         key = (gamelog_row.game_id, gamelog_row.nba_stats_team_id)
