@@ -729,6 +729,18 @@ class SummerLeaguePlayByPlayEvent(SQLModel, table=True):  # type: ignore[call-ar
             "period",
             "event_num",
         ),
+        # Competition-leading index for the Competition Context rebuild's PBP
+        # coverage certification (#643): _load_pbp filters/groups by
+        # competition_id, but the index above is led by game_id, so at prod
+        # volume (44 competitions / ~40k rows, one competition alone holding
+        # ~80% of them) that query falls back to a Seq Scan over the whole
+        # table. This mirrors the competition-leading indexes already present
+        # on team/player game logs, participation, and shot events.
+        Index(
+            "ix_summer_league_pbp_events_competition_game",
+            "competition_id",
+            "game_id",
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)

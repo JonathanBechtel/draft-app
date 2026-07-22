@@ -1,0 +1,55 @@
+"""Add team scoring spread (points IQR) to Competition Context profiles.
+
+Revision ID: 9fae26346abb
+Revises: e6f7a8b9c0d1
+Create Date: 2026-07-20
+
+Ticket #639 (Competition Context Explorer hardening): the performance-landscape
+section published a team offensive-rating spread (``team_ortg_iqr``) but no
+distinct scoring-distribution companion, so the detail surface under-delivered
+on the frozen release outline's "team offensive-rating spread and scoring
+distribution" pair. ``team_points_iqr`` is the same interquartile-spread
+treatment applied to raw team points per team-game rather than offensive
+rating -- a high-pace/low-ORtg environment can still have a tight scoring
+spread, and vice versa, so this is additional signal, not a duplicate of the
+existing metric.
+
+This is an additive column on an existing table, so this migration uses a
+targeted ``op.add_column``/``op.drop_column`` rather than
+``SQLModel.metadata.create_all``/``drop_all`` per the repo migration
+convention for existing-table changes. No backfill is required: existing
+profile rows read the new column as ``NULL`` (an honest "not yet computed"
+state) until the next environment-profile rebuild populates it.
+"""
+
+from typing import Sequence, Union
+
+from alembic import op  # type: ignore[attr-defined]
+
+# revision identifiers, used by Alembic.
+revision: str = "9fae26346abb"
+down_revision: Union[str, None] = "e6f7a8b9c0d1"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Add the nullable ``team_points_iqr`` column.
+
+    ``ADD COLUMN IF NOT EXISTS``: the parent table is created by an earlier
+    ``SQLModel.metadata.create_all`` migration that reflects the live model
+    class, so a from-scratch bootstrap already has this column by the time
+    this migration runs (see `16a524075c8e` for the same guard rationale).
+    """
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "ADD COLUMN IF NOT EXISTS team_points_iqr FLOAT"
+    )
+
+
+def downgrade() -> None:
+    """Drop the ``team_points_iqr`` column."""
+    op.execute(
+        "ALTER TABLE summer_league_environment_profiles "
+        "DROP COLUMN IF EXISTS team_points_iqr"
+    )

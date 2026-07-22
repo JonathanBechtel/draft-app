@@ -89,7 +89,20 @@ class ScopeEligibility(str, Enum):
 
 # Definition version stamped onto every profile built under this registry.
 # Bump when any formula/denominator/rounding/coverage rule changes.
-REGISTRY_VERSION = "2026.07.1"
+REGISTRY_VERSION = "2026.07.3"
+
+# Aggregation/calculation-algorithm version stamped onto every profile,
+# distinct from REGISTRY_VERSION (metric definitions/formulas/coverage rules,
+# above) and distinct from a profile's own `version` (a per-scope monotonic
+# publication sequence number, bumped every rebuild regardless of whether
+# anything actually changed). Bump CALCULATION_VERSION when the aggregation
+# *pipeline logic* changes -- e.g. which raw inputs are pooled, how the input
+# watermark is assembled, possession/coverage wiring -- even when no metric
+# formula in this registry changed. A profile carrying an older
+# calculation_version than the current constant was built under different
+# aggregation logic and is a candidate for rebuild even if its registry_version
+# still matches.
+CALCULATION_VERSION = "2026.07.6"
 
 # A literal threshold value for tests that want to assert boundary behavior
 # at a known number (see is_profile_stale's stale_after_hours override).
@@ -143,11 +156,21 @@ def is_profile_stale(
     return (reference - calculated).total_seconds() > threshold_hours * 3600
 
 
-# Field-composition attributes with per-attribute known/unknown coverage.
+# Field-composition attributes with per-attribute known/unknown coverage, in
+# display order. ``draft_class``/``age_reference``/``position_source``/
+# ``appearance`` are disclosure dimensions distinct from their sibling base
+# attribute: ``age_reference``/``position_source`` disclose *which source*
+# resolved the value (known = the preferred event-time source; unknown = a
+# disclosed fallback was used), never whether the base attribute itself is
+# known.
 FIELD_COMPOSITION_ATTRIBUTES: tuple[str, ...] = (
     "draft",
+    "draft_class",
     "age",
+    "age_reference",
     "position",
+    "position_source",
+    "appearance",
     "origin",
 )
 
@@ -343,9 +366,14 @@ _ENVIRONMENT: tuple[MetricDefinition, ...] = (
         key="turnover_rate",
         label="Turnover Rate",
         section=MetricSection.ENVIRONMENT,
-        source_fields=("tov", "fga", "oreb", "fta"),
-        formula="sum(tov) / sum(possessions)",
-        denominator="estimated possessions; 0 -> None",
+        source_fields=("tov", "fga", "fta"),
+        # Frozen contract formula (§4): the plays-based TOV% estimate, not the
+        # opponent-adjusted Box.poss possession estimate used for pace/ORtg.
+        # Deliberately its own denominator so it never moves when the
+        # possession formula is recalibrated.
+        formula="sum(tov) / (sum(fga) + 0.44 * sum(fta) + sum(tov))",
+        denominator="field-goal attempts + 0.44 * free-throw attempts + "
+        "turnovers; 0 -> None",
         unit=MetricUnit.RATIO,
         scale=100.0,
         rounding=1,
@@ -353,7 +381,7 @@ _ENVIRONMENT: tuple[MetricDefinition, ...] = (
         sortable=True,
         filterable=True,
         scope_eligibility=_R,
-        interpretation="Share of possessions ending in a turnover.",
+        interpretation="Share of team plays (FGA + 0.44*FTA + TOV) ending in a turnover.",
     ),
     MetricDefinition(
         key="assisted_fg_rate",
@@ -476,6 +504,23 @@ _LANDSCAPE: tuple[MetricDefinition, ...] = (
         "how varied the offenses were.",
     ),
     MetricDefinition(
+        key="team_points_iqr",
+        label="Team Scoring Spread (IQR)",
+        section=MetricSection.LANDSCAPE,
+        source_fields=("pts",),
+        formula="Q3(team_points_per_game) - Q1(team_points_per_game)",
+        denominator="box-complete team-game point totals; <4 games -> None",
+        unit=MetricUnit.POINTS,
+        scale=1.0,
+        rounding=1,
+        coverage_source=CoverageSource.BOX,
+        sortable=True,
+        filterable=True,
+        scope_eligibility=_R,
+        interpretation="Interquartile spread of team scoring (points per team "
+        "game); the scoring-distribution companion to the ORtg spread above.",
+    ),
+    MetricDefinition(
         key="top_decile_minutes_share",
         label="Top-Decile Minutes Share",
         section=MetricSection.LANDSCAPE,
@@ -579,6 +624,27 @@ _COMPOSITION: tuple[MetricDefinition, ...] = (
         filterable=True,
         scope_eligibility=_R,
         interpretation="Share of the field undrafted as of event time.",
+        stored=False,
+    ),
+    MetricDefinition(
+        key="not_yet_drafted_share",
+        label="Not-Yet-Drafted Share",
+        section=MetricSection.COMPOSITION,
+        source_fields=("not_yet_drafted_count", "appeared_players"),
+        formula="not_yet_drafted_count / appeared_players",
+        denominator="distinct resolved appeared players; 0 -> None",
+        unit=MetricUnit.RATIO,
+        scale=100.0,
+        rounding=1,
+        coverage_source=CoverageSource.IDENTITY,
+        sortable=True,
+        filterable=True,
+        scope_eligibility=_R,
+        interpretation=(
+            "Share of the field whose draft_year is after event time -- "
+            "distinct from undrafted (contract §5: 'not yet drafted', never "
+            "retrospectively undrafted)."
+        ),
         stored=False,
     ),
     MetricDefinition(

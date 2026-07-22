@@ -134,7 +134,7 @@ async def main() -> None:
         "Rebuilt Competition Context profiles: "
         f"{result.built_scopes} built, {result.skipped_scopes} skipped, "
         f"{result.failed_scopes} failed of {result.requested_scopes} requested "
-        f"(registry {result.registry_version}); "
+        f"(registry {result.registry_version}, calc {result.calculation_version}); "
         f"{result.metric_coverage_complete} complete metric coverages; "
         f"watermark={result.input_watermark}; "
         f"{result.duration_seconds:.2f}s."
