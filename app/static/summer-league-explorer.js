@@ -119,6 +119,8 @@
         syncForm(url);
         // Re-apply column-group visibility to the freshly rendered cells.
         applyColGroups();
+        // Re-apply the Competition Explorer column-density checkbox state.
+        applyDensity();
         // Keep the viewport anchored to the results, not jumped to top.
         var fresh = document.getElementById(RESULTS_ID);
         if (fresh) fresh.scrollIntoView({ block: "nearest" });
@@ -264,6 +266,24 @@
   // server-rendered active state should the server ever pre-collapse groups).
   applyColGroups();
   syncModeButtons();
+
+  // ── Competition Explorer: column-density progressive disclosure (#644) ─────
+  // The "Show all metrics" checkbox and its CSS sibling-selector rule do the
+  // actual show/hide with zero JS (works with JS off too — see
+  // summer-league-competitions.css). This block only re-applies the user's
+  // choice after an AJAX result swap replaces the checkbox with a fresh,
+  // unchecked one, so toggling "all metrics" survives a sort/filter/page
+  // change within the same session (mirrors the column-group pattern above).
+  var showAllMetrics = false;
+  function applyDensity() {
+    var checkbox = document.getElementById("comp-density-all");
+    if (checkbox) checkbox.checked = showAllMetrics;
+  }
+  main.addEventListener("change", function (e) {
+    if (!e.target || e.target.id !== "comp-density-all") return;
+    showAllMetrics = e.target.checked;
+  });
+  applyDensity();
 
   // ── Drill-down (expand career row to per-competition breakdown) ────────────
   // Build the drilldown URL from the current window URL (which reflects the

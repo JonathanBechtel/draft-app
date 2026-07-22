@@ -61,10 +61,24 @@
     {% endif %}
   </p>
 
+  {# ── Column-density progressive disclosure (#644) ────────────────────────
+     Pure HTML/CSS checkbox: the "Show all metrics" control and the table are
+     siblings, so `~` sibling-selector CSS reveals `[data-col-density="full"]`
+     cells purely from `:checked` state — no JS required for the default
+     curated view or for expanding to the full ~30-column matrix. CSV and the
+     detail panel below always carry every metric regardless of this toggle
+     (contract §6: nothing is removed from the export contract). #}
+  <input type="checkbox" id="comp-density-all" class="slg-comp-density-input">
+  <label for="comp-density-all" class="slg-comp-density-label">
+    <span class="slg-comp-density-label__off">Show all metrics</span>
+    <span class="slg-comp-density-label__on">Showing all metrics — hide extras</span>
+  </label>
+
   {# ── Row table ──────────────────────────────────────────────────────────── #}
   <div class="stats-scoreboard slg-board">
     <div class="scanlines"></div>
-    <div class="slg-tablewrap">
+    <p class="slg-comp-scrollhint" aria-hidden="true">&larr; Scroll for more columns &rarr;</p>
+    <div class="slg-tablewrap slg-comp-tablewrap" tabindex="0" role="region" aria-label="Competition results table, scrollable horizontally">
       <table class="sl-stats-table slg-explorer-table slg-comp-table">
         <thead>
           <tr>
@@ -72,7 +86,7 @@
             {% for col in table_cols %}
             {%- set is_active = q.sort == col.key -%}
             {%- set next_dir = 'asc' if (is_active and q.direction == 'desc') else 'desc' -%}
-            <th scope="col" class="{{ 'slg-sort-active' if is_active else '' }}" data-metric-group="{{ col.group }}"
+            <th scope="col" class="{{ 'slg-sort-active' if is_active else '' }}" data-metric-group="{{ col.group }}" data-col-density="{{ 'core' if is_active else col.density }}"
                 {% if is_active %}aria-sort="{{ 'descending' if q.direction == 'desc' else 'ascending' }}"{% endif %}>
               {% if col.sortable %}
               <a href="{{ comp_qs(result.query, sort=col.key, direction=next_dir) }}">
@@ -94,7 +108,7 @@
               <a href="{{ detail_href }}" class="slg-comp-open" aria-label="Open profile for {{ row.label }}"{% if is_selected %} aria-current="true"{% endif %}>{{ row.label }}</a>
             </th>
             {% for col in table_cols %}
-            <td class="{{ 'slg-strong' if col.key == q.sort else '' }}" data-metric-group="{{ col.group }}">
+            <td class="{{ 'slg-strong' if col.key == q.sort else '' }}" data-metric-group="{{ col.group }}" data-col-density="{{ 'core' if col.key == q.sort else col.density }}">
               {%- if col.key == 'venue' -%}{{ row.values.get('venue') or '—' }}
               {%- else -%}{{ comp_cell(row.values.get(col.key), col.fmt) }}{%- endif -%}
             </td>

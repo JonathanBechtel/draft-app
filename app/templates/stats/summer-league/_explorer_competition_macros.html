@@ -50,19 +50,43 @@
 
 {# Render one metric section (How it played / Performance landscape / Field
    composition) as a definition grid. Every metric exposes its value, coverage,
-   and an expandable definition (formula, denominator, unit, interpretation). #}
+   and an expandable definition (formula, denominator, unit, interpretation).
+
+   Coverage-reason consolidation (#644): metrics sharing one coverage source
+   (e.g. box) carry an identical read-time reason string, so a section with
+   several partial/unavailable metrics used to repeat the same sentence once
+   per metric. Distinct reasons are hoisted into one "Coverage notes" list
+   rendered once; each affected metric keeps its own coverage badge plus an
+   `aria-describedby` link to its note (still discoverable per-metric for
+   screen readers) and the same sentence stays in that metric's own
+   Definition disclosure as a "Coverage note" row — metric-level provenance
+   is retained, only the always-visible repetition is removed. #}
 {%- macro metric_section(section) -%}
+{%- set ns = namespace(notes={}) -%}
+{%- for m in section.metrics -%}
+  {%- if m.coverage != 'complete' and m.reason and m.reason not in ns.notes -%}
+    {%- set _ = ns.notes.update({m.reason: 'cov-note-' ~ section.key ~ '-' ~ (ns.notes | length)}) -%}
+  {%- endif -%}
+{%- endfor -%}
+{%- if ns.notes %}
+<div class="slg-comp-covnotes" role="note">
+  <h4 class="slg-comp-covnotes__title">Coverage notes</h4>
+  <ul class="slg-comp-covnotes__list">
+    {%- for reason, note_id in ns.notes.items() %}
+    <li id="{{ note_id }}">{{ reason }}</li>
+    {%- endfor %}
+  </ul>
+</div>
+{% endif -%}
 <div class="slg-comp-metrics" role="list">
   {% for m in section.metrics %}
-  <div class="slg-comp-metric slg-comp-metric--{{ m.coverage }}" role="listitem">
+  {%- set note_id = ns.notes.get(m.reason) if (m.coverage != 'complete' and m.reason) else none -%}
+  <div class="slg-comp-metric slg-comp-metric--{{ m.coverage }}" role="listitem"{% if note_id %} aria-describedby="{{ note_id }}"{% endif %}>
     <div class="slg-comp-metric__head">
       <span class="slg-comp-metric__label">{{ m.label }}</span>
       <span class="slg-comp-metric__value">{{ m.formatted_value }}</span>
     </div>
     <div class="slg-comp-metric__cov">{{ coverage_badge(m.coverage, m.covered, m.eligible) }}</div>
-    {% if m.coverage != 'complete' and m.reason %}
-    <p class="slg-comp-metric__reason">{{ m.reason }}</p>
-    {% endif %}
     <details class="slg-comp-metric__def">
       <summary>Definition</summary>
       <dl>
@@ -71,6 +95,7 @@
         <dt>Unit</dt><dd>{{ m.unit }}</dd>
         <dt>Reading</dt><dd>{{ m.interpretation }}</dd>
         {% if m.confidence_note %}<dt>Caveat</dt><dd>{{ m.confidence_note }}</dd>{% endif %}
+        {% if m.coverage != 'complete' and m.reason %}<dt>Coverage note</dt><dd>{{ m.reason }}</dd>{% endif %}
       </dl>
     </details>
   </div>

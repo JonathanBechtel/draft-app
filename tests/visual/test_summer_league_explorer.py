@@ -61,6 +61,78 @@ class TestCompetitionExplorerStructure:
         expect(page.locator(".slg-comp-trend__table")).to_be_visible()
         context.close()
 
+    def test_js_off_default_columns_are_curated(self, browser, base_url) -> None:
+        """Column density curation is CSS-only: the "full" columns stay hidden
+        by default even with JavaScript disabled (#644)."""
+        context = browser.new_context(java_script_enabled=False)
+        page = context.new_page()
+        page.goto(f"{base_url.rstrip('/')}{EXPLORER}?subject=competitions")
+        # A core column (Year) is visible; a full-only column (e.g. a landscape
+        # spread metric) is present in the DOM but not visible by default.
+        expect(page.locator('[data-col-density="core"]').first).to_be_visible()
+        expect(page.locator('[data-col-density="full"]').first).to_be_hidden()
+        context.close()
+
+    def test_sorted_full_metric_column_stays_visible(self, browser, base_url) -> None:
+        """A shared/JS-off URL sorted by a full-density metric (e.g.
+        team_ortg_iqr) must not hide its own sort column — otherwise the table
+        looks sorted by an invisible column with no visible active-sort
+        indicator (caught in review on #644)."""
+        context = browser.new_context(java_script_enabled=False)
+        page = context.new_page()
+        page.goto(
+            f"{base_url.rstrip('/')}{EXPLORER}"
+            "?subject=competitions&sort=team_ortg_iqr&direction=desc"
+        )
+        sorted_header = page.locator('th[data-col-density="core"].slg-sort-active')
+        expect(sorted_header).to_be_visible()
+        expect(sorted_header).to_contain_text("▾")
+        context.close()
+
+    def test_density_toggle_curates_then_expands_columns(self, page: Page, goto) -> None:
+        """Default view hides full-only metric columns; the "Show all metrics"
+        control reveals them without a page reload, and hides them again on
+        re-toggle (#644). The checkbox is accessibly hidden (clip technique,
+        like the existing scope-toggle radios) — a real user clicks the
+        visible label, which natively toggles the associated checkbox."""
+        goto(f"{EXPLORER}?subject=competitions")
+        full_cells = page.locator('[data-col-density="full"]')
+        expect(full_cells.first).to_be_hidden()
+        label = page.locator('label[for="comp-density-all"]')
+        label.click()
+        expect(full_cells.first).to_be_visible()
+        label.click()
+        expect(full_cells.first).to_be_hidden()
+
+    def test_density_toggle_survives_sort_swap(self, page: Page, goto) -> None:
+        """Expanding to all metrics stays expanded across an AJAX sort swap."""
+        goto(f"{EXPLORER}?subject=competitions")
+        page.locator('label[for="comp-density-all"]').click()
+        expect(page.locator('[data-col-density="full"]').first).to_be_visible()
+        page.get_by_role("link", name="Final GP", exact=False).first.click()
+        page.wait_for_load_state("networkidle")
+        expect(page.locator("#comp-density-all")).to_be_checked()
+        expect(page.locator('[data-col-density="full"]').first).to_be_visible()
+
+    def test_density_control_and_scroll_region_are_accessible(self, page: Page, goto) -> None:
+        """Native accessible primitives back the density toggle and the
+        horizontal-overflow affordance: a real checkbox+label pair (no custom
+        ARIA widget needed) and a labeled, keyboard-focusable scroll region."""
+        goto(f"{EXPLORER}?subject=competitions")
+        checkbox = page.locator("#comp-density-all")
+        expect(checkbox).to_have_attribute("type", "checkbox")
+        label = page.locator('label[for="comp-density-all"]')
+        expect(label).to_be_visible()
+        region = page.locator(".slg-comp-tablewrap")
+        expect(region).to_have_attribute("role", "region")
+        expect(region).to_have_attribute("aria-label", "Competition results table, scrollable horizontally")
+        expect(region).to_have_attribute("tabindex", "0")
+
+    def test_scroll_hint_is_visible_text_not_color_only(self, page: Page, goto) -> None:
+        """The overflow affordance is legible text, not a color-only cue."""
+        goto(f"{EXPLORER}?subject=competitions")
+        expect(page.locator(".slg-comp-scrollhint")).to_contain_text("Scroll for more columns")
+
 
 class TestCompetitionExplorerScreenshots:
     """Deterministic captures for visual review under tests/visual/screenshots/."""
@@ -104,3 +176,19 @@ class TestCompetitionExplorerScreenshots:
         page.set_viewport_size(MOBILE)
         goto(f"{EXPLORER}?subject=competitions&detail_year=2024")
         screenshot.capture_full_page("sl_competitions_season_detail_mobile")
+
+    def test_season_list_all_metrics_expanded_desktop(self, page: Page, goto, screenshot) -> None:
+        """#644: curated default vs. full metric matrix, side by side with the
+        default capture above."""
+        goto(f"{EXPLORER}?subject=competitions")
+        page.locator('label[for="comp-density-all"]').click()
+        # Clicking scrolled the label into view; reset to the top so the
+        # full-page capture doesn't stitch the sticky nav mid-scroll.
+        page.evaluate("window.scrollTo(0, 0)")
+        screenshot.capture_full_page("sl_competitions_season_list_all_metrics")
+
+    def test_season_list_mobile_curated_default(self, page: Page, goto, screenshot) -> None:
+        """#644: mobile default view — curated columns, no JS interaction."""
+        page.set_viewport_size(MOBILE)
+        goto(f"{EXPLORER}?subject=competitions&profile_scope=competition")
+        screenshot.capture_full_page("sl_competitions_competition_list_mobile")
