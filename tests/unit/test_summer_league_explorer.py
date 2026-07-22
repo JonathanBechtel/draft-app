@@ -620,6 +620,162 @@ def test_parse_metric_filters_uses_registry_keys_for_competitions() -> None:
     assert filters_player_key == []
 
 
+# --------------------------------------------------------------------------- #
+# Invalid-parameter validation state (ticket #636)
+# --------------------------------------------------------------------------- #
+
+
+def test_parse_metric_filters_records_errors_for_attempted_bad_rows() -> None:
+    """Unknown key, bad operator, non-numeric value, and incomplete predicates
+    each leave a visible note; a fully blank row (never attempted) does not."""
+    errors: list[str] = []
+    filters = parse_metric_filters(
+        {
+            "fcol0": "not_a_metric",
+            "fop0": "gte",
+            "fval0": "10",
+            "fcol1": "pace_per_48",
+            "fop1": "bogus_op",
+            "fval1": "10",
+            "fcol2": "pace_per_48",
+            "fop2": "gte",
+            "fval2": "abc",
+        },
+        _COMPETITION_FILTERABLE_KEYS,
+        errors=errors,
+    )
+    assert filters == []
+    assert len(errors) == 3
+
+    errors.clear()
+    filters = parse_metric_filters(
+        {"fcol0": "pace_per_48"},  # fop0/fval0 missing: incomplete predicate
+        _COMPETITION_FILTERABLE_KEYS,
+        errors=errors,
+    )
+    assert filters == []
+    assert len(errors) == 1
+
+    errors.clear()
+    filters = parse_metric_filters({}, _COMPETITION_FILTERABLE_KEYS, errors=errors)
+    assert filters == []
+    assert errors == []  # untouched slots are not errors
+
+
+def test_parse_metric_filters_valid_and_invalid_rows_compose() -> None:
+    """One invalid row never drops a sibling valid row (ticket #636)."""
+    errors: list[str] = []
+    filters = parse_metric_filters(
+        {
+            "fcol0": "pace_per_48",
+            "fop0": "gte",
+            "fval0": "90",
+            "fcol1": "bogus_key",
+            "fop1": "gte",
+            "fval1": "1",
+        },
+        _COMPETITION_FILTERABLE_KEYS,
+        errors=errors,
+    )
+    assert filters == [MetricFilter(col="pace_per_48", op=">=", value=90.0)]
+    assert len(errors) == 1
+
+
+def test_parse_query_competitions_malformed_year_min_visible_year_max_preserved() -> None:
+    """A malformed year_min never erases a valid year_max (ticket #636)."""
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "year_min": "not-a-year",
+            "year_max": "2025",
+        }
+    )
+    assert q.year_min is None
+    assert q.year_max == 2025
+    assert any("not-a-year" in msg for msg in q.validation_errors)
+
+
+def test_parse_query_competitions_implausible_year_min_is_clamped() -> None:
+    """An absurd year_min is clamped to the plausible floor, never dropped.
+
+    _build_trend materializes one point per integer year in [year_min,
+    year_max], so an unbounded value like -100000000 would otherwise make it
+    allocate/iterate millions of TrendPoints before rendering (codex finding
+    on PR #656). Dropping the value to None would remove the lower bound
+    entirely and silently broaden the query — the exact anti-pattern #636
+    forbids — so it must be clamped, keeping the filter restrictive.
+    """
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "year_min": "-100000000",
+            "year_max": "2026",
+        }
+    )
+    assert q.year_min == 2000
+    assert q.year_max == 2026
+    assert any("-100000000" in msg for msg in q.validation_errors)
+
+
+def test_parse_query_competitions_far_future_year_max_is_clamped() -> None:
+    """A year_max far beyond any plausible data is clamped, not dropped.
+
+    Dropping it to None would unbound the upper end of the range and
+    silently broaden results (#636's forbidden anti-pattern); clamping keeps
+    it restrictive, e.g. a deliberately-empty ``year_min=2099`` query must
+    stay empty rather than falling through to every competition.
+    """
+    from datetime import date
+
+    q = parse_query({"subject": "competitions", "year_max": "9999999"})
+    assert q.year_max == date.today().year + 1
+    assert any("9999999" in msg for msg in q.validation_errors)
+
+
+def test_parse_query_competitions_malformed_min_gp_recorded() -> None:
+    q = parse_query({"subject": "competitions", "min_gp": "abc"})
+    assert q.min_games == 0  # degrades to the competitions default, not silently
+    assert any("abc" in msg for msg in q.validation_errors)
+
+
+def test_parse_query_competitions_malformed_competition_id_recorded() -> None:
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": "xyz",
+        }
+    )
+    assert q.competition_id is None
+    assert any("xyz" in msg for msg in q.validation_errors)
+
+
+def test_parse_query_competitions_unknown_trend_metric_recorded() -> None:
+    q = parse_query({"subject": "competitions", "trend_metric": "not_a_metric"})
+    assert q.trend_metric is None
+    assert any("not_a_metric" in msg for msg in q.validation_errors)
+
+
+def test_parse_query_competitions_incomplete_predicate_recorded() -> None:
+    """fcol0 set without fop0/fval0 is dropped with a visible note, not silently."""
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "fcol0": "pace_per_48",
+        }
+    )
+    assert q.metric_filters == []
+    assert q.validation_errors  # not silent
+
+
+def test_parse_query_players_subject_does_not_populate_metric_filter_errors() -> None:
+    """Non-competitions subjects keep the pre-existing silent-degrade behavior
+    for fcol/fop/fval (this ticket scopes validation surfacing to Competitions)."""
+    q = parse_query({"subject": "players", "fcol0": "pts"})
+    assert q.metric_filters == []
+    assert q.validation_errors == []
+
+
 def test_competition_columns_season_scope_has_no_venue_column() -> None:
     """A season profile pools every venue, so venue is not a per-row column."""
     cols = {c.key for c in competition_columns("season_all_competitions")}
@@ -703,6 +859,63 @@ def test_passes_metric_filter_rejects_null_and_partial_values() -> None:
         )
         is False
     )
+
+
+def test_team_count_is_filterable_via_generic_fcol_contract() -> None:
+    """Team count (#640) is a registered registry metric reachable through the
+    existing fcol/fop/fval contract -- not a one-off team_count= param."""
+    assert "distinct_teams" in _COMPETITION_FILTERABLE_KEYS
+    filters = parse_metric_filters(
+        {"fcol0": "distinct_teams", "fop0": "gte", "fval0": "8"},
+        _COMPETITION_FILTERABLE_KEYS,
+    )
+    assert filters == [MetricFilter(col="distinct_teams", op=">=", value=8.0)]
+
+
+def test_team_count_column_is_filterable_and_sortable_in_competition_columns() -> None:
+    cols = {c.key: c for c in competition_columns("competition")}
+    assert cols["distinct_teams"].filterable is True
+    assert cols["distinct_teams"].sortable is True
+    assert cols["distinct_teams"].fmt == "int"
+
+
+def test_passes_metric_filter_team_count_rejects_partial_box_coverage() -> None:
+    """A team-count threshold never fires on a box-partial profile, even though
+    distinct_teams itself is a non-nullable column (never widens results)."""
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    defs = metrics_for_scope("season_all_competitions")
+    definition = get_metric("distinct_teams")
+    f = MetricFilter(col="distinct_teams", op=">=", value=1.0)
+
+    partial_view = _build_profile_view(
+        _profile(final_games=20, box_complete_games=5, distinct_teams=8), defs
+    )
+    assert _passes_metric_filter(partial_view, definition, f) is False
+
+    complete_view = _build_profile_view(
+        _profile(final_games=20, box_complete_games=20, distinct_teams=8), defs
+    )
+    assert _passes_metric_filter(complete_view, definition, f) is True
+    assert (
+        _passes_metric_filter(
+            complete_view, definition, MetricFilter(col="distinct_teams", op=">=", value=9.0)
+        )
+        is False
+    )
+
+
+def test_view_to_row_carries_team_count_unscaled() -> None:
+    """Team count is a plain count (scale=1.0), unlike ratio metrics."""
+    from app.services.summer_league_environment_registry import metrics_for_scope
+
+    defs = metrics_for_scope("season_all_competitions")
+    metric_by_key = {d.key: d for d in defs}
+    view = _build_profile_view(
+        _profile(final_games=20, box_complete_games=20, distinct_teams=10), defs
+    )
+    row = _view_to_row(view, metric_by_key)
+    assert row.values["distinct_teams"] == 10.0
 
 
 def test_sort_competition_views_nulls_last_both_directions() -> None:

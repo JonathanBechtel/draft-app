@@ -170,6 +170,164 @@ async def test_invalid_metric_filter_degrades_safely(
     assert "2024 Summer League" in resp.text  # unfiltered result still shows
 
 
+async def test_invalid_metric_filter_shows_visible_validation_state(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A dropped predicate is never silent — the page names what was ignored
+    (ticket #636). Both a bogus key and an incomplete predicate surface."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&fcol0=not_a_metric&fop0=gte&fval0=abc"
+    )
+    assert resp.status_code == 200
+    assert "could not be applied and were ignored" in resp.text
+    assert "not_a_metric" in resp.text
+
+    resp2 = await app_client.get(
+        f"{EXPLORER}?subject=competitions&fcol0=pace_per_48"  # fop0/fval0 missing
+    )
+    assert resp2.status_code == 200
+    assert "could not be applied and were ignored" in resp2.text
+
+
+async def test_malformed_year_range_recorded_year_max_still_applies(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A malformed year_min never erases a valid, sibling year_max constraint."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=season&year_min=nope&year_max=2024"
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    assert "could not be applied and were ignored" in html
+    assert "2024 Summer League" in html
+    assert "2025 Summer League" not in html  # year_max=2024 still narrows the list
+
+
+# --------------------------------------------------------------------------- #
+# Team count filter (ticket #640) — reuses the existing fcol/fop/fval
+# threshold contract; no parallel team_count= param.
+# --------------------------------------------------------------------------- #
+
+
+async def test_team_count_filter_matches_covered_profiles(
+    db_session: AsyncSession,
+) -> None:
+    """A team-count threshold keeps box-complete profiles at/over the value.
+
+    Every seeded profile with a final game gets distinct_teams=8 (see
+    environment_fixtures._profile); season2023 also has raw distinct_teams=8
+    but is box-partial, so a >=8 threshold must exclude it on coverage alone,
+    never on the value itself.
+    """
+    await _seed(db_session)
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "season",
+            "fcol0": "distinct_teams",
+            "fop0": "gte",
+            "fval0": "8",
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    labels = {r.label for r in result.rows}
+    assert "2024 Summer League (all competitions)" in labels
+    assert "2025 Summer League (all competitions)" in labels
+    # Box-partial: distinct_teams is stored (8), but coverage is not complete.
+    assert "2023 Summer League (all competitions)" not in labels
+
+
+async def test_team_count_filter_never_broadens_above_actual_max(
+    db_session: AsyncSession,
+) -> None:
+    """A threshold above every profile's actual team count excludes everything
+    — the filter never broadens past what the data supports."""
+    await _seed(db_session)
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "fcol0": "distinct_teams",
+            "fop0": "gte",
+            "fval0": "9",
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    assert result.total == 0
+
+
+async def test_invalid_team_count_value_recorded_and_never_broadens(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A non-numeric team-count threshold is visibly ignored, never silently
+    dropped into an unfiltered broadened list (reuses the #636 pattern)."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&fcol0=distinct_teams&fop0=gte&fval0=notanumber"
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    assert "could not be applied and were ignored" in html
+    assert "notanumber" in html
+    assert "2024 Summer League" in html  # unfiltered list still renders
+
+
+async def test_team_count_filter_option_present_in_controls(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Team Count is offered in the metric-filter dropdown (JS-off form works
+    off real <option> elements, not JS-injected choices)."""
+    await _seed(db_session)
+    resp = await app_client.get(f"{EXPLORER}?subject=competitions")
+    assert resp.status_code == 200
+    assert '<option value="distinct_teams">Team Count</option>' in resp.text
+
+
+async def test_team_count_column_renders_as_clean_integer(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The results-table Team Count cell renders '8', not '8.0'."""
+    await _seed(db_session)
+    resp = await app_client.get(f"{EXPLORER}?subject=competitions&profile_scope=season")
+    assert resp.status_code == 200
+    html = resp.text
+    assert ">Team Count<" in html
+    assert "8.0<" not in html
+
+
+async def test_team_count_csv_includes_column(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """CSV export exposes the same Team Count values as the HTML table."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=season&format=csv"
+    )
+    assert resp.status_code == 200
+    reader = list(csv.reader(io.StringIO(resp.text)))
+    header = reader[0]
+    assert "Team Count" in header
+    idx = header.index("Team Count")
+    row = next(r for r in reader if r and r[0].startswith("2024 Summer League"))
+    assert row[idx] == "8.0"
+    assert any(r and r[0] == "distinct_teams" for r in reader)  # in the definitions trailer
+
+
+async def test_team_count_selectable_as_trend_metric(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Team count can also chart as a trend series, consistent with every
+    other registry metric (contract §6: no parallel per-metric machinery)."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=season&trend_metric=distinct_teams"
+    )
+    assert resp.status_code == 200
+    assert "Team Count" in resp.text
+
+
 # --------------------------------------------------------------------------- #
 # Detail — identity, five sections, membership, definitions, coverage
 # --------------------------------------------------------------------------- #
@@ -232,6 +390,62 @@ async def test_competition_id_authoritative_over_stale_year(
     result = await run_explorer_query(db_session, q)
     assert result.competition_detail is not None
     assert result.competition_detail.year == 2025
+
+
+async def test_competition_id_canonicalizes_stale_venue_after_resolution(
+    db_session: AsyncSession,
+) -> None:
+    """An inconsistent venue is cleared/corrected only after competition_id
+    resolves — never left in place to narrow the list away from (or blend the
+    trend series away from) the competition the link names (ticket #636)."""
+    refs = await _seed(db_session)
+    cid = refs.competition_ids["cc2024"]  # california_classic, not las_vegas
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": str(cid),
+            "venue": "las_vegas",
+        }
+    )
+    assert q.venue == "las_vegas"  # parse_query alone can't resolve identity
+    result = await run_explorer_query(db_session, q)
+    assert result.competition_detail is not None
+    assert result.competition_detail.competition_id == cid
+    assert result.competition_detail.venue_slug == "california_classic"
+    # Canonicalized in place: the list/trend downstream now agree with detail.
+    assert q.venue == "california_classic"
+    assert q.validation_errors
+    labels = {r.label for r in result.rows}
+    assert "2024 California Classic" in labels
+    # The stale las_vegas constraint never silently narrowed the corrected
+    # list away from the authoritative competition, nor broadened it to
+    # include every las_vegas edition unrelated to this competition_id.
+    assert "2024 Las Vegas" not in labels
+
+
+async def test_competition_id_canonicalizes_stale_year_range(
+    db_session: AsyncSession,
+) -> None:
+    """An inconsistent year range is cleared, never broadened, once
+    competition_id resolves to a year outside it (ticket #636)."""
+    refs = await _seed(db_session)
+    cid = refs.competition_ids["cc2024"]  # year 2024
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": str(cid),
+            "year_min": "2025",
+            "year_max": "2025",
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    assert result.competition_detail is not None
+    assert result.competition_detail.year == 2024
+    assert q.year_min is None
+    assert q.year_max is None
+    assert q.validation_errors
 
 
 async def test_every_metric_exposes_definition(
@@ -521,6 +735,82 @@ async def test_trend_and_table_agree(
     assert resp.text.count("104.9") >= 2
 
 
+async def test_trend_widened_range_shows_explicit_missing_year_gap(
+    db_session: AsyncSession,
+) -> None:
+    """A calendar year with no profile at all still gets an explicit point (#642).
+
+    The deterministic seed has season profiles for 2023-2025 only. Widening
+    the trend's year range to 2021-2025 must not omit 2021/2022 — each must
+    appear as its own gap point (``has_profile=False``) rather than letting
+    the chart connect 2023 straight through to whatever came before it.
+    """
+    await _seed(db_session)
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "season",
+            "trend_metric": "pace_per_48",
+            "year_min": "2021",
+            "year_max": "2025",
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    trend = result.competition_trend
+    assert trend is not None
+    years = [p.year for p in trend.points]
+    assert years == [2021, 2022, 2023, 2024, 2025]
+    by_year = {p.year: p for p in trend.points}
+    assert by_year[2021].value is None
+    assert by_year[2021].has_profile is False
+    assert by_year[2022].value is None
+    assert by_year[2022].has_profile is False
+    # 2023 is a genuinely different case: a profile exists, but the metric
+    # itself is box-partial -> null. Distinguish it from the missing years.
+    assert by_year[2023].has_profile is True
+    assert by_year[2023].value is None
+
+
+async def test_venue_trend_missing_year_is_a_gap_not_a_bridge(
+    db_session: AsyncSession,
+) -> None:
+    """A venue series with a gap year renders that year explicitly, isolated per venue."""
+    await _seed(db_session)
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "venue": "las_vegas",
+            "trend_metric": "pace_per_48",
+            "year_min": "2020",
+            "year_max": "2025",
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    trend = result.competition_trend
+    assert trend is not None
+    assert trend.venue_slug == "las_vegas"
+    by_year = {p.year: p for p in trend.points}
+    for missing_year in (2020, 2021, 2022):
+        assert by_year[missing_year].has_profile is False
+        assert by_year[missing_year].value is None
+
+
+async def test_trend_chart_displays_the_metric_unit(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The trend heading, accessible SVG description, and table all show the unit."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=season&trend_metric=three_fg_pct"
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    # Ratio metrics display "%" as their unit everywhere the unit is shown.
+    assert "(%)" in html  # figcaption + table caption/header
+    assert 'in %' in html or "in % by year" in html  # accessible svg description
+
+
 # --------------------------------------------------------------------------- #
 # Partial / CSV parity
 # --------------------------------------------------------------------------- #
@@ -586,7 +876,9 @@ async def test_empty_scope_no_rows_no_error(
 async def test_unknown_competition_id_no_detail(
     db_session: AsyncSession,
 ) -> None:
-    """An unknown competition_id resolves no detail rather than erroring."""
+    """An unknown competition_id resolves no detail rather than erroring, and
+    never falls through to the unrelated, unscoped competition table — the
+    exact silent-broadening bug this ticket fixes (contract §6; #636)."""
     await _seed(db_session)
     q = parse_query(
         {
@@ -597,6 +889,75 @@ async def test_unknown_competition_id_no_detail(
     )
     result = await run_explorer_query(db_session, q)
     assert result.competition_detail is None
+    assert result.competition_not_found is True
+    # Proves the old broadening behavior is impossible: no unrelated rows,
+    # no unfiltered "every competition" fallback.
+    assert result.rows == []
+    assert result.total == 0
+    assert result.competition_trend is None
+
+
+async def test_unknown_competition_id_html_shows_error_not_full_table(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The rendered page explains the problem and never shows the full,
+    unrelated competition table for a stale/mistyped competition_id link."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=competition&competition_id=999999"
+    )
+    assert resp.status_code == 200
+    html = resp.text
+    assert "could not be found" in html.lower()
+    # None of the seed's other competitions leak into a "broadened" table.
+    # ("2025 Las Vegas" is not checked here — it also appears verbatim in the
+    # page's static "e.g. 2025 Las Vegas" row-grain hint copy, so that
+    # substring isn't a reliable signal of a leaked table row.)
+    assert "0 results" in html
+    assert "2024 Las Vegas" not in html
+    assert "2024 California Classic" not in html
+
+
+async def test_unknown_competition_id_partial_agrees_with_full_page(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The ``?partial=1`` fragment shows the same not-found state as the full
+    page — full, partial, and (checked separately) CSV never disagree."""
+    await _seed(db_session)
+    full = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=competition&competition_id=999999"
+    )
+    partial = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=competition&competition_id=999999&partial=1"
+    )
+    assert full.status_code == 200
+    assert partial.status_code == 200
+    assert "could not be found" in full.text.lower()
+    assert "could not be found" in partial.text.lower()
+
+
+async def test_unknown_competition_id_csv_has_no_rows_and_explains(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """CSV export shares the same validation/canonicalization path as HTML —
+    an unknown competition_id never ships an unrelated CSV of every
+    competition, and the export explains why the sheet is empty."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=competition"
+        "&competition_id=999999&format=csv"
+    )
+    assert resp.status_code == 200
+    rows = list(csv.reader(io.StringIO(resp.text)))
+    header, data_rows = rows[0], rows[1:]
+    assert header[0] == "Scope"
+    # No data rows for any competition — the header is immediately followed
+    # by the explanatory notes block.
+    assert data_rows[0] == []
+    assert data_rows[1] == ["# Notes"]
+    assert "could not be found" in data_rows[2][0].lower()
+    assert "2024 Las Vegas" not in resp.text
+    assert "2024 California Classic" not in resp.text
 
 
 async def test_html_render_within_query_budget(

@@ -41,7 +41,7 @@
    fmt="pct" and render with a trailing % (unit is never color-only). #}
 {%- macro comp_cell(v, fmt) -%}
 {%- if v is none -%}<span class="slg-comp-na" title="Not available for this scope">—</span>
-{%- elif fmt == 'int' -%}{{ v }}
+{%- elif fmt == 'int' -%}{{ '%.0f' % v }}
 {%- elif fmt == 'pct' -%}{{ '%.1f' % v }}%
 {%- elif fmt == 'f2' -%}{{ '%.2f' % v }}
 {%- else -%}{{ '%.1f' % v }}
