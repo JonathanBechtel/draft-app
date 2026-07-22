@@ -62,25 +62,25 @@
    Definition disclosure as a "Coverage note" row — metric-level provenance
    is retained, only the always-visible repetition is removed. #}
 {%- macro metric_section(section) -%}
-{%- set ns = namespace(notes=[]) -%}
+{%- set ns = namespace(notes={}) -%}
 {%- for m in section.metrics -%}
-  {%- if m.coverage != 'complete' and m.reason and (ns.notes | selectattr('text', 'equalto', m.reason) | list | length) == 0 -%}
-    {%- set ns.notes = ns.notes + [{'id': 'cov-note-' ~ section.key ~ '-' ~ (ns.notes | length), 'text': m.reason}] -%}
+  {%- if m.coverage != 'complete' and m.reason and m.reason not in ns.notes -%}
+    {%- set _ = ns.notes.update({m.reason: 'cov-note-' ~ section.key ~ '-' ~ (ns.notes | length)}) -%}
   {%- endif -%}
 {%- endfor -%}
 {%- if ns.notes %}
 <div class="slg-comp-covnotes" role="note">
   <h4 class="slg-comp-covnotes__title">Coverage notes</h4>
   <ul class="slg-comp-covnotes__list">
-    {%- for note in ns.notes %}
-    <li id="{{ note.id }}">{{ note.text }}</li>
+    {%- for reason, note_id in ns.notes.items() %}
+    <li id="{{ note_id }}">{{ reason }}</li>
     {%- endfor %}
   </ul>
 </div>
 {% endif -%}
 <div class="slg-comp-metrics" role="list">
   {% for m in section.metrics %}
-  {%- set note_id = (ns.notes | selectattr('text', 'equalto', m.reason) | map(attribute='id') | first) if (m.coverage != 'complete' and m.reason) else none -%}
+  {%- set note_id = ns.notes.get(m.reason) if (m.coverage != 'complete' and m.reason) else none -%}
   <div class="slg-comp-metric slg-comp-metric--{{ m.coverage }}" role="listitem"{% if note_id %} aria-describedby="{{ note_id }}"{% endif %}>
     <div class="slg-comp-metric__head">
       <span class="slg-comp-metric__label">{{ m.label }}</span>

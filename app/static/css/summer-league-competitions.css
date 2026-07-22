@@ -154,17 +154,12 @@
   outline: 2px solid var(--color-accent-emerald, #10b981);
   outline-offset: -2px;
 }
-/* Sticky scope column keeps row identity visible while scanning across the
-   metric columns on a scrolled/narrow viewport. */
+/* Sticky positioning and background are already provided by the shared
+   .slg-explorer-table base rules (summer-league-games.css); only the
+   drop-shadow separating the pinned column from scrolled content is new. */
 .slg-comp-table th.slg-explorer__label {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  background: var(--color-white, #fff);
   box-shadow: 2px 0 3px -2px rgba(15, 23, 42, 0.15);
 }
-.slg-comp-table thead th.slg-explorer__label { background: var(--color-slate-50, #f8fafc); }
-.slg-comp-table tbody tr.is-selected th.slg-explorer__label { background: var(--color-emerald-50, #ecfdf5); }
 
 /* ── Coverage badge ──────────────────────────────────────────────────────── */
 .slg-cov { display: inline-flex; align-items: center; gap: 0.3rem; font-family: var(--font-mono, monospace); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; }
