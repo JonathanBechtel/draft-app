@@ -39,8 +39,12 @@ def _view(year: int, *, pace: float | None, coverage: str = COVERAGE_COMPLETE) -
         display_name=f"{year} Summer League (all competitions)",
         version=1,
         registry_version="test",
+        calculation_version="test",
+        raw_run_ids=None,
         calculated_at=None,
         source_watermark=None,
+        starts_on=None,
+        ends_on=None,
         included_competitions=1,
         final_games=10,
         scheduled_games=0,
@@ -50,6 +54,7 @@ def _view(year: int, *, pace: float | None, coverage: str = COVERAGE_COMPLETE) -
         player_games=60,
         appeared_players=60,
         appeared_unresolved=0,
+        repeat_participants=None,
         raw_values={"pace_per_48": pace},
         coverage={
             "pace_per_48": MetricCoverageView(
@@ -144,8 +149,12 @@ def test_trend_carries_the_metric_display_unit() -> None:
             display_name="2024 Summer League (all competitions)",
             version=1,
             registry_version="test",
+            calculation_version="test",
+            raw_run_ids=None,
             calculated_at=None,
             source_watermark=None,
+            starts_on=None,
+            ends_on=None,
             included_competitions=1,
             final_games=10,
             scheduled_games=0,
@@ -155,6 +164,7 @@ def test_trend_carries_the_metric_display_unit() -> None:
             player_games=60,
             appeared_players=60,
             appeared_unresolved=0,
+            repeat_participants=None,
             raw_values={"three_fg_pct": 0.36},
             coverage={
                 "three_fg_pct": MetricCoverageView(
