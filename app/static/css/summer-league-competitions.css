@@ -72,6 +72,100 @@
 .slg-comp-open:hover { color: var(--color-accent-emerald, #10b981); text-decoration: underline; }
 .slg-comp-open[aria-current="true"] { color: var(--color-accent-emerald, #10b981); }
 
+/* ── Column-density progressive disclosure (#644) ─────────────────────────
+   Pure CSS checkbox hack: no JS is required for the default curated view or
+   for expanding to the full metric matrix (JS only persists the choice across
+   AJAX result swaps — see summer-league-explorer.js). Cells are hidden with
+   `display:none` (not visually offscreen) so column widths never reserve
+   space for hidden metrics. */
+.slg-comp-table [data-col-density="full"] { display: none; }
+.slg-comp-density-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.slg-comp-density-label {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.78rem;
+  letter-spacing: 0.02em;
+  color: var(--color-accent-emerald, #10b981);
+  border: 1px solid var(--color-accent-emerald, #10b981);
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  margin: 0 0 0.6rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s, color 0.15s;
+}
+.slg-comp-density-label:hover { background: var(--color-emerald-50, #ecfdf5); }
+.slg-comp-density-input:focus-visible + .slg-comp-density-label,
+.slg-comp-density-input:focus + .slg-comp-density-label {
+  outline: 2px solid var(--color-accent-emerald, #10b981);
+  outline-offset: 2px;
+}
+.slg-comp-density-label__on { display: none; }
+.slg-comp-density-input:checked + .slg-comp-density-label {
+  background: var(--color-slate-900, #0f172a);
+  border-color: var(--color-slate-900, #0f172a);
+  color: #fff;
+}
+.slg-comp-density-input:checked + .slg-comp-density-label .slg-comp-density-label__off { display: none; }
+.slg-comp-density-input:checked + .slg-comp-density-label .slg-comp-density-label__on { display: inline; }
+.slg-comp-density-input:checked ~ .slg-board .slg-comp-table [data-col-density="full"] {
+  display: table-cell;
+}
+
+/* ── Horizontal-overflow affordance ───────────────────────────────────────
+   The visible "Scroll for more" hint is the primary, always-legible cue
+   (never color-only); the edge-fade gradients on the scroll container add a
+   secondary visual cue once content actually overflows. `role="region"` +
+   `tabindex="0"` on .slg-comp-tablewrap lets keyboard users tab into the
+   table and scroll it with arrow keys without a mouse. */
+.slg-comp-scrollhint {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-slate-500, #64748b);
+  text-align: center;
+  margin: 0.1rem 0 0.3rem;
+}
+.slg-comp-tablewrap {
+  background:
+    linear-gradient(to right, var(--color-white, #fff) 0%, rgba(255, 255, 255, 0) 8%),
+    linear-gradient(to left, var(--color-white, #fff) 0%, rgba(255, 255, 255, 0) 8%) 100% 0,
+    linear-gradient(to right, rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0)) 0 0,
+    linear-gradient(to left, rgba(15, 23, 42, 0.12), rgba(255, 255, 255, 0)) 100% 0;
+  background-repeat: no-repeat;
+  background-color: var(--color-white, #fff);
+  background-size: 2.5rem 100%, 2.5rem 100%, 0.9rem 100%, 0.9rem 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+.slg-comp-tablewrap:focus-visible,
+.slg-comp-tablewrap:focus {
+  outline: 2px solid var(--color-accent-emerald, #10b981);
+  outline-offset: -2px;
+}
+/* Sticky scope column keeps row identity visible while scanning across the
+   metric columns on a scrolled/narrow viewport. */
+.slg-comp-table th.slg-explorer__label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-white, #fff);
+  box-shadow: 2px 0 3px -2px rgba(15, 23, 42, 0.15);
+}
+.slg-comp-table thead th.slg-explorer__label { background: var(--color-slate-50, #f8fafc); }
+.slg-comp-table tbody tr.is-selected th.slg-explorer__label { background: var(--color-emerald-50, #ecfdf5); }
+
 /* ── Coverage badge ──────────────────────────────────────────────────────── */
 .slg-cov { display: inline-flex; align-items: center; gap: 0.3rem; font-family: var(--font-mono, monospace); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; }
 .slg-cov__dot { font-size: 0.85rem; line-height: 1; }
@@ -159,6 +253,27 @@
 .slg-comp-membership__list a:hover { color: var(--color-accent-emerald, #10b981); text-decoration: underline; }
 .slg-comp-membership__count { color: var(--color-slate-500, #64748b); font-family: var(--font-mono, monospace); font-size: 0.78rem; }
 
+/* Consolidated coverage notes (#644) — one shared explanation per distinct
+   reason string instead of repeating the same sentence under every metric
+   that shares a coverage source; see the metric_section macro. */
+.slg-comp-covnotes {
+  margin: 0 0 0.7rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--color-amber-50, #fffbeb);
+  border-left: 3px solid var(--color-amber-400, #fbbf24);
+  border-radius: 0 4px 4px 0;
+}
+.slg-comp-covnotes__title {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-amber-800, #92400e);
+  margin: 0 0 0.3rem;
+}
+.slg-comp-covnotes__list { margin: 0; padding-left: 1.1rem; font-size: 0.8rem; color: var(--color-slate-700, #334155); }
+.slg-comp-covnotes__list li { margin-bottom: 0.15rem; }
+
 /* Metric grid */
 .slg-comp-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.6rem; }
 .slg-comp-metric { border: 1px solid var(--color-slate-200, #e2e8f0); border-radius: 8px; padding: 0.6rem 0.7rem; background: var(--color-slate-50, #f8fafc); }
@@ -169,7 +284,6 @@
 .slg-comp-metric__label { font-size: 0.82rem; color: var(--color-slate-600, #475569); }
 .slg-comp-metric__value { font-family: var(--font-mono, monospace); font-size: 1.15rem; font-weight: 700; color: var(--color-slate-900, #0f172a); font-variant-numeric: tabular-nums; }
 .slg-comp-metric__cov { margin-top: 0.3rem; }
-.slg-comp-metric__reason { font-size: 0.72rem; color: var(--color-slate-500, #64748b); margin: 0.3rem 0 0; }
 .slg-comp-metric__def { margin-top: 0.4rem; font-size: 0.75rem; }
 .slg-comp-metric__def summary { cursor: pointer; color: var(--color-accent-emerald, #10b981); font-family: var(--font-mono, monospace); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em; }
 .slg-comp-metric__def dl { margin: 0.4rem 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 0.15rem 0.5rem; }
@@ -293,4 +407,9 @@
   .slg-comp-facts { grid-template-columns: repeat(2, 1fr); }
   .slg-context-strip { flex-direction: column; align-items: flex-start; }
   .slg-scope-btn { flex: 1 1 auto; text-align: center; }
+  /* Full-width, comfortably tappable "Show all metrics" control (#644) — the
+     curated default matters most here, where dozens of columns previously
+     forced a long horizontal scroll before reaching anything comparable. */
+  .slg-comp-density-label { width: 100%; justify-content: center; padding: 0.6rem 0.75rem; }
+  .slg-comp-table th.slg-explorer__label { min-width: 6.5rem; }
 }

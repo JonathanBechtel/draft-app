@@ -310,6 +310,14 @@ class ExplorerColumn:
                     False for catalog-classified columns not yet surfaced in the UI
                     (consumed by ticket #405 roll-ups and future phase expansions).
         numeric:    Kept for backward compatibility; True for all numeric columns.
+        density:    Default-visibility tier for the ``competitions`` subject's
+                    curated-vs-full column density toggle (#644): ``"core"``
+                    columns render in the default desktop/mobile table; ``"full"``
+                    columns render too (never removed — CSV/definitions stay
+                    complete) but are hidden by default behind the "Show all
+                    metrics" progressive-disclosure control. Unused by the other
+                    subjects (players/teams/games), which keep every shown column
+                    visible by default as before.
     """
 
     key: str
@@ -321,6 +329,7 @@ class ExplorerColumn:
     fmt: str = "f1"
     shown: bool = True
     numeric: bool = True  # backward compat — always True for player stat columns
+    density: str = "core"  # "core" | "full" — see class docstring; competitions-only
 
 
 # --------------------------------------------------------------------------- #
@@ -945,6 +954,31 @@ def _competition_metric_fmt(definition: MetricDefinition) -> str:
     return f"f{definition.rounding}"
 
 
+# Curated default column set for the Competition Explorer results table (#644).
+# The full ~30-column matrix (every identity field plus all 27 registry
+# metrics) never disappears from CSV, the detail panel, or the DOM — it stays
+# reachable through the "Show all metrics" progressive-disclosure control
+# (contract-preserving: no metric is removed from the registry or the export
+# contract, contract §6). This set only narrows what renders by *default* in
+# the scannable list, chosen for decision-usefulness: how the games played
+# (pace/efficiency/shooting/care-of-ball) plus the field's competitiveness
+# (team count, how experienced/drafted/young the field was). Landscape
+# (spread/concentration) and the remaining composition breakdowns stay
+# one click away — they're second-order reads, not first-glance comparisons.
+_CORE_COMPETITION_METRIC_KEYS: frozenset[str] = frozenset(
+    {
+        "points_per_team_game",
+        "pace_per_48",
+        "offensive_rating",
+        "three_fg_pct",
+        "turnover_rate",
+        "distinct_teams",
+        "drafted_share",
+        "median_age",
+    }
+)
+
+
 def _competition_metric_columns(scope_kind: str) -> list[ExplorerColumn]:
     """Registry-driven metric columns valid for one profile scope kind."""
     return [
@@ -956,6 +990,7 @@ def _competition_metric_columns(scope_kind: str) -> list[ExplorerColumn]:
             filterable=d.filterable,
             fmt=_competition_metric_fmt(d),
             shown=True,
+            density="core" if d.key in _CORE_COMPETITION_METRIC_KEYS else "full",
         )
         for d in metrics_for_scope(scope_kind)
     ]
@@ -973,13 +1008,28 @@ _COMPETITION_IDENTITY_COLUMNS: list[ExplorerColumn] = [
         "final_games", "Final GP", _GROUP_IDENTITY, sortable=True, fmt="int"
     ),
     ExplorerColumn(
-        "scheduled_games", "Scheduled", _GROUP_IDENTITY, sortable=False, fmt="int"
+        "scheduled_games",
+        "Scheduled",
+        _GROUP_IDENTITY,
+        sortable=False,
+        fmt="int",
+        density="full",
     ),
     ExplorerColumn(
-        "appeared_players", "Players", _GROUP_IDENTITY, sortable=True, fmt="int"
+        "appeared_players",
+        "Players",
+        _GROUP_IDENTITY,
+        sortable=True,
+        fmt="int",
+        density="full",
     ),
     ExplorerColumn(
-        "appeared_unresolved", "Unresolved", _GROUP_IDENTITY, sortable=False, fmt="int"
+        "appeared_unresolved",
+        "Unresolved",
+        _GROUP_IDENTITY,
+        sortable=False,
+        fmt="int",
+        density="full",
     ),
 ]
 

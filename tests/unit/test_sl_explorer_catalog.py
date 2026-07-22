@@ -389,3 +389,55 @@ def test_competition_columns_sortable_filterable_mirror_registry_flags() -> None
         col = cols_by_key[definition.key]
         assert col.sortable == definition.sortable
         assert col.filterable == definition.filterable
+
+
+# --------------------------------------------------------------------------- #
+# Column-density curated default set (ticket #644) — every column still
+# appears in the full catalog (CSV/definitions never lose a metric); density
+# only controls what the results table shows by default vs. behind the
+# "Show all metrics" progressive-disclosure control.
+# --------------------------------------------------------------------------- #
+
+VALID_DENSITIES = {"core", "full"}
+
+
+@pytest.mark.parametrize("scope_kind", ["season_all_competitions", "competition"])
+def test_competition_columns_density_is_valid(scope_kind: str) -> None:
+    for col in competition_columns(scope_kind):
+        assert col.density in VALID_DENSITIES, f"{col.key} has invalid density {col.density!r}"
+
+
+@pytest.mark.parametrize("scope_kind", ["season_all_competitions", "competition"])
+def test_competition_columns_curated_core_set_is_small(scope_kind: str) -> None:
+    """The default (core) column set stays small enough to avoid horizontal
+    scrolling for the common case — the whole point of #644. Every column
+    (core or full) still exists in the full catalog returned by
+    ``competition_columns``; only the default-visible subset is bounded here.
+    """
+    cols = competition_columns(scope_kind)
+    core = [c for c in cols if c.density == "core" and c.group != "meta"]
+    full = [c for c in cols if c.density == "full" and c.group != "meta"]
+    assert 0 < len(core) <= 14
+    # The curated set is meaningfully smaller than the full matrix it narrows.
+    assert len(full) > len(core)
+
+
+@pytest.mark.parametrize("scope_kind", ["season_all_competitions", "competition"])
+def test_competition_columns_identity_year_always_core(scope_kind: str) -> None:
+    cols_by_key = {c.key: c for c in competition_columns(scope_kind)}
+    assert cols_by_key["year"].density == "core"
+
+
+def test_competition_columns_venue_is_core_for_competition_scope() -> None:
+    cols_by_key = {c.key: c for c in competition_columns("competition")}
+    assert cols_by_key["venue"].density == "core"
+
+
+def test_competition_columns_meta_columns_never_core() -> None:
+    """CSV/export-only meta columns are never in the HTML table (the template
+    filters ``group != 'meta'``), so their density is irrelevant, but they
+    should never accidentally masquerade as a curated default column."""
+    cols = competition_columns("competition")
+    for col in cols:
+        if col.group == "meta":
+            assert col.density == "core"  # default value; template never renders it
