@@ -86,7 +86,7 @@
             {% for col in table_cols %}
             {%- set is_active = q.sort == col.key -%}
             {%- set next_dir = 'asc' if (is_active and q.direction == 'desc') else 'desc' -%}
-            <th scope="col" class="{{ 'slg-sort-active' if is_active else '' }}" data-metric-group="{{ col.group }}" data-col-density="{{ col.density }}"
+            <th scope="col" class="{{ 'slg-sort-active' if is_active else '' }}" data-metric-group="{{ col.group }}" data-col-density="{{ 'core' if is_active else col.density }}"
                 {% if is_active %}aria-sort="{{ 'descending' if q.direction == 'desc' else 'ascending' }}"{% endif %}>
               {% if col.sortable %}
               <a href="{{ comp_qs(result.query, sort=col.key, direction=next_dir) }}">
@@ -108,7 +108,7 @@
               <a href="{{ detail_href }}" class="slg-comp-open" aria-label="Open profile for {{ row.label }}"{% if is_selected %} aria-current="true"{% endif %}>{{ row.label }}</a>
             </th>
             {% for col in table_cols %}
-            <td class="{{ 'slg-strong' if col.key == q.sort else '' }}" data-metric-group="{{ col.group }}" data-col-density="{{ col.density }}">
+            <td class="{{ 'slg-strong' if col.key == q.sort else '' }}" data-metric-group="{{ col.group }}" data-col-density="{{ 'core' if col.key == q.sort else col.density }}">
               {%- if col.key == 'venue' -%}{{ row.values.get('venue') or '—' }}
               {%- else -%}{{ comp_cell(row.values.get(col.key), col.fmt) }}{%- endif -%}
             </td>

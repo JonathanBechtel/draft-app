@@ -73,6 +73,22 @@ class TestCompetitionExplorerStructure:
         expect(page.locator('[data-col-density="full"]').first).to_be_hidden()
         context.close()
 
+    def test_sorted_full_metric_column_stays_visible(self, browser, base_url) -> None:
+        """A shared/JS-off URL sorted by a full-density metric (e.g.
+        team_ortg_iqr) must not hide its own sort column — otherwise the table
+        looks sorted by an invisible column with no visible active-sort
+        indicator (caught in review on #644)."""
+        context = browser.new_context(java_script_enabled=False)
+        page = context.new_page()
+        page.goto(
+            f"{base_url.rstrip('/')}{EXPLORER}"
+            "?subject=competitions&sort=team_ortg_iqr&direction=desc"
+        )
+        sorted_header = page.locator('th[data-col-density="core"].slg-sort-active')
+        expect(sorted_header).to_be_visible()
+        expect(sorted_header).to_contain_text("▾")
+        context.close()
+
     def test_density_toggle_curates_then_expands_columns(self, page: Page, goto) -> None:
         """Default view hides full-only metric columns; the "Show all metrics"
         control reveals them without a page reload, and hides them again on
