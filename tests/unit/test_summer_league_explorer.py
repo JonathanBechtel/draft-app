@@ -509,6 +509,7 @@ def _profile(**overrides: object) -> SummerLeagueEnvironmentProfile:
         version=1,
         is_current=True,
         registry_version="2026.07.1",
+        calculation_version="2026.07.2",
         included_competitions=2,
         final_games=20,
         scheduled_games=0,
@@ -956,8 +957,8 @@ def test_view_to_detail_is_stale_past_threshold() -> None:
     stale_view = _build_profile_view(stale_profile, defs)
     fresh_view = _build_profile_view(fresh_profile, defs)
 
-    stale_detail = _view_to_detail(stale_view, metric_by_key, [], [])
-    fresh_detail = _view_to_detail(fresh_view, metric_by_key, [], [])
+    stale_detail = _view_to_detail(stale_view, metric_by_key, [], [], [])
+    fresh_detail = _view_to_detail(fresh_view, metric_by_key, [], [], [])
     assert stale_detail.is_stale is True
     assert fresh_detail.is_stale is False
     # The five-section metric grouping is populated for the detail panel.

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Callable, Mapping, Protocol
 
 from app.services.summer_league.endpoints import (
@@ -335,6 +337,66 @@ class SummerLeagueRawIngestor:
             f"written={len(manifest.files_written)} "
             f"skipped={len(manifest.files_skipped)} errors={len(manifest.errors)}"
         )
+
+
+def dirty_game_ids_from_manifest(
+    manifest: SummerLeagueRawManifest,
+    *,
+    endpoints: Iterable[str] | None = None,
+) -> set[str]:
+    """Return game IDs whose per-game raw files were newly written this run.
+
+    Parses ``manifest.files_written`` -- the raw store's own record of which
+    on-disk snapshots this run actually (re)wrote, as opposed to reused
+    unchanged (see ``manifest.files_skipped``) -- against the deterministic
+    layout :meth:`~app.services.summer_league.raw_store.SummerLeagueRawStore.game_file`
+    produces: ``<year>/<league_id>/games/<game_id>/<endpoint>.json``. A game
+    shows up here whenever at least one of its per-game endpoint files was
+    actually written this run: either it's a brand-new game (every endpoint
+    gets written the first time it's discovered), or an operator/retry path
+    force-refetched one of its files (e.g.
+    ``app.cli.summer_league_ingest_runner._retry_incomplete_team_boxes``).
+    Season-level files (``leaguegamelog_team.json``/``leaguegamelog_player.json``,
+    ``manifest.json``) never match the 5-part per-game path shape and are
+    silently ignored.
+
+    This is what closes the gap
+    :class:`~app.schemas.summer_league_pipeline.SummerLeagueBatchProgress`
+    otherwise leaves open: that table treats a completed game as permanent,
+    so a corrected raw snapshot for an already-normalized game would
+    silently never get reprocessed unless something outside that table
+    proves the underlying file actually changed. Callers (see
+    ``app.cli.summer_league_ingest_runner``) feed this set into
+    ``app.services.summer_league.batch_progress.invalidate_batch_progress``
+    to clear exactly the stale progress markers before the next batched
+    normalization pass, so a dirty game re-enters the ordinary "remaining"
+    filter instead of being skipped forever.
+
+    Args:
+        manifest: A finished :class:`SummerLeagueRawManifest` from one
+            :meth:`SummerLeagueRawIngestor.fetch_year_league` call.
+        endpoints: Optional subset of :data:`GAME_ENDPOINTS` to scope the
+            check to -- e.g. ``("shotchartdetail",)`` to ask "which games
+            got a new shot-chart snapshot this run" specifically, distinct
+            from "which games had any per-game file rewritten." Defaults to
+            every endpoint in :data:`GAME_ENDPOINTS`.
+
+    Returns:
+        The set of dirty ``nba_stats_game_id`` values, possibly empty.
+    """
+    allowed = (
+        frozenset(endpoints) if endpoints is not None else frozenset(GAME_ENDPOINTS)
+    )
+    dirty: set[str] = set()
+    for relative_path in manifest.files_written:
+        parts = PurePosixPath(relative_path).parts
+        if len(parts) != 5 or parts[2] != "games":
+            continue
+        endpoint = PurePosixPath(parts[4]).stem
+        if endpoint not in allowed:
+            continue
+        dirty.add(parts[3])
+    return dirty
 
 
 def extract_game_ids(payload: Payload) -> list[str]:

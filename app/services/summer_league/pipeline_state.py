@@ -68,6 +68,35 @@ async def full_reconciliation_is_pending(db: AsyncSession) -> bool:
     return bool(result.scalar_one_or_none())
 
 
+async def get_pipeline_freshness(
+    db: AsyncSession, job: SummerLeaguePipelineJob
+) -> SummerLeaguePipelineState | None:
+    """Return one job's durable freshness/outcome state, or ``None`` if it never ran.
+
+    Both scheduled writers keep their own row here, keyed by ``job``
+    (:data:`SummerLeaguePipelineJob.DESK` / ``.FULL_INGESTION``), each with
+    its own ``last_succeeded_at``/``last_metrics_rebuilt_at``/
+    ``last_snapshots_materialized_at`` -- so the Desk tick's freshness is
+    already distinguishable from full ingestion's by construction (see
+    :func:`complete_pipeline`/:func:`_state_for`). This is the read-side
+    counterpart: a single queryable entry point for either job's state,
+    rather than every caller hand-rolling the same ``select(...).where(job
+    == ...)`` this module already uses internally.
+
+    Args:
+        db: Active database session.
+        job: Which scheduled writer's state to read.
+
+    Returns:
+        The durable state row for ``job``, or ``None`` if that job has never
+        completed, deferred, or failed a run.
+    """
+    result = await db.execute(
+        select(SummerLeaguePipelineState).where(_STATE_TABLE.c.job == job)
+    )
+    return result.scalar_one_or_none()
+
+
 async def complete_pipeline(
     db: AsyncSession,
     *,

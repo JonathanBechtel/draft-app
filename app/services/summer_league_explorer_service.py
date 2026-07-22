@@ -71,6 +71,7 @@ from app.schemas.summer_league_environment import (
     SCOPE_KIND_SEASON,
     SummerLeagueEnvironmentFieldComposition,
     SummerLeagueEnvironmentProfile,
+    SummerLeagueEnvironmentProvenance,
 )
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
@@ -99,6 +100,7 @@ from app.services.summer_league_environment_service import (
     get_current_profile_by_scope_key,
     list_current_profiles,
     list_field_composition,
+    list_provenance,
     list_season_membership,
     metric_coverage_for_profile,
     registry_raw_value,
@@ -982,10 +984,28 @@ _COMPETITION_META_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn(
         "scope_key", "Scope Key", _GROUP_META, sortable=False, fmt="raw", numeric=False
     ),
-    ExplorerColumn("version", "Version", _GROUP_META, sortable=False, fmt="int"),
+    ExplorerColumn(
+        "version", "Publication Version", _GROUP_META, sortable=False, fmt="int"
+    ),
+    ExplorerColumn(
+        "calculation_version",
+        "Calculation Version",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
     ExplorerColumn(
         "registry_version",
         "Registry Version",
+        _GROUP_META,
+        sortable=False,
+        fmt="raw",
+        numeric=False,
+    ),
+    ExplorerColumn(
+        "raw_run_ids",
+        "Raw Run IDs",
         _GROUP_META,
         sortable=False,
         fmt="raw",
@@ -1006,6 +1026,26 @@ _COMPETITION_META_COLUMNS: list[ExplorerColumn] = [
         sortable=False,
         fmt="raw",
         numeric=False,
+    ),
+    ExplorerColumn(
+        "starts_on", "Starts On", _GROUP_META, sortable=False, fmt="raw", numeric=False
+    ),
+    ExplorerColumn(
+        "ends_on", "Ends On", _GROUP_META, sortable=False, fmt="raw", numeric=False
+    ),
+    ExplorerColumn(
+        "participation_count",
+        "Participation Count",
+        _GROUP_META,
+        sortable=False,
+        fmt="int",
+    ),
+    ExplorerColumn(
+        "repeat_participants",
+        "Repeat Participants",
+        _GROUP_META,
+        sortable=False,
+        fmt="int",
     ),
     ExplorerColumn(
         "coverage_box",
@@ -1789,12 +1829,13 @@ class FieldCompositionAttributeView:
     position groups, origin) surfaced in the detail drilldown.
     """
 
-    attribute_key: str  # "draft" | "age" | "position" | "origin"
+    attribute_key: str  # see FIELD_COMPOSITION_ATTRIBUTES for the full key set
     label: str
     known: int
     unknown: int
     total: int
     distribution: Optional[dict[str, Any]]
+    reason: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -1809,6 +1850,27 @@ class SourceCoverageView:
     covered: int
     eligible: int
     informational: bool  # True for PBP (never gates a displayed v1 metric)
+
+
+@dataclass(frozen=True)
+class ProvenanceSourceView:
+    """One source's exact provenance record: freshness, volume, and status.
+
+    Distinct from :class:`SourceCoverageView` (a metric-coverage verdict
+    derived from stored counts): this is the raw audit trail persisted at
+    build time in ``summer_league_environment_provenance`` -- when the source
+    last changed, how many rows fed it, and (where the underlying raw data
+    models it) its parse/source status. Includes the ``"participation"`` and
+    ``"schedule"`` freshness-only sources, which gate no metric but must
+    still be visible in the audit trail.
+    """
+
+    source_kind: str
+    label: str
+    watermark_at: Optional[datetime]
+    row_count: int
+    parse_status: Optional[str]
+    source_status: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -1846,6 +1908,39 @@ class MetricSectionView:
     metrics: list[MetricValueView]
 
 
+@dataclass(frozen=True)
+class LeaderRowView:
+    """One ranked player row in a Competition Context leaders board.
+
+    ``formatted_value`` and the ranking are read straight off the same
+    per-game career-grain values the Players Explorer computes for the
+    identical scope/eligibility (:func:`_build_player_career_stmt`,
+    :func:`_compute_player_values`) — this view never recomputes a metric.
+    """
+
+    rank: int
+    label: str
+    href: Optional[str]
+    formatted_value: str
+
+
+@dataclass(frozen=True)
+class LeaderBoardView:
+    """One compact leaders board (e.g. Points) for the performance-landscape section.
+
+    ``explorer_href`` carries the exact same scope (``competition_id`` or a
+    pinned ``year_min``/``year_max``) plus this board's sort into the Players
+    Explorer, so "see full list" always lands on the identical filtered/sorted
+    result a reader would need to verify the board (contract: "leader links
+    carry the same selected scope into existing Players Explorer results").
+    """
+
+    metric_key: str
+    label: str
+    rows: list[LeaderRowView]
+    explorer_href: str
+
+
 @dataclass
 class CompetitionDetail:
     """Full read-contract payload for one selected Competition Context profile.
@@ -1865,11 +1960,15 @@ class CompetitionDetail:
     display_name: str
     version: int
     registry_version: str
+    calculation_version: str
+    raw_run_ids: Optional[list[int]]
     calculated_at: Optional[datetime]
     source_watermark: Optional[datetime]
     is_stale: bool
     href: str
     # Identity & format scalars (contract §2/§5).
+    starts_on: Optional[date]
+    ends_on: Optional[date]
     included_competitions: int
     final_games: int
     scheduled_games: int
@@ -1879,6 +1978,7 @@ class CompetitionDetail:
     player_games: int
     appeared_players: int
     appeared_unresolved: int
+    repeat_participants: Optional[int]
     # Display-scaled values (e.g. 0-100 for a ratio metric), keyed by registry
     # metric key — the same scaling `format_metric_value` applies for display.
     values: dict[str, Optional[float]]
@@ -1890,6 +1990,17 @@ class CompetitionDetail:
     source_coverage: list[SourceCoverageView] = field(default_factory=list)
     field_composition: list[FieldCompositionAttributeView] = field(default_factory=list)
     membership: list[CompetitionMembershipRow] = field(default_factory=list)
+    # Exact per-source provenance (freshness + row count + parse/source
+    # status) — the audit trail behind this published profile.
+    provenance: list[ProvenanceSourceView] = field(default_factory=list)
+    # Compact PTS/REB/AST leaders boards for this exact scope, sourced from
+    # the same Players Explorer career-grain query/eligibility (contract:
+    # "presentation over existing Players Explorer results ... not stored as
+    # a second leaderboard source"). Empty when no player meets the shared
+    # eligibility floor for this scope yet (honest unavailable state, not an
+    # error) — see ``leaders_unavailable_reason``.
+    leaders: list[LeaderBoardView] = field(default_factory=list)
+    leaders_unavailable_reason: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -2576,11 +2687,17 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
     return sort_col
 
 
-async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
-    """Aggregate career totals from ``summer_league_player_seasons`` via catalog roll-ups.
+def _build_player_career_stmt(q: ExplorerQuery) -> Any:
+    """Build the (unsorted, unpaginated) career-grain player statement.
 
-    Ticket #405 source switch: reads materialized season rows (one per
-    player-competition) rather than raw ``SummerLeaguePlayerGameLog`` records.
+    This is the single query-builder both the paginated Players Explorer
+    career table (:func:`_query_players`) and the Competition Context
+    leaders strip (:func:`_fetch_competition_leaders`) run — the leaders
+    strip is presentation over the same Players Explorer roll-up and
+    eligibility rules, never a second player-leader calculation (contract:
+    "not stored as a second leaderboard source"). Extracted from
+    :func:`_query_players` (ticket #639) with no behavior change: the exact
+    same SELECT/GROUP BY/HAVING clauses, filters, and roll-up expressions.
 
     Roll-up semantics per catalog bucket:
 
@@ -2762,6 +2879,13 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         having_expr = _career_metric_having(mf, ps)
         if having_expr is not None:
             stmt = stmt.having(having_expr)  # type: ignore[arg-type]
+
+    return stmt
+
+
+async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
+    """Paginated Players Explorer career table (see :func:`_build_player_career_stmt`)."""
+    stmt = _build_player_career_stmt(q)
 
     # Count total matching rows before slicing (wrapping subquery avoids fetching all rows).
     total = await _count_subquery(db, stmt)
@@ -3713,8 +3837,12 @@ class _CompetitionProfileView:
     display_name: str
     version: int
     registry_version: str
+    calculation_version: str
+    raw_run_ids: Optional[list[int]]
     calculated_at: Optional[datetime]
     source_watermark: Optional[datetime]
+    starts_on: Optional[date]
+    ends_on: Optional[date]
     included_competitions: int
     final_games: int
     scheduled_games: int
@@ -3724,6 +3852,7 @@ class _CompetitionProfileView:
     player_games: int
     appeared_players: int
     appeared_unresolved: int
+    repeat_participants: Optional[int]
     # metric_key -> raw (unscaled) canonical value.
     raw_values: dict[str, Optional[float]]
     # metric_key -> per-metric coverage disclosure.
@@ -3789,8 +3918,12 @@ def _build_profile_view(
         display_name=profile.display_name,
         version=profile.version,
         registry_version=profile.registry_version,
+        calculation_version=profile.calculation_version,
+        raw_run_ids=profile.raw_run_ids,
         calculated_at=profile.calculated_at,
         source_watermark=profile.source_watermark,
+        starts_on=profile.starts_on,
+        ends_on=profile.ends_on,
         included_competitions=profile.included_competitions,
         final_games=profile.final_games,
         scheduled_games=profile.scheduled_games,
@@ -3800,6 +3933,7 @@ def _build_profile_view(
         player_games=profile.player_games,
         appeared_players=profile.appeared_players,
         appeared_unresolved=profile.appeared_unresolved,
+        repeat_participants=profile.repeat_participants,
         raw_values=raw_values,
         coverage=coverage,
         source_coverage=source_coverage,
@@ -3895,6 +4029,10 @@ def _view_to_row(
         "scope_key": view.scope_key,
         "version": view.version,
         "registry_version": view.registry_version,
+        "calculation_version": view.calculation_version,
+        "raw_run_ids": (
+            ",".join(str(i) for i in view.raw_run_ids) if view.raw_run_ids else None
+        ),
         "calculated_at": (
             view.calculated_at.isoformat() if view.calculated_at is not None else None
         ),
@@ -3903,6 +4041,10 @@ def _view_to_row(
             if view.source_watermark is not None
             else None
         ),
+        "starts_on": view.starts_on.isoformat() if view.starts_on is not None else None,
+        "ends_on": view.ends_on.isoformat() if view.ends_on is not None else None,
+        "participation_count": view.participation_count,
+        "repeat_participants": view.repeat_participants,
         "coverage_box": _coverage_summary_label(view, CoverageSource.BOX),
         "coverage_shot": _coverage_summary_label(view, CoverageSource.SHOT),
         "coverage_score": _coverage_summary_label(view, CoverageSource.SCORE),
@@ -3929,11 +4071,25 @@ _SOURCE_LABELS: dict[CoverageSource, str] = {
     CoverageSource.IDENTITY: "Player identity",
 }
 
-# Human labels for the four field-composition attributes (contract §5).
+# Human labels for every provenance source_kind, including the two
+# freshness-only kinds ("participation"/"schedule") that gate no metric but
+# still advance the input watermark and belong in the audit trail.
+_PROVENANCE_LABELS: dict[str, str] = {
+    **{source.value: label for source, label in _SOURCE_LABELS.items()},
+    "participation": "Roster / participation",
+    "schedule": "Game schedule / status",
+}
+
+# Human labels for every field-composition attribute (contract §5). See
+# FIELD_COMPOSITION_ATTRIBUTES for the canonical display order.
 _FIELD_ATTRIBUTE_LABELS: dict[str, str] = {
     "draft": "Draft status",
+    "draft_class": "Draft class",
     "age": "Age",
+    "age_reference": "Age reference date",
     "position": "Position",
+    "position_source": "Position source",
+    "appearance": "Appearance number",
     "origin": "College / international origin",
 }
 
@@ -3970,6 +4126,24 @@ def _field_composition_views(
             unknown=r.unknown,
             total=r.total,
             distribution=r.distribution,
+            reason=r.reason,
+        )
+        for r in rows
+    ]
+
+
+def _provenance_views(
+    rows: Sequence[SummerLeagueEnvironmentProvenance],
+) -> list[ProvenanceSourceView]:
+    """Provenance rows as labeled, ordered audit-trail disclosures."""
+    return [
+        ProvenanceSourceView(
+            source_kind=r.source_kind,
+            label=_PROVENANCE_LABELS.get(r.source_kind, r.source_kind.title()),
+            watermark_at=r.watermark_at,
+            row_count=r.row_count,
+            parse_status=r.parse_status,
+            source_status=r.source_status,
         )
         for r in rows
     ]
@@ -4032,6 +4206,7 @@ def _view_to_detail(
     metric_by_key: dict[str, MetricDefinition],
     membership: list[CompetitionMembershipRow],
     field_composition: list[FieldCompositionAttributeView],
+    provenance: list[ProvenanceSourceView],
 ) -> CompetitionDetail:
     is_stale = is_profile_stale(view.calculated_at)
     values = {
@@ -4048,10 +4223,14 @@ def _view_to_detail(
         display_name=view.display_name,
         version=view.version,
         registry_version=view.registry_version,
+        calculation_version=view.calculation_version,
+        raw_run_ids=view.raw_run_ids,
         calculated_at=view.calculated_at,
         source_watermark=view.source_watermark,
         is_stale=is_stale,
         href=_competition_href(view),
+        starts_on=view.starts_on,
+        ends_on=view.ends_on,
         included_competitions=view.included_competitions,
         final_games=view.final_games,
         scheduled_games=view.scheduled_games,
@@ -4061,12 +4240,14 @@ def _view_to_detail(
         player_games=view.player_games,
         appeared_players=view.appeared_players,
         appeared_unresolved=view.appeared_unresolved,
+        repeat_participants=view.repeat_participants,
         values=values,
         coverage=view.coverage,
         sections=_metric_sections(view, metric_by_key),
         source_coverage=_source_coverage_views(view),
         field_composition=field_composition,
         membership=membership,
+        provenance=provenance,
     )
 
 
@@ -4198,6 +4379,116 @@ async def _resolve_season_detail(
     if profile is None:
         return None
     return _build_profile_view(profile, metric_defs)
+
+
+# The compact leaders strip's stat categories, in display order. Values are
+# the exact per-game career-grain fields ``_compute_player_values`` already
+# produces (contract: "sourced from the same player metric definitions as
+# the Players Explorer").
+_LEADER_METRIC_KEYS: tuple[tuple[str, str], ...] = (
+    ("pts", "Points"),
+    ("reb", "Rebounds"),
+    ("ast", "Assists"),
+)
+_LEADER_BOARD_SIZE = 3
+_LEADER_UNAVAILABLE_REASON = (
+    "No player meets the Players Explorer minimum eligibility "
+    f"({DEFAULT_MIN_GAMES}+ games, {DEFAULT_MIN_MINUTES}+ minutes) for this "
+    "scope yet."
+)
+
+
+def _leaders_scope_qs(scope_kind: str, competition_id: Optional[int], year: int) -> str:
+    """The exact scope query-string fragment for a leaders Explorer handoff.
+
+    Mirrors the detail panel's own handoff shape (contract §6/§7): an
+    authoritative ``competition_id`` for a competition scope, a pinned
+    ``year_min``/``year_max`` for a season scope — never year+venue.
+    """
+    if scope_kind == SCOPE_KIND_COMPETITION:
+        return f"competition_id={competition_id}"
+    return f"year_min={year}&year_max={year}"
+
+
+async def _fetch_competition_leaders(
+    db: AsyncSession,
+    *,
+    scope_kind: str,
+    competition_id: Optional[int],
+    year: int,
+) -> list[LeaderBoardView]:
+    """Compact PTS/REB/AST leaders boards for one Competition Context scope.
+
+    Reuses :func:`_build_player_career_stmt` — the exact Players Explorer
+    career-grain query builder and its default eligibility (``min_games=2``,
+    ``min_minutes=60``, per-game mode) — with no ``LIMIT``/``OFFSET``/count
+    overhead, so a scope's leader values can never diverge from what the
+    Players Explorer itself would show for the identical scope and eligibility
+    rules, and this is never a second player-leader calculation (contract:
+    "not stored as a second leaderboard source"). One query total regardless
+    of how many stat boards are shown, keeping the Competition Context detail
+    request well inside its route budget (contract §9).
+
+    Args:
+        db: Async session.
+        scope_kind: ``"season_all_competitions"`` or ``"competition"``.
+        competition_id: The competition id for a competition scope; ignored
+            for a season scope.
+        year: The profile year (used for a season-scope handoff; the
+            competition scope resolves by ``competition_id`` alone).
+
+    Returns:
+        Up to three boards (Points/Rebounds/Assists); empty when no player in
+        the scope clears the shared eligibility floor yet.
+    """
+    is_competition = scope_kind == SCOPE_KIND_COMPETITION
+    leaders_q = ExplorerQuery(
+        subject="players",
+        competition_id=competition_id if is_competition else None,
+        year_min=None if is_competition else year,
+        year_max=None if is_competition else year,
+        min_games=DEFAULT_MIN_GAMES,
+        min_minutes=DEFAULT_MIN_MINUTES,
+        mode=DEFAULT_MODE,
+        paginate=False,
+    )
+    stmt = _build_player_career_stmt(leaders_q)
+    raw = list((await db.execute(stmt)).all())
+    if not raw:
+        return []
+
+    scored = [(r, _compute_player_values(r, DEFAULT_MODE)) for r in raw]
+    scope_qs = _leaders_scope_qs(scope_kind, competition_id, year)
+
+    boards: list[LeaderBoardView] = []
+    for key, label in _LEADER_METRIC_KEYS:
+        eligible = [(r, v) for r, v in scored if v.get(key) is not None]
+        ranked = sorted(eligible, key=lambda rv: rv[1][key], reverse=True)[
+            :_LEADER_BOARD_SIZE
+        ]
+        rows = [
+            LeaderRowView(
+                rank=i + 1,
+                label=r.display_name or "Player",
+                href=f"/players/{r.slug}" if r.slug else None,
+                formatted_value=f"{v[key]:.1f}",
+            )
+            for i, (r, v) in enumerate(ranked)
+        ]
+        if not rows:
+            continue
+        boards.append(
+            LeaderBoardView(
+                metric_key=key,
+                label=label,
+                rows=rows,
+                explorer_href=(
+                    "/stats/summer-league/explorer?subject=players&"
+                    f"{scope_qs}&sort={key}&dir=desc"
+                ),
+            )
+        )
+    return boards
 
 
 async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
@@ -4347,12 +4638,28 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
             db,
             detail_view.profile_id,  # type: ignore[arg-type]
         )
+        provenance_rows = await list_provenance(
+            db,
+            detail_view.profile_id,  # type: ignore[arg-type]
+        )
         result.competition_detail = _view_to_detail(
             detail_view,
             metric_by_key,
             membership,
             _field_composition_views(field_rows),
+            _provenance_views(provenance_rows),
         )
+        leaders = await _fetch_competition_leaders(
+            db,
+            scope_kind=detail_view.scope_kind,
+            competition_id=detail_view.competition_id,
+            year=detail_view.year,
+        )
+        result.competition_detail.leaders = leaders
+        if not leaders:
+            result.competition_detail.leaders_unavailable_reason = (
+                _LEADER_UNAVAILABLE_REASON
+            )
 
     # ---- Trend (contract §6: season = one line across years; competition =
     # only after a venue/series is resolved, never blending unrelated

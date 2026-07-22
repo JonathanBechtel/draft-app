@@ -38,6 +38,7 @@ EXPECTED_ENVIRONMENT_KEYS = {
 }
 EXPECTED_LANDSCAPE_KEYS = {
     "team_ortg_iqr",
+    "team_points_iqr",
     "top_decile_minutes_share",
     "top_decile_points_share",
 }
@@ -47,6 +48,7 @@ EXPECTED_COMPOSITION_KEYS = {
     "returner_share",
     "drafted_share",
     "undrafted_share",
+    "not_yet_drafted_share",
     "first_round_share",
     "second_round_share",
     "lottery_share",
@@ -130,6 +132,15 @@ def test_every_definition_carries_required_metadata() -> None:
             100.0,
             1,
             CoverageSource.SHOT,
+        ),
+        (
+            "turnover_rate",
+            "sum(tov) / (sum(fga) + 0.44 * sum(fta) + sum(tov))",
+            "field-goal attempts + 0.44 * free-throw attempts",
+            MetricUnit.RATIO,
+            100.0,
+            1,
+            CoverageSource.BOX,
         ),
         (
             "close_game_share",
@@ -229,6 +240,16 @@ def test_team_count_season_scope_meaning_is_documented() -> None:
     assert "team entries" in d.interpretation
 
 
+def test_turnover_rate_is_plays_based_not_possession_based() -> None:
+    """Turnover rate's denominator is FGA + 0.44*FTA + TOV (contract §4's frozen
+    plays-based TOV% estimate), never the opponent-adjusted Box.poss estimate
+    used for pace/ORtg."""
+    d = reg.get_metric("turnover_rate")
+    assert d.source_fields == ("tov", "fga", "fta")
+    assert "possession" not in d.formula
+    assert d.coverage_source is CoverageSource.BOX
+
+
 def test_no_v1_metric_is_gated_by_pbp() -> None:
     """PBP is informational only: no displayed metric uses the PBP coverage source."""
     for key in reg.all_metric_keys():
@@ -312,8 +333,29 @@ def test_metrics_for_scope_returns_both_eligible() -> None:
 
 
 def test_field_composition_attributes_are_frozen() -> None:
-    """The four field-composition attributes are draft/age/position/origin."""
-    assert reg.FIELD_COMPOSITION_ATTRIBUTES == ("draft", "age", "position", "origin")
+    """The field-composition attributes are the frozen contract §5 set."""
+    assert reg.FIELD_COMPOSITION_ATTRIBUTES == (
+        "draft",
+        "draft_class",
+        "age",
+        "age_reference",
+        "position",
+        "position_source",
+        "appearance",
+        "origin",
+    )
+
+
+def test_calculation_version_is_distinct_from_registry_version() -> None:
+    """Calculation version is its own stamp, never conflated with the registry.
+
+    A published profile's `version` (publication sequence), `registry_version`
+    (metric definitions), and `calculation_version` (aggregation-pipeline
+    logic) are three independent stamps -- this asserts the constants
+    themselves never accidentally collapse into one value.
+    """
+    assert isinstance(reg.CALCULATION_VERSION, str) and reg.CALCULATION_VERSION
+    assert reg.CALCULATION_VERSION != reg.REGISTRY_VERSION
 
 
 def test_registry_summary_counts() -> None:

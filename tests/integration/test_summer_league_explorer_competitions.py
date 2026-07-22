@@ -538,9 +538,131 @@ async def test_field_composition_known_unknown(
     detail = result.competition_detail
     assert detail is not None
     attrs = {a.attribute_key: a for a in detail.field_composition}
-    assert set(attrs) == {"draft", "age", "position", "origin"}
+    assert set(attrs) == {
+        "draft",
+        "draft_class",
+        "age",
+        "age_reference",
+        "position",
+        "position_source",
+        "appearance",
+        "origin",
+    }
     for a in attrs.values():
         assert a.total == a.known + a.unknown
+    # Fallback-usage and unavailability disclosures carry an explanatory reason.
+    assert attrs["age_reference"].reason is not None
+    assert attrs["position_source"].reason is not None
+    assert attrs["origin"].reason is not None
+
+
+# --------------------------------------------------------------------------- #
+# Performance landscape — scoring distribution + leaders strip (#639)
+# --------------------------------------------------------------------------- #
+
+
+async def test_team_points_iqr_coverage_aware(db_session: AsyncSession) -> None:
+    """The scoring-distribution spread publishes on complete box coverage, nulls otherwise."""
+    refs = await _seed(db_session)
+    complete_q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": str(refs.competition_ids["lv2024"]),
+        }
+    )
+    complete = await run_explorer_query(db_session, complete_q)
+    assert complete.competition_detail is not None
+    assert complete.competition_detail.values["team_points_iqr"] is not None
+    assert complete.competition_detail.coverage["team_points_iqr"].coverage == "complete"
+
+    unavailable_q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": str(refs.competition_ids["slc2024"]),
+        }
+    )
+    unavailable = await run_explorer_query(db_session, unavailable_q)
+    assert unavailable.competition_detail is not None
+    assert unavailable.competition_detail.values["team_points_iqr"] is None
+    assert (
+        unavailable.competition_detail.coverage["team_points_iqr"].coverage
+        == "unavailable"
+    )
+
+
+async def test_competition_leaders_agree_with_players_explorer(
+    db_session: AsyncSession,
+) -> None:
+    """Leaders boards match the Players Explorer's own values for the same scope."""
+    refs = await _seed(db_session)
+    cid = refs.competition_ids["lv2024"]
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": str(cid),
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    detail = result.competition_detail
+    assert detail is not None
+    boards = {b.metric_key: b for b in detail.leaders}
+    assert set(boards) == {"pts", "reb", "ast"}
+
+    top_scorer = boards["pts"].rows[0]
+    assert top_scorer.label == "Ace Scorer"
+    assert top_scorer.formatted_value == "20.0"
+    assert f"competition_id={cid}" in boards["pts"].explorer_href
+    assert "sort=pts&dir=desc" in boards["pts"].explorer_href
+
+    # Parity: the same value the Players Explorer itself renders for this exact scope.
+    players_q = parse_query(
+        {
+            "subject": "players",
+            "competition_id": str(cid),
+            "sort": "pts",
+            "dir": "desc",
+        }
+    )
+    players_result = await run_explorer_query(db_session, players_q)
+    assert players_result.rows[0].label == "Ace Scorer"
+    assert players_result.rows[0].values["pts"] == 20.0
+
+
+async def test_season_leaders_pool_across_member_competitions(
+    db_session: AsyncSession,
+) -> None:
+    """Season-scope leaders pool every member competition's player-season rows."""
+    await _seed(db_session)
+    q = parse_query({"subject": "competitions", "detail_year": "2024"})
+    result = await run_explorer_query(db_session, q)
+    detail = result.competition_detail
+    assert detail is not None
+    boards = {b.metric_key: b for b in detail.leaders}
+    assert boards["pts"].rows[0].label == "Ace Scorer"
+    assert "year_min=2024&year_max=2024" in boards["pts"].explorer_href
+
+
+async def test_leaders_unavailable_when_no_eligible_players(
+    db_session: AsyncSession,
+) -> None:
+    """No player-season data yet renders an honest unavailable state, not an error."""
+    refs = await _seed(db_session)
+    cid = refs.competition_ids["cc2024"]
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "profile_scope": "competition",
+            "competition_id": str(cid),
+        }
+    )
+    result = await run_explorer_query(db_session, q)
+    detail = result.competition_detail
+    assert detail is not None
+    assert detail.leaders == []
+    assert detail.leaders_unavailable_reason is not None
 
 
 # --------------------------------------------------------------------------- #
@@ -723,7 +845,9 @@ async def test_csv_structure_scope_ids_values_and_definitions(
     header = reader[0]
     assert header[0] == "Scope"
     assert "Scope Key" in header
-    assert "Version" in header
+    assert "Publication Version" in header
+    assert "Calculation Version" in header
+    assert "Registry Version" in header
     assert "Box Coverage" in header
     # A season row carries its stable scope key and a value.
     season_rows = [r for r in reader if r and r[0].startswith("2024 Summer League")]

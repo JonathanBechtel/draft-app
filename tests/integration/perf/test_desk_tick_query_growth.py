@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from pathlib import Path
+from time import perf_counter
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
@@ -50,6 +51,7 @@ from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from scripts.sl_desk_tick import run_desk_tick
 from tests.integration.perf._capture import count_queries
+from tests.integration.perf.budgets import DESK_TICK_DURATION_BUDGET_MS
 
 pytestmark = pytest.mark.asyncio
 
@@ -223,12 +225,15 @@ async def _seed_roster_scenario(
 
 async def _run_tick_and_count(
     db: AsyncSession, async_engine: AsyncEngine, *, now: datetime, tmp_path: Path
-) -> int:
+) -> tuple[int, float]:
+    """Run one tick, returning its query count and wall-clock duration (ms)."""
     client = NBAStatsClient(session=_FakeSession())
+    started_at = perf_counter()
     with count_queries(async_engine) as captured:
         await run_desk_tick(db, now=now, raw_root=tmp_path, client=client)
+    duration_ms = (perf_counter() - started_at) * 1000
     await db.commit()
-    return len(captured)
+    return len(captured), duration_ms
 
 
 # A generous, roster-size-INDEPENDENT ceiling on the 20-vs-2-player delta.
@@ -262,13 +267,13 @@ async def test_tick_query_count_growth_bounded_not_linear_in_roster_size(
     """
     now_a = datetime(2026, 7, 10, 22, 0)
     await _seed_roster_scenario(db_session, year=2026, n_players=2, now=now_a)
-    count_2 = await _run_tick_and_count(
+    count_2, duration_2_ms = await _run_tick_and_count(
         db_session, async_engine, now=now_a, tmp_path=tmp_path
     )
 
     now_b = datetime(2027, 7, 10, 22, 0)
     await _seed_roster_scenario(db_session, year=2027, n_players=20, now=now_b)
-    count_20 = await _run_tick_and_count(
+    count_20, duration_20_ms = await _run_tick_and_count(
         db_session, async_engine, now=now_b, tmp_path=tmp_path
     )
 
@@ -279,4 +284,19 @@ async def test_tick_query_count_growth_bounded_not_linear_in_roster_size(
         f"{_MAX_GROWTH_DELTA}. A per-player/per-slot query growth regression "
         "likely reappeared in grade_players_bulk / compute_desk_storylines / "
         "persist_grade_facts_bulk / persist_slate_facts_bulk."
+    )
+
+    # Desk-tick wall-clock budget (#629, project's two-minute Desk-tick
+    # target -- see DESK_TICK_DURATION_BUDGET_MS's docstring in budgets.py).
+    # This synthetic/no-network fixture should finish orders of magnitude
+    # under that ceiling; a regression that reintroduces real per-row work
+    # would show up here as wall-clock cost even if the query-count guard
+    # above somehow didn't catch it.
+    assert duration_2_ms <= DESK_TICK_DURATION_BUDGET_MS, (
+        f"2-player Desk tick took {duration_2_ms:.0f}ms, over the "
+        f"{DESK_TICK_DURATION_BUDGET_MS}ms budget"
+    )
+    assert duration_20_ms <= DESK_TICK_DURATION_BUDGET_MS, (
+        f"20-player Desk tick took {duration_20_ms:.0f}ms, over the "
+        f"{DESK_TICK_DURATION_BUDGET_MS}ms budget"
     )

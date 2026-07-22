@@ -8,12 +8,14 @@ from typing import Mapping
 
 import pytest
 
+from app.services.summer_league.manifest import SummerLeagueRawManifest
 from app.services.summer_league.raw_ingestion import (
     GAME_ENDPOINTS,
     REQUIRED_GAME_ENDPOINTS,
     RawIngestionOptions,
     SummerLeagueRequiredGamelogError,
     SummerLeagueRawIngestor,
+    dirty_game_ids_from_manifest,
     extract_game_ids,
     is_required_game_endpoint,
 )
@@ -482,3 +484,92 @@ def test_fetch_year_league_reuses_existing_snapshots_without_requests(
         message.startswith("reuse 2024/15/games/1522400002/boxscoretraditionalv2")
         for message in progress
     )
+
+
+# ---------------------------------------------------------------------------
+# dirty_game_ids_from_manifest
+# ---------------------------------------------------------------------------
+
+
+def _manifest_with_files(
+    *, files_written: list[str], files_skipped: list[str] | None = None
+) -> SummerLeagueRawManifest:
+    manifest = SummerLeagueRawManifest.start(year=2024, league_id="15")
+    manifest.files_written = list(files_written)
+    manifest.files_skipped = list(files_skipped or [])
+    return manifest
+
+
+def test_dirty_game_ids_from_manifest_mixed_written_and_skipped() -> None:
+    """Only per-game files that were actually written mark a game dirty.
+
+    A three-game manifest: game 001 is brand new (every endpoint written),
+    game 002 had one file force-rewritten (boxscoretraditionalv2) while its
+    other endpoints were reused (skipped), and game 003 is fully unchanged
+    (every endpoint skipped). Season-level files (leaguegamelog_team/player)
+    are present in files_written too and must never be mistaken for a game.
+    """
+    manifest = _manifest_with_files(
+        files_written=[
+            "2024/15/leaguegamelog_team.json",
+            "2024/15/leaguegamelog_player.json",
+            "2024/15/games/001/boxscoretraditionalv2.json",
+            "2024/15/games/001/boxscoreadvancedv2.json",
+            "2024/15/games/001/boxscorescoringv2.json",
+            "2024/15/games/001/playbyplayv2.json",
+            "2024/15/games/001/shotchartdetail.json",
+            "2024/15/games/002/boxscoretraditionalv2.json",
+        ],
+        files_skipped=[
+            "2024/15/games/002/boxscoreadvancedv2.json",
+            "2024/15/games/002/boxscorescoringv2.json",
+            "2024/15/games/002/playbyplayv2.json",
+            "2024/15/games/002/shotchartdetail.json",
+            "2024/15/games/003/boxscoretraditionalv2.json",
+            "2024/15/games/003/boxscoreadvancedv2.json",
+            "2024/15/games/003/boxscorescoringv2.json",
+            "2024/15/games/003/playbyplayv2.json",
+            "2024/15/games/003/shotchartdetail.json",
+        ],
+    )
+
+    assert dirty_game_ids_from_manifest(manifest) == {"001", "002"}
+
+
+def test_dirty_game_ids_from_manifest_no_writes_is_empty() -> None:
+    """A fully-reused venue (nothing written) has no dirty games."""
+    manifest = _manifest_with_files(
+        files_written=[],
+        files_skipped=["2024/15/games/001/boxscoretraditionalv2.json"],
+    )
+    assert dirty_game_ids_from_manifest(manifest) == set()
+
+
+def test_dirty_game_ids_from_manifest_scoped_to_endpoints() -> None:
+    """The ``endpoints`` filter narrows detection to specific per-game files.
+
+    Mirrors how the ingest runner distinguishes "shot-relevant" from
+    "PBP-relevant" dirtiness so a box-score-only rewrite never invalidates
+    SHOT/PBP batch progress for a game whose shot/PBP files were untouched.
+    """
+    manifest = _manifest_with_files(
+        files_written=[
+            "2024/15/games/001/boxscoretraditionalv2.json",
+            "2024/15/games/002/shotchartdetail.json",
+            "2024/15/games/003/playbyplayv2.json",
+        ],
+    )
+
+    assert dirty_game_ids_from_manifest(
+        manifest, endpoints=("shotchartdetail",)
+    ) == {"002"}
+    assert dirty_game_ids_from_manifest(
+        manifest, endpoints=("playbyplayv2",)
+    ) == {"003"}
+    assert dirty_game_ids_from_manifest(manifest) == {"001", "002", "003"}
+
+
+def test_dirty_game_ids_from_manifest_ignores_manifest_json() -> None:
+    """The run's own manifest.json (season-level) never counts as a dirty game."""
+    manifest = _manifest_with_files(files_written=["2024/15/manifest.json"])
+    assert dirty_game_ids_from_manifest(manifest) == set()

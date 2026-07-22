@@ -1,5 +1,10 @@
 # Summer League Desk — Behavior Specification
 
+> **Historical warning:** Before changing this feature, read the
+> [canonical Desk history and failure record](../summer-league-desk-history.md). It records
+> the production incidents, conflicting freshness paths, incomplete acceptance gates, and
+> prior remediation attempts that followed this specification.
+
 Companion to the pitch (`summer-league-scouts-desk-pitch.md`), QA checklist, and test plan.
 Source-of-truth mockup: `mockups/draftguru_sl_scout_desk.html`.
 Its Morning / Live / Ledger controls are a **review-only preview device**; production must

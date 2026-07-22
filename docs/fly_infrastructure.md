@@ -118,14 +118,46 @@ flight. A deploy never terminates a Desk tick to refresh its image.
   preflight skips creation without failing the deploy.
 - **Production**: `.github/workflows/fly-deploy-prod.yml` likewise waits for an
   existing Desk tick to stop before updating the cron image. If the machine does not
-  stop within 30 minutes, the workflow skips that image update instead of sending
-  `SIGINT` to live work. *Creating* the machine the first time is
+  stop within 30 minutes, the workflow logs a warning and skips that image update
+  instead of sending `SIGINT` to live work -- but that is no longer the end of the
+  story (see "Cron image reconciliation and drift verification" below): a follow-up
+  retry gets a second, shorter chance to land the update once the tick finishes, and
+  a post-deploy check fails the workflow outright if any Summer League cron machine
+  is still on a stale image after that. *Creating* the machine the first time is
   double-gated -- the `enable_desk_cron` `workflow_dispatch` input must be explicitly
   set `true` (a human attesting staging already proved a successful tick) **and**
   production's own preflight must pass, or the create step is skipped. This means a
   routine prod deploy (default `enable_desk_cron=false`) still keeps an
   already-created Desk cron machine's code in sync -- the gate no longer has to be
   re-asserted on every future deploy, only for the original promotion.
+- **Cron image reconciliation and drift verification** (spec:
+  `docs/plans/summer-league-cron-desk-starvation-spec.md`, proposed work #5): the
+  30-minute stop-wait above is a best-effort first attempt, not the last word.
+  - **Reconciliation retry** (`scripts/reconcile_cron_image.py`, invoked from the
+    "Reconcile Summer League Desk cron machine (retry after stop-wait timeout)" step,
+    conditioned on the prior step's `timed_out` output): a bounded 10-minute
+    second-chance wait for the Desk cron machine to reach `stopped`, followed by the
+    same `machine update --skip-start` + `machine start` sequence the original step
+    uses (including the re-arm-the-schedule `machine start` call -- required because
+    `machine update` does not reliably re-arm Fly's schedule for a machine left
+    stopped). A no-op (`ALREADY_CURRENT`) if the machine already matches, and
+    non-fatal (`MACHINE_NOT_FOUND`) if the machine doesn't exist at all -- only a
+    still-running machine after the retry window, or a failed `update`/`start` call,
+    counts as unreconciled, and that state is caught by the check below rather than
+    retried indefinitely within this job.
+  - **Post-deploy verification** (`scripts/verify_cron_image_digests.py`, invoked
+    from the "Verify Summer League cron image digests (post-deploy)" step, the last
+    step in the job): lists every named Summer League cron machine
+    (`summer-league-ingestion-cron`, `summer-league-desk-cron`,
+    `summer-league-roster-cron`), compares each one's current `config.image` against
+    the just-deployed app image, and **fails the workflow** (`::error::`, non-zero
+    exit) if any machine that exists is on a different image. `summer-league-desk-cron`
+    is passed with `--optional-machine` so its total *absence* (never promoted to this
+    environment) doesn't fail the check, but drift on an *existing* Desk cron machine
+    fails exactly like the other two -- there is no more silent warning-only skip for
+    image drift. Both scripts are plain read-only-except-for-flyctl Python, callable
+    the same way from CI or by a human operator locally, following the same shape as
+    `scripts/check_sl_desk_readiness.py`.
 - **Full runbook** (baseline build, manual first tick, smoke check, stage-to-prod
   promotion, rollback): `docs/plans/summer-league-desk-536-deploy-runbook.md`.
 
@@ -178,13 +210,22 @@ deploy/fly/<file>.toml` pointing at the relevant file.
   4. Deploy via `flyctl deploy --config deploy/fly/fly.prod.toml --remote-only --app draft-app-prod`
   5. Update news/Summer-League-ingestion/roster cron machines with latest app image
   6. Update the Summer League Desk cron machine's image too, unconditionally, if it
-     already exists (same as step 5) -- this does not depend on `enable_desk_cron`.
+     already exists (same as step 5) -- this does not depend on `enable_desk_cron`. If
+     the machine doesn't stop within 30 minutes, this step warns and skips instead of
+     interrupting live work.
+  6a. Reconcile: if step 6 timed out, `scripts/reconcile_cron_image.py` gets a bounded
+      10-minute second chance to wait-then-update-then-restart the Desk cron machine
+      once its in-flight tick finishes.
   7. Only when `enable_desk_cron` is `true`: run `scripts/check_sl_desk_readiness.py
      preflight` against prod (read-only); if it also passes, create the Summer League
      Desk cron machine (idempotent create-if-absent -- a no-op if step 6 already found
      it). Both the input and the preflight must hold, or this creation step is skipped
      entirely; an already-existing machine's image was still refreshed in step 6
      regardless.
+  8. Verify: `scripts/verify_cron_image_digests.py` lists every Summer League cron
+     machine and **fails the workflow** if any existing machine's image doesn't match
+     the just-deployed app image -- the closing net if steps 6/6a couldn't land the
+     Desk cron update.
 
 ### Review Apps (`.github/workflows/fly-deploy-review.yml`)
 

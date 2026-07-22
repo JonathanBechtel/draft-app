@@ -26,8 +26,10 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Optional
 
+from sqlalchemy import select as _select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import SummerLeagueCompetition
 from app.schemas.summer_league_environment import (
     SCOPE_KIND_COMPETITION,
@@ -36,7 +38,11 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentProfile,
     SummerLeagueEnvironmentSeasonMembership,
 )
-from app.services.summer_league_environment_registry import REGISTRY_VERSION
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.summer_league_environment_registry import (
+    CALCULATION_VERSION,
+    REGISTRY_VERSION,
+)
 from app.services.summer_league_environment_service import (
     competition_scope_key,
     season_scope_key,
@@ -71,6 +77,7 @@ _COMPLETE_METRICS: dict[str, Optional[float]] = {
     "close_game_share": 0.333,
     "overtime_share": 0.083,
     "team_ortg_iqr": 18.4,
+    "team_points_iqr": 12.5,
     "top_decile_minutes_share": 0.214,
     "top_decile_points_share": 0.271,
     "median_age": 22.1,
@@ -95,6 +102,7 @@ def _metrics(
             "turnover_rate",
             "assisted_fg_rate",
             "team_ortg_iqr",
+            "team_points_iqr",
             "top_decile_minutes_share",
             "top_decile_points_share",
         ):
@@ -128,6 +136,9 @@ def _profile(
     included_competitions: int = 1,
     version: int = 1,
     bump: float = 0.0,
+    starts_on: Optional[date] = None,
+    ends_on: Optional[date] = None,
+    repeat_participants: Optional[int] = None,
 ) -> SummerLeagueEnvironmentProfile:
     """Build one current profile row with coverage-consistent metric values.
 
@@ -155,6 +166,9 @@ def _profile(
             base = values[key]
             if base is not None:
                 values[key] = round(base + bump * factor, 1)
+    drafted_count = int(appeared_players * 0.55)
+    not_yet_drafted_count = int(appeared_players * 0.05)
+    undrafted_count = appeared_players - drafted_count - not_yet_drafted_count
     return SummerLeagueEnvironmentProfile(
         scope_key=scope_key,
         scope_kind=scope_kind,
@@ -162,9 +176,12 @@ def _profile(
         competition_id=competition_id,
         venue_slug=venue_slug,
         display_name=display_name,
+        starts_on=starts_on,
+        ends_on=ends_on,
         version=version,
         is_current=True,
         registry_version=REGISTRY_VERSION,
+        calculation_version=CALCULATION_VERSION,
         included_competitions=included_competitions,
         final_games=final_games,
         scheduled_games=scheduled_games,
@@ -180,13 +197,15 @@ def _profile(
         player_games=final_games * 20,
         rookie_count=int(appeared_players * 0.45),
         returner_count=appeared_players - int(appeared_players * 0.45),
-        drafted_count=int(appeared_players * 0.6),
-        undrafted_count=appeared_players - int(appeared_players * 0.6),
+        drafted_count=drafted_count,
+        undrafted_count=undrafted_count,
+        not_yet_drafted_count=not_yet_drafted_count,
         first_round_count=int(appeared_players * 0.3),
         second_round_count=int(appeared_players * 0.3),
         lottery_count=int(appeared_players * 0.15),
         teams_represented=8 if final_games else 0,
         median_age=values["median_age"],
+        repeat_participants=repeat_participants,
         calculated_at=calculated_at,
         source_watermark=calculated_at,
         **{k: v for k, v in values.items() if k != "median_age"},
@@ -198,6 +217,7 @@ def _field_comp(
     known: int,
     unknown: int,
     distribution: Optional[dict[str, int]] = None,
+    reason: Optional[str] = None,
 ) -> SummerLeagueEnvironmentFieldComposition:
     return SummerLeagueEnvironmentFieldComposition(
         profile_id=0,  # set by caller after flush
@@ -206,7 +226,26 @@ def _field_comp(
         unknown=unknown,
         total=known + unknown,
         distribution=distribution,
+        reason=reason,
     )
+
+
+# Fallback-usage disclosure reasons, matching the live aggregation's wording
+# (app.services.summer_league_environment_service._field_composition) so the
+# demo fixture reads identically to a real rebuild.
+_AGE_REFERENCE_REASON = (
+    "known = age computed at the exact competition/appearance date; unknown "
+    "= July 1 fallback used because the event date was unavailable."
+)
+_POSITION_SOURCE_REASON = (
+    "known = event-time roster/starter position; unknown = canonical "
+    "player_status position used as a labeled fallback."
+)
+_ORIGIN_REASON = (
+    "Pre-event college/international affiliation provenance is not yet "
+    "sufficient to certify this distribution in v1; disclosed as fully "
+    "unavailable rather than inferred from current biography."
+)
 
 
 async def seed_competition_context_demo(
@@ -232,6 +271,7 @@ async def seed_competition_context_demo(
             display_name="2023 Las Vegas",
             bump=-2.0,
             starts_on=date(2023, 7, 7),
+            ends_on=date(2023, 7, 17),
         ),
         "lv2024": SummerLeagueCompetition(
             year=2024,
@@ -239,6 +279,7 @@ async def seed_competition_context_demo(
             venue_slug="las_vegas",
             display_name="2024 Las Vegas",
             starts_on=date(2024, 7, 12),
+            ends_on=date(2024, 7, 22),
         ),
         "cc2024": SummerLeagueCompetition(
             year=2024,
@@ -247,6 +288,7 @@ async def seed_competition_context_demo(
             display_name="2024 California Classic",
             bump=-1.5,
             starts_on=date(2024, 7, 6),
+            ends_on=date(2024, 7, 9),
         ),
         "slc2024": SummerLeagueCompetition(
             year=2024,
@@ -254,6 +296,7 @@ async def seed_competition_context_demo(
             venue_slug="salt_lake_city",
             display_name="2024 Salt Lake City",
             starts_on=date(2024, 7, 8),
+            ends_on=date(2024, 7, 12),
         ),
         "lv2025": SummerLeagueCompetition(
             year=2025,
@@ -262,13 +305,12 @@ async def seed_competition_context_demo(
             display_name="2025 Las Vegas",
             bump=3.4,
             starts_on=date(2025, 7, 10),
+            ends_on=date(2025, 7, 20),
         ),
     }
     # Get-or-create by (year, league_id) so the demo script can re-seed a
     # throwaway database that already holds a prior run's competition rows
     # (integration tests always start from an empty schema, so this creates).
-    from sqlalchemy import select as _select
-
     for key, comp in comps.items():
         existing = (
             await session.execute(
@@ -305,6 +347,9 @@ async def seed_competition_context_demo(
         appeared_unresolved=6,
         calculated_at=now,
         included_competitions=3,
+        starts_on=date(2024, 7, 6),  # earliest of lv/cc/slc 2024
+        ends_on=date(2024, 7, 22),  # latest of lv/cc/slc 2024
+        repeat_participants=8,
     )
     # Season 2025: complete (second point for the season trend).
     profiles["season2025"] = _profile(
@@ -323,6 +368,9 @@ async def seed_competition_context_demo(
         appeared_unresolved=3,
         calculated_at=now,
         included_competitions=2,
+        starts_on=date(2025, 7, 10),
+        ends_on=date(2025, 7, 20),
+        repeat_participants=3,
     )
     # Season 2023: box-partial → pace is a visible gap in the season trend.
     profiles["season2023"] = _profile(
@@ -341,6 +389,9 @@ async def seed_competition_context_demo(
         appeared_unresolved=12,
         calculated_at=now,
         included_competitions=2,
+        starts_on=date(2023, 7, 7),
+        ends_on=date(2023, 7, 17),
+        repeat_participants=5,
     )
 
     # Competition lv2024: complete box + shot.
@@ -359,6 +410,8 @@ async def seed_competition_context_demo(
         appeared_players=120,
         appeared_unresolved=2,
         calculated_at=now,
+        starts_on=comps["lv2024"].starts_on,
+        ends_on=comps["lv2024"].ends_on,
     )
     # Competition cc2024: box-only (shot unavailable → rim metrics NULL).
     profiles["cc2024"] = _profile(
@@ -375,6 +428,8 @@ async def seed_competition_context_demo(
         appeared_players=48,
         appeared_unresolved=4,
         calculated_at=now,
+        starts_on=comps["cc2024"].starts_on,
+        ends_on=comps["cc2024"].ends_on,
     )
     # Competition slc2024: unavailable (0 final games — in-progress/empty).
     profiles["slc2024"] = _profile(
@@ -391,6 +446,8 @@ async def seed_competition_context_demo(
         appeared_players=0,
         appeared_unresolved=0,
         calculated_at=now,
+        starts_on=comps["slc2024"].starts_on,
+        ends_on=comps["slc2024"].ends_on,
     )
     # Competition lv2025: complete (venue-series point 2).
     profiles["lv2025"] = _profile(
@@ -407,6 +464,8 @@ async def seed_competition_context_demo(
         appeared_players=115,
         appeared_unresolved=1,
         calculated_at=now,
+        starts_on=comps["lv2025"].starts_on,
+        ends_on=comps["lv2025"].ends_on,
     )
     # Competition lv2023: STALE prior + box-partial gap (venue-series point 0).
     profiles["lv2023"] = _profile(
@@ -423,6 +482,8 @@ async def seed_competition_context_demo(
         appeared_players=110,
         appeared_unresolved=8,
         calculated_at=stale,  # older than STALE_AFTER_HOURS
+        starts_on=comps["lv2023"].starts_on,
+        ends_on=comps["lv2023"].ends_on,
     )
 
     for profile in profiles.values():
@@ -454,8 +515,14 @@ async def seed_competition_context_demo(
         )
 
     # --- Field composition for the detail profiles (known/unknown/total) ---
-    def add_field_comp(profile_key: str, players: int, unknown_pos: int) -> None:
+    def add_field_comp(
+        profile_key: str, players: int, unknown_pos: int, year: int
+    ) -> None:
         pid = refs.profile_ids[profile_key]
+        age_known = int(players * 0.85)
+        position_known = players - unknown_pos
+        age_ref_known = int(age_known * 0.7)
+        position_event_time = int(position_known * 0.24)  # ~event-time coverage
         rows = [
             _field_comp(
                 "draft",
@@ -465,15 +532,31 @@ async def seed_competition_context_demo(
                     "lottery": int(players * 0.15),
                     "first_round": int(players * 0.15),
                     "second_round": int(players * 0.3),
-                    "undrafted": int(players * 0.3),
+                    "undrafted": int(players * 0.25),
+                    "not_yet_drafted": int(players * 0.05),
                 },
             ),
             _field_comp(
-                "age", known=int(players * 0.85), unknown=players - int(players * 0.85)
+                "draft_class",
+                known=int(players * 0.6),
+                unknown=players - int(players * 0.6),
+                distribution={
+                    str(year - 2): int(players * 0.15),
+                    str(year - 1): int(players * 0.2),
+                    str(year): int(players * 0.15),
+                    str(year + 1): int(players * 0.1),
+                },
+            ),
+            _field_comp("age", known=age_known, unknown=players - age_known),
+            _field_comp(
+                "age_reference",
+                known=age_ref_known,
+                unknown=age_known - age_ref_known,
+                reason=_AGE_REFERENCE_REASON,
             ),
             _field_comp(
                 "position",
-                known=players - unknown_pos,
+                known=position_known,
                 unknown=unknown_pos,
                 distribution={
                     "Guards": players // 3,
@@ -482,17 +565,97 @@ async def seed_competition_context_demo(
                 },
             ),
             _field_comp(
-                "origin", known=int(players * 0.4), unknown=players - int(players * 0.4)
+                "position_source",
+                known=position_event_time,
+                unknown=position_known - position_event_time,
+                reason=_POSITION_SOURCE_REASON,
+            ),
+            _field_comp(
+                "appearance",
+                known=players,
+                unknown=0,
+                distribution={
+                    "1": int(players * 0.45),
+                    "2": int(players * 0.3),
+                    "3": int(players * 0.15),
+                    "4+": players
+                    - int(players * 0.45)
+                    - int(players * 0.3)
+                    - int(players * 0.15),
+                },
+            ),
+            _field_comp(
+                "origin",
+                known=int(players * 0.4),
+                unknown=players - int(players * 0.4),
+                reason=_ORIGIN_REASON,
             ),
         ]
         for row in rows:
             row.profile_id = pid
             session.add(row)
 
-    add_field_comp("season2024", 180, unknown_pos=40)
-    add_field_comp("lv2024", 120, unknown_pos=25)
-    add_field_comp("cc2024", 48, unknown_pos=12)
-    add_field_comp("lv2025", 115, unknown_pos=20)
+    add_field_comp("season2024", 180, unknown_pos=40, year=2024)
+    add_field_comp("lv2024", 120, unknown_pos=25, year=2024)
+    add_field_comp("cc2024", 48, unknown_pos=12, year=2024)
+    add_field_comp("lv2025", 115, unknown_pos=20, year=2025)
+
+    # --- Leaders strip fixture (contract: leaders "presentation over
+    # existing Players Explorer results") -- a handful of real
+    # SummerLeaguePlayerSeason rows tied to the lv2024 competition so the
+    # Competition Context leaders boards (and the season2024 pool, which
+    # includes every 2024 competition) have real, distinct PTS/REB/AST
+    # leaders to render and assert against. cc2024/slc2024 deliberately carry
+    # no player-season rows: cc2024's detail is box-only anyway (a natural
+    # "no leaders yet" honest-unavailable case).
+    await _seed_leaders_players(session, competition_id=refs.competition_ids["lv2024"])
 
     await session.flush()
     return refs
+
+
+async def _seed_leaders_players(session: AsyncSession, *, competition_id: int) -> None:
+    """Seed a small, deterministic PTS/REB/AST leaderboard for one competition.
+
+    Five players with distinct per-game leaders in each category (idempotent:
+    skipped if this competition already has player-season rows, so re-seeding
+    a throwaway database stays deterministic).
+    """
+    existing = (
+        await session.execute(
+            _select(SummerLeaguePlayerSeason.id)  # type: ignore[call-overload]
+            .where(SummerLeaguePlayerSeason.competition_id == competition_id)
+            .limit(1)
+        )
+    ).first()
+    if existing is not None:
+        return
+
+    # (display_name, total pts, total reb, total ast) over gp=3 games —
+    # per-game leaders: Ace Scorer (PTS, 20.0), Bo Board (REB, 10.0),
+    # Cy Dish (AST, 5.0), each clearing the Players Explorer default
+    # eligibility floor (2+ games, 60+ minutes).
+    players = (
+        ("Ace Scorer", 60, 15, 9),
+        ("Bo Board", 45, 30, 6),
+        ("Cy Dish", 30, 9, 15),
+        ("Dee Wing", 51, 12, 3),
+        ("Eli Bench", 24, 6, 3),
+    )
+    for display_name, pts, reb, ast in players:
+        player = PlayerMaster(display_name=display_name)
+        session.add(player)
+        await session.flush()
+        session.add(
+            SummerLeaguePlayerSeason(
+                competition_id=competition_id,
+                player_id=player.id,
+                year=2024,
+                venue_slug="las_vegas",
+                gp=3,
+                minutes=90.0,
+                pts=pts,
+                reb=reb,
+                ast=ast,
+            )
+        )

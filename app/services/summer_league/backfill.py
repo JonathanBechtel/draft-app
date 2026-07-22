@@ -28,7 +28,20 @@ from app.services.summer_league.player_resolution import (
 
 @dataclass(frozen=True, slots=True)
 class SummerLeagueBackfillOptions:
-    """User-selected Summer League backfill scope and behavior."""
+    """User-selected Summer League backfill scope and behavior.
+
+    Attributes:
+        include_resolution: Whether to run
+            :func:`~app.services.summer_league.player_resolution.resolve_summer_league_players`
+            as part of this call. Callers that must not hold a database
+            transaction/writer lock across candidate search's Gemini call
+            (e.g. the scheduled ingest cron) should pass ``False`` here and
+            run resolution separately via
+            :func:`~app.services.summer_league.player_resolution.prepare_summer_league_player_resolutions`
+            and
+            :func:`~app.services.summer_league.player_resolution.apply_source_player_resolution_plan`
+            in their own bounded batches.
+    """
 
     year: int
     league_id: str
@@ -37,6 +50,7 @@ class SummerLeagueBackfillOptions:
     force: bool = False
     limit_games: int | None = None
     create_stubs: bool = False
+    include_resolution: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,11 +239,15 @@ async def _run_backfill_stages(
         raw_root=options.raw_root,
         limit_games=options.limit_games,
     )
-    resolution_report = await resolve_summer_league_players(
-        db,
-        year=options.year,
-        league_id=options.league_id,
-        create_stubs=options.create_stubs,
+    resolution_report = (
+        await resolve_summer_league_players(
+            db,
+            year=options.year,
+            league_id=options.league_id,
+            create_stubs=options.create_stubs,
+        )
+        if options.include_resolution
+        else None
     )
     return SummerLeagueBackfillReport(
         year=options.year,
