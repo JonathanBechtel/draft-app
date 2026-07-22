@@ -25,6 +25,7 @@ from app.services.summer_league_explorer_service import (
 
 PACE = get_metric("pace_per_48")
 THREE_FG_PCT = get_metric("three_fg_pct")
+DISTINCT_TEAMS = get_metric("distinct_teams")
 
 
 def _view(year: int, *, pace: float | None, coverage: str = COVERAGE_COMPLETE) -> _CompetitionProfileView:
@@ -207,3 +208,60 @@ def test_venue_series_keeps_scope_kind_and_venue_slug() -> None:
     # 2024 has no profile in this venue series -> explicit gap, not omitted.
     by_year = {p.year: p for p in trend.points}
     assert by_year[2024].has_profile is False
+
+
+def test_partial_coverage_stored_metric_renders_as_gap_not_raw_value() -> None:
+    """A non-null stored column (e.g. distinct_teams) under partial coverage
+    must still render as a gap, never as if it were a complete value (codex
+    finding on PR #656: team-count trend showed a real number for a
+    box-partial profile because the raw column itself is never null)."""
+    view = _CompetitionProfileView(
+        profile_id=2023,
+        scope_key="season:2023",
+        scope_kind=SCOPE_KIND_SEASON,
+        year=2023,
+        competition_id=None,
+        venue_slug=None,
+        display_name="2023 Summer League (all competitions)",
+        version=1,
+        registry_version="test",
+        calculation_version="test",
+        raw_run_ids=None,
+        calculated_at=None,
+        source_watermark=None,
+        starts_on=None,
+        ends_on=None,
+        included_competitions=1,
+        final_games=10,
+        scheduled_games=0,
+        distinct_teams=8,
+        teams_represented=8,
+        participation_count=None,
+        player_games=60,
+        appeared_players=60,
+        appeared_unresolved=0,
+        repeat_participants=None,
+        raw_values={"distinct_teams": 8.0},
+        coverage={
+            "distinct_teams": MetricCoverageView(
+                metric_key="distinct_teams",
+                label=DISTINCT_TEAMS.label,
+                coverage=COVERAGE_PARTIAL,
+                covered=0,
+                eligible=10,
+                reason="box-partial",
+            )
+        },
+        source_coverage={},
+    )
+    trend = _build_trend(
+        "distinct_teams",
+        DISTINCT_TEAMS,
+        [view],
+        scope_kind=SCOPE_KIND_SEASON,
+        venue_slug=None,
+    )
+    assert len(trend.points) == 1
+    assert trend.points[0].value is None
+    assert trend.points[0].has_profile is True
+    assert trend.points[0].coverage == COVERAGE_PARTIAL

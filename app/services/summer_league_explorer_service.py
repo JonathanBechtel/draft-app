@@ -256,6 +256,12 @@ def _apply_appearance_filter(
     return stmt.where(ar.c.appearance_num == q.appearance)
 
 
+# Lower bound for year_min/year_max Competition Explorer filter values — well
+# before any Summer League data exists. Paired with _max_plausible_draft_class()
+# to reject implausible ranges (see the year_min/year_max clamp in parse_query).
+_MIN_PLAUSIBLE_TREND_YEAR = 2000
+
+
 def _max_plausible_draft_class() -> int:
     """Upper bound for draft-class facet/filter values.
 
@@ -2184,6 +2190,32 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
 
     year_min = _to_int_tracked("year_min", "year")
     year_max = _to_int_tracked("year_max", "year")
+    # Clamp (never drop) implausible year bounds (e.g. a hand-typed
+    # year_min=-100000000): _build_trend materializes one TrendPoint per
+    # integer year in [year_min, year_max], so an unbounded extreme value
+    # could allocate/iterate millions of points before rendering. Clamping
+    # rather than dropping to None keeps the bound restrictive rather than
+    # unbounding the query on that side — dropping would silently broaden
+    # results, the exact anti-pattern #636 forbids (e.g. a future year_min
+    # used deliberately to select an empty result must stay empty, not fall
+    # through to an unfiltered scan).
+    _max_trend_year = _max_plausible_draft_class()
+    if year_min is not None and not (
+        _MIN_PLAUSIBLE_TREND_YEAR <= year_min <= _max_trend_year
+    ):
+        clamped = min(max(year_min, _MIN_PLAUSIBLE_TREND_YEAR), _max_trend_year)
+        validation_errors.append(
+            f"'{year_min}' is outside the plausible year range and was clamped to {clamped}."
+        )
+        year_min = clamped
+    if year_max is not None and not (
+        _MIN_PLAUSIBLE_TREND_YEAR <= year_max <= _max_trend_year
+    ):
+        clamped = min(max(year_max, _MIN_PLAUSIBLE_TREND_YEAR), _max_trend_year)
+        validation_errors.append(
+            f"'{year_max}' is outside the plausible year range and was clamped to {clamped}."
+        )
+        year_max = clamped
 
     # Advanced composite sort keys (PER/ORtg/DRtg/BPM/WS/VORP) are computed by the
     # career and per_competition queries but NOT available in the per_game SELECT
@@ -4309,13 +4341,23 @@ def _build_trend(
                     )
                 )
             else:
+                metric_coverage = v.coverage[metric_key].coverage
                 points.append(
                     TrendPoint(
                         year=year,
-                        value=_scaled_registry_value(
-                            definition, v.raw_values.get(metric_key)
+                        # Some stored columns (e.g. distinct_teams) are always
+                        # non-null even when the profile's coverage for this
+                        # metric is only partial/unavailable — never scale a
+                        # raw value into a displayed point unless coverage is
+                        # complete (contract §6: partial is a gap, not a value).
+                        value=(
+                            _scaled_registry_value(
+                                definition, v.raw_values.get(metric_key)
+                            )
+                            if metric_coverage == COVERAGE_COMPLETE
+                            else None
                         ),
-                        coverage=v.coverage[metric_key].coverage,
+                        coverage=metric_coverage,
                         has_profile=True,
                     )
                 )

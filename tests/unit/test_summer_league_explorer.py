@@ -695,6 +695,43 @@ def test_parse_query_competitions_malformed_year_min_visible_year_max_preserved(
     assert any("not-a-year" in msg for msg in q.validation_errors)
 
 
+def test_parse_query_competitions_implausible_year_min_is_clamped() -> None:
+    """An absurd year_min is clamped to the plausible floor, never dropped.
+
+    _build_trend materializes one point per integer year in [year_min,
+    year_max], so an unbounded value like -100000000 would otherwise make it
+    allocate/iterate millions of TrendPoints before rendering (codex finding
+    on PR #656). Dropping the value to None would remove the lower bound
+    entirely and silently broaden the query — the exact anti-pattern #636
+    forbids — so it must be clamped, keeping the filter restrictive.
+    """
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "year_min": "-100000000",
+            "year_max": "2026",
+        }
+    )
+    assert q.year_min == 2000
+    assert q.year_max == 2026
+    assert any("-100000000" in msg for msg in q.validation_errors)
+
+
+def test_parse_query_competitions_far_future_year_max_is_clamped() -> None:
+    """A year_max far beyond any plausible data is clamped, not dropped.
+
+    Dropping it to None would unbound the upper end of the range and
+    silently broaden results (#636's forbidden anti-pattern); clamping keeps
+    it restrictive, e.g. a deliberately-empty ``year_min=2099`` query must
+    stay empty rather than falling through to every competition.
+    """
+    from datetime import date
+
+    q = parse_query({"subject": "competitions", "year_max": "9999999"})
+    assert q.year_max == date.today().year + 1
+    assert any("9999999" in msg for msg in q.validation_errors)
+
+
 def test_parse_query_competitions_malformed_min_gp_recorded() -> None:
     q = parse_query({"subject": "competitions", "min_gp": "abc"})
     assert q.min_games == 0  # degrades to the competitions default, not silently
