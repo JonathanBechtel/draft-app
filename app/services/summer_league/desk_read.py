@@ -2353,6 +2353,7 @@ async def build_desk_render_variants(
     *,
     now: Optional[datetime] = None,
     now_is_effective: bool = False,
+    scheduled_write: bool = False,
 ) -> Optional[tuple[int, list[DeskRenderVariant]]]:
     """Build the COMPLETE Preview/Live/Recap x Tracker cohort/stat-view variant matrix.
 
@@ -2398,6 +2399,8 @@ async def build_desk_render_variants(
         now_is_effective: True when the scheduled caller already resolved the
             force-date clock after acquiring its writer lock. This prevents a
             second calendar decision during snapshot materialization.
+        scheduled_write: Whether this call will persist scheduled content.
+            Production scheduled writes reject a configured historical date.
 
     Returns:
         `None` when the event is off-window (nothing to materialize -- the
@@ -2409,7 +2412,11 @@ async def build_desk_render_variants(
     """
     if now_is_effective and now is None:
         raise ValueError("now is required when now_is_effective=True")
-    resolved_now = now if now_is_effective else _effective_now(now)
+    resolved_now = (
+        now
+        if now_is_effective
+        else _effective_now(now, scheduled_write=scheduled_write)
+    )
     assert resolved_now is not None
 
     if settings.sl_desk_force_mode == "off":

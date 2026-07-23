@@ -48,7 +48,7 @@ async def test_full_metrics_rebuild_refreshes_all_desk_snapshot_variants(
     refreshed = await snapshot_materialization.materialize_desk_render_snapshots(db)
 
     assert refreshed == 2
-    build_variants.assert_awaited_once_with(db)
+    build_variants.assert_awaited_once_with(db, scheduled_write=True)
     upsert_snapshots.assert_awaited_once()
     await_args = upsert_snapshots.await_args
     assert await_args is not None
@@ -73,9 +73,9 @@ async def test_full_metrics_rebuild_skips_desk_snapshot_refresh_off_window(
         snapshot_materialization, "upsert_render_snapshots", upsert_snapshots
     )
 
-    refreshed = await snapshot_materialization.materialize_desk_render_snapshots(
-        AsyncMock()
-    )
+    db = AsyncMock()
+    refreshed = await snapshot_materialization.materialize_desk_render_snapshots(db)
 
     assert refreshed == 0
+    build_variants.assert_awaited_once_with(db, scheduled_write=True)
     upsert_snapshots.assert_not_awaited()

@@ -26,7 +26,7 @@ async def materialize_desk_render_snapshots(db: AsyncSession) -> int:
     every daily-state, cohort, and stat-view variant. The caller owns the
     surrounding transaction.
     """
-    result = await build_desk_render_variants(db)
+    result = await build_desk_render_variants(db, scheduled_write=True)
     if result is None:
         return 0
 

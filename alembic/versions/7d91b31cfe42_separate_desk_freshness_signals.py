@@ -59,6 +59,17 @@ def upgrade() -> None:
     for column in additions:
         if column.name not in pipeline_columns:
             op.add_column("summer_league_pipeline_states", column)
+    op.execute(
+        """
+        UPDATE summer_league_pipeline_states
+        SET last_completed_at = COALESCE(
+            GREATEST(last_succeeded_at, last_failure_at, last_deferred_at),
+            updated_at
+        )
+        WHERE last_completed_at IS NULL
+          AND last_outcome IS NOT NULL
+        """
+    )
 
 
 def downgrade() -> None:
