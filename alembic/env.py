@@ -11,7 +11,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from alembic import context  # type: ignore[attr-defined]
 from dotenv import load_dotenv
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 from sqlmodel import SQLModel
 
@@ -40,6 +40,13 @@ load_dotenv(env_path, override=False)
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     raise RuntimeError("DATABASE_URL is required for Alembic migrations")
+
+# A migration waiting indefinitely for a strong table lock can queue ahead of
+# public reads and exhaust every application connection. Fail the deploy step
+# quickly instead; the migration can be retried after the competing writer
+# transaction finishes. ``lock_timeout`` limits lock acquisition only, not the
+# duration of the migration once its lock has been acquired.
+MIGRATION_LOCK_TIMEOUT = os.getenv("ALEMBIC_LOCK_TIMEOUT", "10s")
 
 
 split_result = urlsplit(DB_URL)
@@ -116,6 +123,11 @@ async def run_migrations_online() -> None:
     )
 
     async with connectable.connect() as connection:
+        await connection.execute(
+            text("SELECT set_config('lock_timeout', :timeout, false)"),
+            {"timeout": MIGRATION_LOCK_TIMEOUT},
+        )
+        await connection.commit()
         await connection.run_sync(do_run_migrations)
 
     await connectable.dispose()
