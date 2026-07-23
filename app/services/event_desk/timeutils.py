@@ -1,7 +1,7 @@
 """Shared, DST-safe UTC<->US/Eastern conversions for the Event Desk state machines.
 
 The server runs UTC and every stored timestamp (`summer_league_games.tip_datetime`,
-`event_desk_state.as_of`, etc.) is naive UTC by repo convention. The one place the
+`event_desk_state.lifecycle_observed_at`, etc.) is naive UTC by repo convention. The one place the
 Event Desk framework needs a *real* timezone — not just an offset — is the
 Ledger->Morning flip's `MORNING_FLOOR = 09:00 ET` prior (behavior spec §2): Eastern
 alternates EDT/EST across the year, so a fixed UTC offset would drift by an hour

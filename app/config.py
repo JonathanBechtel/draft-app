@@ -151,10 +151,12 @@ class Settings(BaseSettings):
     )
     # Optional calendar-date override for the Desk's window resolution (same
     # framework-doc lever as `sl_desk_force_mode`). When set, every Desk
-    # request/tick resolves "today" against this date instead of the real
+    # request or explicitly allowed dev/stage tick resolves "today" against this date instead of the real
     # wall-clock date -- useful for demoing/QAing a specific day (e.g. a
-    # Wind-down Ledger) without waiting for the actual calendar. `None`
-    # (default) means "use the real current date."
+    # Wind-down Ledger) without waiting for the actual calendar. Scheduled
+    # production writes reject this override so a historical demo date can
+    # never be persisted as current content. `None` (default) means "use the
+    # real current date."
     sl_desk_force_date: Optional[date] = Field(
         default=None,
         validation_alias=AliasChoices("SL_DESK_FORCE_DATE"),

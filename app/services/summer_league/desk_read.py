@@ -17,7 +17,7 @@ and this module is careful never to conflate them:
   pure resolvers (`app.services.event_desk.lifecycle.lifecycle_phase`,
   `app.services.event_desk.state_machine.inner_state`) over `(now, today's tip
   schedule, today's game statuses)`. `event_desk_state` is read here **only** for
-  its freshness stamp (`freshness_tick_at` / `next_tick_eta`) — its own
+  its content watermark (`content_refreshed_at` / `next_tick_eta`) — its own
   `daily_state`/`lifecycle_phase` columns are never read back as the verdict. This
   is the behavior spec §2 "Resolution & data prerequisites" contract: a 7:05pm tip
   must render Live at 7:06 even if the last tick ran at 7:00 and last saw every
@@ -537,7 +537,7 @@ async def _freshness_for(
     """
     stmt = select(EventDeskState).where(EventDeskState.event_id == event_row.id)  # type: ignore[arg-type]
     state_row = (await db.execute(stmt)).scalar_one_or_none()
-    last_tick_at = state_row.freshness_tick_at if state_row else None
+    last_tick_at = state_row.content_refreshed_at if state_row else None
     next_tick_eta = state_row.next_tick_eta if state_row else None
     return _build_freshness(
         last_tick_at=last_tick_at, next_tick_eta=next_tick_eta, now=now
@@ -2070,7 +2070,9 @@ async def get_desk_payload(
     return payload
 
 
-def _effective_now(now: Optional[datetime]) -> datetime:
+def _effective_now(
+    now: Optional[datetime], *, scheduled_write: bool = False
+) -> datetime:
     """Resolve the request instant, honoring `settings.sl_desk_force_date`.
 
     `settings.sl_desk_force_date` is the framework doc's "config ... date
@@ -2085,6 +2087,9 @@ def _effective_now(now: Optional[datetime]) -> datetime:
     Args:
         now: Caller-supplied override (tests), or ``None`` to use the current
             UTC instant.
+        scheduled_write: Whether the caller is a scheduled persistence path.
+            Production writes reject a configured historical date override;
+            request previews and dev/stage demo writes may use it.
 
     Returns:
         The naive-UTC instant to resolve the Desk against.
@@ -2093,6 +2098,11 @@ def _effective_now(now: Optional[datetime]) -> datetime:
         now if now is not None else datetime.now(timezone.utc).replace(tzinfo=None)
     )
     if settings.sl_desk_force_date is not None:
+        if scheduled_write and settings.env == "prod":
+            raise RuntimeError(
+                "SL_DESK_FORCE_DATE cannot be used by a scheduled production "
+                "Desk write; use staging/demo or remove the override."
+            )
         resolved = datetime.combine(settings.sl_desk_force_date, resolved.time())
     return resolved
 
@@ -2339,7 +2349,10 @@ class DeskRenderVariant:
 
 
 async def build_desk_render_variants(
-    db: AsyncSession, *, now: Optional[datetime] = None
+    db: AsyncSession,
+    *,
+    now: Optional[datetime] = None,
+    now_is_effective: bool = False,
 ) -> Optional[tuple[int, list[DeskRenderVariant]]]:
     """Build the COMPLETE Preview/Live/Recap x Tracker cohort/stat-view variant matrix.
 
@@ -2382,6 +2395,9 @@ async def build_desk_render_variants(
         db: Active database session (caller controls the transaction; this
             function never commits).
         now: Override for "now" (tests; defaults to the current UTC instant).
+        now_is_effective: True when the scheduled caller already resolved the
+            force-date clock after acquiring its writer lock. This prevents a
+            second calendar decision during snapshot materialization.
 
     Returns:
         `None` when the event is off-window (nothing to materialize -- the
@@ -2391,7 +2407,10 @@ async def build_desk_render_variants(
         len(TRACKER_STAT_VIEWS)` entries (3 x 6 x 4 = 72 today), one per
         unique `(daily_state, tracker_cohort, tracker_stat_view)` key.
     """
-    resolved_now = _effective_now(now)
+    if now_is_effective and now is None:
+        raise ValueError("now is required when now_is_effective=True")
+    resolved_now = now if now_is_effective else _effective_now(now)
+    assert resolved_now is not None
 
     if settings.sl_desk_force_mode == "off":
         return None

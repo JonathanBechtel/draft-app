@@ -51,7 +51,9 @@ def _make_event(**overrides: object) -> Event:
 
 
 @pytest.mark.asyncio
-async def test_event_roundtrip_persists_json_and_enums(db_session: AsyncSession) -> None:
+async def test_event_roundtrip_persists_json_and_enums(
+    db_session: AsyncSession,
+) -> None:
     """An events row persists calendar_ref/window_priors json and its enums."""
     event = _make_event()
     db_session.add(event)
@@ -95,12 +97,12 @@ async def test_event_desk_state_roundtrip_and_unique_event(
 
     state = EventDeskState(
         event_id=event.id,
-        as_of=datetime(2026, 7, 12, 15, 0, 0),
+        lifecycle_observed_at=datetime(2026, 7, 12, 15, 0, 0),
         lifecycle_phase=EventLifecyclePhase.ACTIVE,
         daily_state=EventDailyState.LIVE,
         is_home_owner=True,
         hero_ref={"kind": "live_duel", "game_id": 42},
-        freshness_tick_at=datetime(2026, 7, 12, 15, 0, 0),
+        content_refreshed_at=datetime(2026, 7, 12, 15, 0, 0),
         next_tick_eta=datetime(2026, 7, 12, 16, 0, 0),
     )
     db_session.add(state)

@@ -97,21 +97,50 @@ async def get_pipeline_freshness(
     return result.scalar_one_or_none()
 
 
+async def start_pipeline(
+    db: AsyncSession,
+    *,
+    job: SummerLeaguePipelineJob,
+    job_image: str | None = None,
+    now: datetime | None = None,
+) -> SummerLeaguePipelineState:
+    """Record scheduler start time and the image executing this invocation."""
+    started_at = now or datetime.utcnow()
+    state = await _state_for(db, job)
+    state.last_started_at = started_at
+    state.last_job_image = job_image
+    state.updated_at = started_at
+    await db.flush()
+    return state
+
+
 async def complete_pipeline(
     db: AsyncSession,
     *,
     job: SummerLeaguePipelineJob,
     metrics_rebuilt: bool,
     snapshots_materialized: bool,
+    source_refreshed: bool = False,
+    source_advanced: bool = False,
+    projections_refreshed: bool = False,
+    content_updated: bool = False,
     now: datetime | None = None,
 ) -> SummerLeaguePipelineState:
-    """Mark a completed job and clear a full-ingestion recovery request."""
+    """Record scheduler success and independently advance useful-work signals."""
     completed_at = now or datetime.utcnow()
     state = await _state_for(db, job)
     state.last_outcome = SummerLeaguePipelineOutcome.SUCCEEDED
+    state.last_completed_at = completed_at
     state.last_succeeded_at = completed_at
+    state.last_content_updated = content_updated
     state.last_failure_reason = None
     state.updated_at = completed_at
+    if source_refreshed:
+        state.last_source_refreshed_at = completed_at
+    if source_advanced:
+        state.last_source_advanced_at = completed_at
+    if projections_refreshed:
+        state.last_projection_refreshed_at = completed_at
     if metrics_rebuilt:
         state.last_metrics_rebuilt_at = completed_at
     if snapshots_materialized:
@@ -134,6 +163,8 @@ async def record_pipeline_failure(
     failed_at = now or datetime.utcnow()
     state = await _state_for(db, job)
     state.last_outcome = SummerLeaguePipelineOutcome.FAILED
+    state.last_completed_at = failed_at
+    state.last_content_updated = False
     state.last_failure_at = failed_at
     state.last_failure_reason = reason
     state.updated_at = failed_at

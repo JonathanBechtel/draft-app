@@ -232,12 +232,30 @@ Must print `READY` and exit 0. Once this is green, visit https://draft-app-prod.
 and confirm the Desk actually renders on the homepage (or wherever the Event Desk
 controller currently mounts it).
 
+The readiness digest deliberately separates scheduler execution from useful work:
+
+- `scheduler` reports the scheduled image, last start/completion/outcome, and
+  `content_updated` flag.
+- `source_freshness` reports the last successful source observation and the last
+  run where source rows actually advanced.
+- `freshness` reads only `event_desk_state.content_refreshed_at`, the successful
+  projection watermark.
+- `render_snapshots` reports the newest snapshot watermark and requires the full
+  variant matrix only while the event lifecycle is Active or Wind-down.
+
+A dormant/off-window run is healthy when `scheduler` passes with
+`content_updated=false`; source, projection, and snapshot checks report intentional
+inactivity. It must not advance any of those three content watermarks. During an
+active window, all three watermarks must be within `--staleness-hours`, and the
+scheduled machine image must still be verified with
+`scripts/verify_cron_image_digests.py`.
+
 ---
 
 ## Rollback
 
 Stopping the machine halts future ticks immediately; `event_desk_state` simply stops
-refreshing (its `freshness_tick_at` will go stale, which the existing UI freshness
+refreshing (its `content_refreshed_at` will go stale, which the existing UI freshness
 handling is expected to render honestly — nothing else needs to be undone, since every
 Desk table is a rebuildable read-model projection, never a source of truth).
 

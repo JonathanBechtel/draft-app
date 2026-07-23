@@ -430,6 +430,36 @@ async def test_tick_materializes_full_matrix_and_rerun_updates_without_duplicate
     for key, updated_at in updated_at_by_key_2.items():
         assert updated_at > updated_at_by_key_1[key]
 
+    state_before_dormant = (
+        await db_session.execute(select(EventDeskState))
+    ).scalar_one()
+    content_refreshed_at = state_before_dormant.content_refreshed_at
+    next_tick_eta = state_before_dormant.next_tick_eta
+    lifecycle_observed_at = state_before_dormant.lifecycle_observed_at
+
+    dormant = await run_desk_tick(
+        db_session, now=datetime(2099, 1, 15, 12, 0), raw_root=tmp_path
+    )
+    await db_session.commit()
+
+    assert dormant.dormant is True
+    assert dormant.content_updated is False
+    assert dormant.materialized_variant_count == 0
+    db_session.expire_all()
+    state_after_dormant = (
+        await db_session.execute(select(EventDeskState))
+    ).scalar_one()
+    assert state_after_dormant.content_refreshed_at == content_refreshed_at
+    assert state_after_dormant.next_tick_eta == next_tick_eta
+    assert state_after_dormant.lifecycle_observed_at == lifecycle_observed_at
+    rows_after_dormant = (
+        (await db_session.execute(select(EventDeskRenderSnapshot))).scalars().all()
+    )
+    assert {
+        (r.daily_state, r.tracker_cohort, r.tracker_stat_view): r.updated_at
+        for r in rows_after_dormant
+    } == updated_at_by_key_2
+
 
 # --------------------------------------------------------------------------- #
 # 3. Upstream failure preserves prior snapshots/freshness
@@ -498,7 +528,7 @@ async def test_upstream_failure_preserves_prior_render_snapshots(
         for r in rows_before
     }
     state_before = (await db_session.execute(select(EventDeskState))).scalar_one()
-    freshness_tick_at_before = state_before.freshness_tick_at
+    freshness_tick_at_before = state_before.content_refreshed_at
 
     # Tick #2: the scheduled game is now inside the live-refresh window, and
     # its required season leaguegamelog fetch fails outright (404). The tick
@@ -534,7 +564,7 @@ async def test_upstream_failure_preserves_prior_render_snapshots(
     )
 
     state_after = (await db_session.execute(select(EventDeskState))).scalar_one()
-    assert state_after.freshness_tick_at == freshness_tick_at_before, (
+    assert state_after.content_refreshed_at == freshness_tick_at_before, (
         "a failed tick must never advance freshness either"
     )
 
