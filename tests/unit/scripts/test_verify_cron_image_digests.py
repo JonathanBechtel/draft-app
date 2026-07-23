@@ -27,6 +27,7 @@ from scripts.verify_cron_image_digests import (
 
 CURRENT_IMAGE = "registry.fly.io/draft-app-prod:deployment-01CURRENT"
 STALE_IMAGE = "registry.fly.io/draft-app-prod:deployment-00STALE"
+CURRENT_IMAGE_WITH_DIGEST = f"{CURRENT_IMAGE}@sha256:{'a' * 64}"
 
 
 def _app_machine() -> dict[str, Any]:
@@ -85,6 +86,42 @@ def test_build_machine_statuses_reports_match_and_drift() -> None:
     assert by_name["summer-league-desk-cron"].matches is False
     assert by_name["summer-league-desk-cron"].current_image == STALE_IMAGE
     assert by_name["summer-league-desk-cron"].expected_image == CURRENT_IMAGE
+
+
+def test_build_machine_statuses_matches_fly_digest_qualified_cron_image() -> None:
+    """Fly's tag@digest cron form matches the app machine's equivalent bare tag."""
+    machines = [
+        _app_machine(),
+        {
+            "name": "summer-league-ingestion-cron",
+            "config": {"image": CURRENT_IMAGE_WITH_DIGEST, "metadata": {}},
+        },
+    ]
+
+    [status] = build_machine_statuses(
+        machines, ["summer-league-ingestion-cron"]
+    )
+
+    assert status.matches is True
+
+
+def test_build_machine_statuses_rejects_two_different_explicit_digests() -> None:
+    """Two explicit digests for one tag remain a real drift signal."""
+    app_machine = _app_machine()
+    app_machine["config"]["image"] = f"{CURRENT_IMAGE}@sha256:{'b' * 64}"
+    machines = [
+        app_machine,
+        {
+            "name": "summer-league-ingestion-cron",
+            "config": {"image": CURRENT_IMAGE_WITH_DIGEST, "metadata": {}},
+        },
+    ]
+
+    [status] = build_machine_statuses(
+        machines, ["summer-league-ingestion-cron"]
+    )
+
+    assert status.matches is False
 
 
 def test_build_machine_statuses_reports_missing_machine() -> None:

@@ -64,6 +64,25 @@ class FlyctlError(RuntimeError):
     """Raised when ``flyctl machine list`` cannot be run or its output parsed."""
 
 
+def _images_match(current_image: str, expected_image: str) -> bool:
+    """Compare equivalent Fly image references with optional digest suffixes.
+
+    ``flyctl machine list --json`` can report the app machine as ``repo:tag``
+    while reporting a cron machine updated to that exact image as
+    ``repo:tag@sha256:digest``. The unique deployment tag is sufficient when
+    only one side includes a digest; when both sides include digests, retain
+    strict comparison so a real digest mismatch is still detected.
+    """
+    if current_image == expected_image:
+        return True
+
+    current_ref, current_separator, _ = current_image.partition("@")
+    expected_ref, expected_separator, _ = expected_image.partition("@")
+    return current_ref == expected_ref and (
+        not current_separator or not expected_separator
+    )
+
+
 @dataclass(frozen=True)
 class MachineImageStatus:
     """One machine's image-digest comparison result."""
@@ -80,7 +99,7 @@ class MachineImageStatus:
             self.found
             and self.current_image is not None
             and self.expected_image is not None
-            and self.current_image == self.expected_image
+            and _images_match(self.current_image, self.expected_image)
         )
 
 
