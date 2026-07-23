@@ -550,7 +550,7 @@ async def _check_render_snapshots(
 async def _resolve_lifecycle(
     db: AsyncSession, *, now: datetime, event_key: str
 ) -> EventLifecyclePhase | None:
-    """Resolve current lifecycle from canonical schedule assertions."""
+    """Resolve lifecycle from games, falling back to configured date assertions."""
     event = (
         await db.execute(select(Event).where(Event.key == event_key))  # type: ignore[arg-type]
     ).scalar_one_or_none()
@@ -565,11 +565,31 @@ async def _resolve_lifecycle(
     facts = await calendar_facts_for_competition_ids(
         db, competition_ids=competition_ids, today=to_eastern_date(now)
     )
+    game_dates = list(facts.game_dates)
+    if not game_dates and competition_ids:
+        competitions = (
+            (
+                await db.execute(
+                    select(SummerLeagueCompetition).where(
+                        SummerLeagueCompetition.id.in_(competition_ids)  # type: ignore[union-attr]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for competition in competitions:
+            if competition.starts_on is None or competition.ends_on is None:
+                continue
+            current = competition.starts_on
+            while current <= competition.ends_on:
+                game_dates.append(current)
+                current += timedelta(days=1)
     desk_event = DeskEvent(
         key=event.key,
         priority=event.priority,
         window_priors=WindowPriors.from_dict(event.window_priors),
-        game_dates=facts.game_dates,
+        game_dates=tuple(game_dates),
     )
     return lifecycle_phase(now, desk_event)
 

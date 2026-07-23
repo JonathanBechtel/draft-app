@@ -1280,7 +1280,7 @@ async def run_desk_tick(
         dormant=False,
         daily_state=daily_state,
         content_updated=True,
-        source_refreshed=True,
+        source_refreshed=not scoreboard_report.errors,
         source_advanced=(
             bool(normalized_ids)
             or bool(live_refresh_report.written)

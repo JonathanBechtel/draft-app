@@ -690,6 +690,8 @@ async def test_post_tick_dormant_scheduler_success_is_intentional_inactivity(
 ) -> None:
     """Dormant success passes without fabricating content or snapshot freshness."""
     competition = await _seed_competition(db_session, year=_NOW.year)
+    competition.starts_on = date(_NOW.year, 9, 1)
+    competition.ends_on = date(_NOW.year, 9, 20)
     await _seed_all_required_baselines(db_session)
     await _seed_event(db_session, competition=competition, active_window=False)
     db_session.add(
@@ -712,6 +714,35 @@ async def test_post_tick_dormant_scheduler_success_is_intentional_inactivity(
     assert _result_for(report, "source_freshness").status == ReadinessStatus.SKIP
     assert _result_for(report, "freshness").status == ReadinessStatus.SKIP
     assert _result_for(report, "render_snapshots").status == ReadinessStatus.SKIP
+
+
+async def test_post_tick_missing_games_uses_configured_active_window(
+    db_session: AsyncSession,
+) -> None:
+    """Failed bootstrap data cannot disguise an active configured window as dormant."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    await _seed_event(db_session, competition=competition, active_window=False)
+    db_session.add(
+        SummerLeaguePipelineState(
+            job=SummerLeaguePipelineJob.DESK,
+            last_outcome=SummerLeaguePipelineOutcome.SUCCEEDED,
+            last_started_at=_NOW,
+            last_completed_at=_NOW,
+            last_job_image="registry/app:missing-bootstrap",
+            last_succeeded_at=_NOW,
+            last_content_updated=False,
+        )
+    )
+    await db_session.commit()
+
+    report = await build_readiness_report(db_session, mode="post-tick", now=_NOW)
+
+    assert report.ok is False
+    assert _result_for(report, "scheduler").status == ReadinessStatus.FAIL
+    assert _result_for(report, "source_freshness").status == ReadinessStatus.FAIL
+    assert _result_for(report, "freshness").status == ReadinessStatus.FAIL
+    assert _result_for(report, "render_snapshots").status == ReadinessStatus.FAIL
 
 
 async def test_post_tick_active_stale_source_watermark_fails(

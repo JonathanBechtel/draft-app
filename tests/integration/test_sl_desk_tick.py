@@ -1162,6 +1162,47 @@ async def test_desk_tick_optional_pbp_or_shotchart_failure_does_not_abort(
     assert len(states) >= 1
 
 
+async def test_desk_tick_scoreboard_error_does_not_advance_source_freshness(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A partial active tick can update projections without claiming a clean source read."""
+    year = 2026
+    competition = await _seed_competition(db_session, year=year, league_id="15")
+    home = await _seed_team(db_session, competition)
+    away = await _seed_team(db_session, competition)
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 18, 0),
+        status=SummerLeagueGameStatus.FINAL,
+    )
+    await _seed_baseline(db_session, baseline_version="sl-desk-source-error-v1")
+    await db_session.commit()
+
+    session = SequencedFakeSession(
+        {
+            ("scheduleleaguev2", ""): [FakeResponse({}, status_code=404)],
+        }
+    )
+    client = NBAStatsClient(session=session)
+
+    result = await run_desk_tick(
+        db_session,
+        now=datetime(2026, 7, 10, 20, 0),
+        raw_root=tmp_path,
+        client=client,
+    )
+
+    assert result.scoreboard_report is not None
+    assert result.scoreboard_report.errors
+    assert result.content_updated is True
+    assert result.source_refreshed is False
+
+
 async def test_desk_tick_bounded_lock_wait_times_out_when_writer_lock_is_held(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
