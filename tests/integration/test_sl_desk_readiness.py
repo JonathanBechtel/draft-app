@@ -41,11 +41,20 @@ from app.schemas.event_desk import (
     EventType,
 )
 from app.schemas.event_desk_render_snapshot import EventDeskRenderSnapshot
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeagueGameStatus,
+)
 from app.schemas.summer_league_desk import (
     SummerLeagueCohortBaseline,
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
+)
+from app.schemas.summer_league_pipeline import (
+    SummerLeaguePipelineJob,
+    SummerLeaguePipelineOutcome,
+    SummerLeaguePipelineState,
 )
 from app.services.event_desk.render_snapshots import CURRENT_SCHEMA_VERSION
 from app.services.summer_league.scoreboard_ingest import EVENT_KEY_SUMMER_LEAGUE
@@ -111,6 +120,7 @@ async def _seed_event(
     *,
     competition: SummerLeagueCompetition,
     empty_calendar_ref: bool = False,
+    active_window: bool = True,
 ) -> Event:
     assert competition.id is not None
     event = Event(
@@ -129,6 +139,17 @@ async def _seed_event(
     db.add(event)
     await db.flush()
     assert event.id is not None
+    if active_window:
+        db.add(
+            SummerLeagueGame(
+                competition_id=competition.id,
+                nba_stats_game_id="readiness-active-game",
+                game_date=_NOW.date(),
+                tip_datetime=_NOW,
+                status=SummerLeagueGameStatus.IN_PROGRESS,
+            )
+        )
+        await db.flush()
     return event
 
 
@@ -138,14 +159,29 @@ async def _seed_state(
     assert event.id is not None
     state = EventDeskState(
         event_id=event.id,
-        as_of=freshness_tick_at,
+        lifecycle_observed_at=freshness_tick_at,
         lifecycle_phase=EventLifecyclePhase.ACTIVE,
         daily_state=None,
         is_home_owner=True,
-        freshness_tick_at=freshness_tick_at,
+        content_refreshed_at=freshness_tick_at,
         next_tick_eta=freshness_tick_at + timedelta(hours=1),
     )
     db.add(state)
+    db.add(
+        SummerLeaguePipelineState(
+            job=SummerLeaguePipelineJob.DESK,
+            last_outcome=SummerLeaguePipelineOutcome.SUCCEEDED,
+            last_started_at=freshness_tick_at,
+            last_completed_at=freshness_tick_at,
+            last_job_image="registry/app:test",
+            last_succeeded_at=freshness_tick_at,
+            last_source_refreshed_at=freshness_tick_at,
+            last_source_advanced_at=freshness_tick_at,
+            last_projection_refreshed_at=freshness_tick_at,
+            last_snapshots_materialized_at=freshness_tick_at,
+            last_content_updated=True,
+        )
+    )
     await db.flush()
     return state
 
@@ -163,6 +199,7 @@ async def _seed_render_snapshot(
         schema_version=schema_version,
         payload_json=None,
         view_context_json={},
+        updated_at=_NOW,
     )
     db.add(snapshot)
     await db.flush()
@@ -195,6 +232,7 @@ async def _seed_full_render_snapshot_matrix(
                 schema_version=schema_version,
                 payload_json=None,
                 view_context_json={},
+                updated_at=_NOW,
             )
         )
     await db.flush()
@@ -525,6 +563,40 @@ async def test_post_tick_full_render_snapshot_matrix_passes(
     assert str(len(EXPECTED_RENDER_VARIANTS)) in snapshots.message
 
 
+async def test_post_tick_stale_variant_cannot_hide_behind_newer_snapshot(
+    db_session: AsyncSession,
+) -> None:
+    """Every required variant must be fresh, not merely the newest matrix row."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await _seed_state(db_session, event=event, freshness_tick_at=_NOW)
+    await _seed_full_render_snapshot_matrix(db_session, event=event)
+    assert event.id is not None
+    stale_variant = next(iter(EXPECTED_RENDER_VARIANTS))
+    daily_state, cohort, stat_view = stale_variant
+    row = (
+        await db_session.execute(
+            select(EventDeskRenderSnapshot).where(
+                EventDeskRenderSnapshot.event_id == event.id,
+                EventDeskRenderSnapshot.daily_state == daily_state,
+                EventDeskRenderSnapshot.tracker_cohort == cohort,
+                EventDeskRenderSnapshot.tracker_stat_view == stat_view,
+            )
+        )
+    ).scalar_one()
+    row.updated_at = _NOW - timedelta(hours=5)
+    await db_session.commit()
+
+    report = await build_readiness_report(
+        db_session, mode="post-tick", now=_NOW, staleness_hours=2.0
+    )
+
+    snapshots = _result_for(report, "render_snapshots")
+    assert snapshots.status == ReadinessStatus.FAIL
+    assert "oldest required snapshot watermark" in snapshots.message
+
+
 async def test_preflight_render_snapshots_zero_is_skip(
     db_session: AsyncSession,
 ) -> None:
@@ -611,3 +683,112 @@ async def test_preflight_stale_freshness_is_skip_not_fail(
     assert _result_for(report, "baselines").status == ReadinessStatus.PASS
 
     await _assert_no_writes(db_session, before=before)
+
+
+async def test_post_tick_dormant_scheduler_success_is_intentional_inactivity(
+    db_session: AsyncSession,
+) -> None:
+    """Dormant success passes without fabricating content or snapshot freshness."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    competition.starts_on = date(_NOW.year, 9, 1)
+    competition.ends_on = date(_NOW.year, 9, 20)
+    await _seed_all_required_baselines(db_session)
+    await _seed_event(db_session, competition=competition, active_window=False)
+    db_session.add(
+        SummerLeaguePipelineState(
+            job=SummerLeaguePipelineJob.DESK,
+            last_outcome=SummerLeaguePipelineOutcome.SUCCEEDED,
+            last_started_at=_NOW,
+            last_completed_at=_NOW,
+            last_job_image="registry/app:dormant",
+            last_succeeded_at=_NOW,
+            last_content_updated=False,
+        )
+    )
+    await db_session.commit()
+
+    report = await build_readiness_report(db_session, mode="post-tick", now=_NOW)
+
+    assert report.ok is True
+    assert _result_for(report, "scheduler").status == ReadinessStatus.PASS
+    assert _result_for(report, "source_freshness").status == ReadinessStatus.SKIP
+    assert _result_for(report, "freshness").status == ReadinessStatus.SKIP
+    assert _result_for(report, "render_snapshots").status == ReadinessStatus.SKIP
+
+
+async def test_post_tick_missing_games_uses_configured_active_window(
+    db_session: AsyncSession,
+) -> None:
+    """Failed bootstrap data cannot disguise an active configured window as dormant."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    await _seed_event(db_session, competition=competition, active_window=False)
+    db_session.add(
+        SummerLeaguePipelineState(
+            job=SummerLeaguePipelineJob.DESK,
+            last_outcome=SummerLeaguePipelineOutcome.SUCCEEDED,
+            last_started_at=_NOW,
+            last_completed_at=_NOW,
+            last_job_image="registry/app:missing-bootstrap",
+            last_succeeded_at=_NOW,
+            last_content_updated=False,
+        )
+    )
+    await db_session.commit()
+
+    report = await build_readiness_report(db_session, mode="post-tick", now=_NOW)
+
+    assert report.ok is False
+    assert _result_for(report, "scheduler").status == ReadinessStatus.FAIL
+    assert _result_for(report, "source_freshness").status == ReadinessStatus.FAIL
+    assert _result_for(report, "freshness").status == ReadinessStatus.FAIL
+    assert _result_for(report, "render_snapshots").status == ReadinessStatus.FAIL
+
+
+async def test_post_tick_active_stale_source_watermark_fails(
+    db_session: AsyncSession,
+) -> None:
+    """A recent projection cannot hide stale active-window source ingestion."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await _seed_state(db_session, event=event, freshness_tick_at=_NOW)
+    await _seed_full_render_snapshot_matrix(db_session, event=event)
+    pipeline = (
+        await db_session.execute(select(SummerLeaguePipelineState))
+    ).scalar_one()
+    pipeline.last_source_refreshed_at = _NOW - timedelta(hours=5)
+    await db_session.commit()
+
+    report = await build_readiness_report(
+        db_session, mode="post-tick", now=_NOW, staleness_hours=2.0
+    )
+
+    assert report.ok is False
+    assert _result_for(report, "scheduler").status == ReadinessStatus.PASS
+    source = _result_for(report, "source_freshness")
+    assert source.status == ReadinessStatus.FAIL
+    assert "source_refreshed_at" in source.message
+
+
+async def test_post_tick_newer_unfinished_scheduler_run_fails(
+    db_session: AsyncSession,
+) -> None:
+    """A newer start without completion cannot inherit the prior successful outcome."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await _seed_state(db_session, event=event, freshness_tick_at=_NOW)
+    await _seed_full_render_snapshot_matrix(db_session, event=event)
+    pipeline = (
+        await db_session.execute(select(SummerLeaguePipelineState))
+    ).scalar_one()
+    pipeline.last_completed_at = _NOW - timedelta(minutes=5)
+    pipeline.last_started_at = _NOW
+    await db_session.commit()
+
+    report = await build_readiness_report(db_session, mode="post-tick", now=_NOW)
+
+    scheduler = _result_for(report, "scheduler")
+    assert scheduler.status == ReadinessStatus.FAIL
+    assert "incomplete_newer_run=true" in scheduler.message

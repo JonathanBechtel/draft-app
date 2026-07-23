@@ -30,6 +30,7 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import settings
 from app.schemas.event_desk import (
     Event,
     EventDailyState,
@@ -482,7 +483,7 @@ async def test_desk_tick_writes_t2_t3_t4_and_event_desk_state_and_is_idempotent(
     state = await _event_desk_state_for(db_session)
     assert state.lifecycle_phase == EventLifecyclePhase.ACTIVE
     assert state.daily_state == EventDailyState.RECAP
-    assert state.freshness_tick_at == now
+    assert state.content_refreshed_at == now
 
     # Re-running over identical data must not duplicate T2/T3/T4 rows.
     second_session = FakeSession({"15": FakeResponse(_empty_schedule_payload())})
@@ -590,10 +591,76 @@ async def test_desk_tick_off_window_is_a_no_op(db_session: AsyncSession) -> None
     ).scalars().all() == []
     assert (await db_session.execute(select(SummerLeagueGame))).scalars().all() == []
 
-    state = await _event_desk_state_for(db_session)
-    assert state.lifecycle_phase == EventLifecyclePhase.DORMANT
-    assert state.daily_state is None
-    assert state.freshness_tick_at == now
+    assert (await db_session.execute(select(EventDeskState))).scalars().all() == []
+    assert result.event_desk_states == ()
+    assert result.materialized_variant_count == 0
+    assert result.content_updated is False
+
+
+async def test_tick_precheck_treats_winddown_as_content_active(
+    db_session: AsyncSession,
+) -> None:
+    """The post-roll window resolves to Recap instead of the dormant no-op path."""
+    game_day = date(2026, 7, 20)
+    competition = await _seed_competition(db_session, year=game_day.year)
+    home = await _seed_team(db_session, competition)
+    away = await _seed_team(db_session, competition)
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=game_day,
+        tip_datetime=datetime(2026, 7, 20, 20, 0),
+        status=SummerLeagueGameStatus.FINAL,
+    )
+
+    daily_state = await desk_tick_module._resolve_daily_state(
+        db_session, now=datetime(2026, 7, 21, 16, 0)
+    )
+
+    assert daily_state == EventDailyState.RECAP
+
+
+async def test_force_date_uses_one_effective_clock_for_entire_staging_tick(
+    db_session: AsyncSession,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A QA force date cannot be dormant at orchestration and active at snapshots."""
+    execution_time = datetime(2099, 1, 15, 20, 0)
+    effective_date = date(2026, 7, 10)
+    monkeypatch.setattr(settings, "env", "stage")
+    monkeypatch.setattr(settings, "sl_desk_force_date", effective_date)
+    competition = await _seed_competition(db_session, year=effective_date.year)
+    home = await _seed_team(db_session, competition)
+    away = await _seed_team(db_session, competition)
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=effective_date,
+        tip_datetime=datetime(2026, 7, 10, 18, 0),
+        status=SummerLeagueGameStatus.FINAL,
+    )
+    await _seed_baseline(db_session, baseline_version="force-date-clock-v1")
+    await db_session.commit()
+
+    result = await run_desk_tick(
+        db_session,
+        now=execution_time,
+        raw_root=tmp_path,
+        client=NBAStatsClient(
+            session=FakeSession({"15": FakeResponse(_empty_schedule_payload())})
+        ),
+    )
+
+    assert result.executed_at == execution_time
+    assert result.now == datetime(2026, 7, 10, 20, 0)
+    assert result.dormant is False
+    assert result.content_updated is True
+    assert result.materialized_variant_count == 72
 
 
 async def test_desk_tick_writer_lock_wait_ms_is_a_distinct_telemetry_field(
@@ -667,8 +734,7 @@ async def test_desk_tick_reads_runtime_clock_after_writer_lock(
     await db_session.commit()
 
     assert result.now == post_lock_now
-    state = await _event_desk_state_for(db_session)
-    assert state.freshness_tick_at == post_lock_now
+    assert (await db_session.execute(select(EventDeskState))).scalars().all() == []
 
 
 async def test_desk_tick_bootstraps_scoreboard_on_first_morning_with_no_games_yet(
@@ -775,9 +841,8 @@ async def test_desk_tick_far_off_competition_stays_dormant_without_bootstrap(
     assert result.daily_state is None
     assert (await db_session.execute(select(SummerLeagueGame))).scalars().all() == []
 
-    state = await _event_desk_state_for(db_session)
-    assert state.lifecycle_phase == EventLifecyclePhase.DORMANT
-    assert state.daily_state is None
+    assert (await db_session.execute(select(EventDeskState))).scalars().all() == []
+    assert result.content_updated is False
 
 
 async def test_desk_tick_two_sequential_ticks_over_real_schedule_never_finalize_a_scheduled_game(
@@ -1095,6 +1160,47 @@ async def test_desk_tick_optional_pbp_or_shotchart_failure_does_not_abort(
     assert result.live_refresh_report.errors >= 1
     states = (await db_session.execute(select(EventDeskState))).scalars().all()
     assert len(states) >= 1
+
+
+async def test_desk_tick_scoreboard_error_does_not_advance_source_freshness(
+    db_session: AsyncSession,
+    tmp_path: Path,
+) -> None:
+    """A partial active tick can update projections without claiming a clean source read."""
+    year = 2026
+    competition = await _seed_competition(db_session, year=year, league_id="15")
+    home = await _seed_team(db_session, competition)
+    away = await _seed_team(db_session, competition)
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 18, 0),
+        status=SummerLeagueGameStatus.FINAL,
+    )
+    await _seed_baseline(db_session, baseline_version="sl-desk-source-error-v1")
+    await db_session.commit()
+
+    session = SequencedFakeSession(
+        {
+            ("scheduleleaguev2", ""): [FakeResponse({}, status_code=404)],
+        }
+    )
+    client = NBAStatsClient(session=session)
+
+    result = await run_desk_tick(
+        db_session,
+        now=datetime(2026, 7, 10, 20, 0),
+        raw_root=tmp_path,
+        client=client,
+    )
+
+    assert result.scoreboard_report is not None
+    assert result.scoreboard_report.errors
+    assert result.content_updated is True
+    assert result.source_refreshed is False
 
 
 async def test_desk_tick_bounded_lock_wait_times_out_when_writer_lock_is_held(

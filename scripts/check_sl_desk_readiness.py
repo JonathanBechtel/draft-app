@@ -85,14 +85,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv()
 
-from app.schemas.event_desk import Event, EventDailyState, EventDeskState  # noqa: E402
+from app.schemas.event_desk import (  # noqa: E402
+    Event,
+    EventDailyState,
+    EventDeskState,
+    EventLifecyclePhase,
+)
 from app.schemas.event_desk_render_snapshot import EventDeskRenderSnapshot  # noqa: E402
 from app.schemas.summer_league import SummerLeagueCompetition  # noqa: E402
+from app.schemas.summer_league_pipeline import (  # noqa: E402
+    SummerLeaguePipelineJob,
+    SummerLeaguePipelineOutcome,
+)
 from app.schemas.summer_league_desk import (  # noqa: E402
     SummerLeagueCohortBaseline,
     SummerLeagueDeskGrain,
 )
 from app.services.event_desk.render_snapshots import CURRENT_SCHEMA_VERSION  # noqa: E402
+from app.services.event_desk.lifecycle import lifecycle_phase  # noqa: E402
+from app.services.event_desk.registry import (  # noqa: E402
+    DeskEvent,
+    WindowPriors,
+    calendar_facts_for_competition_ids,
+)
 from app.services.event_desk.timeutils import to_eastern_date  # noqa: E402
 from app.services.summer_league.desk_read import (  # noqa: E402
     DESK_RENDER_DAILY_STATES,
@@ -102,6 +117,7 @@ from app.services.summer_league.desk_read import (  # noqa: E402
 from app.services.summer_league.scoreboard_ingest import (  # noqa: E402
     EVENT_KEY_SUMMER_LEAGUE,
 )
+from app.services.summer_league.pipeline_state import get_pipeline_freshness  # noqa: E402
 from app.utils.db_async import SessionLocal, engine  # noqa: E402
 
 ReadinessMode = Literal["preflight", "post-tick"]
@@ -255,6 +271,7 @@ async def _check_freshness(
     now: datetime,
     event_key: str,
     staleness_hours: float,
+    lifecycle: EventLifecyclePhase | None,
 ) -> CheckResult:
     """Category 3 -- event_desk_state carries a recent freshness stamp.
 
@@ -269,6 +286,20 @@ async def _check_freshness(
     block creating the very cron that would refresh it. Only ``post-tick`` mode fails
     on staleness, since that IS the point of running it.
     """
+    if lifecycle not in {
+        EventLifecyclePhase.ACTIVE,
+        EventLifecyclePhase.WINDDOWN,
+    }:
+        phase = lifecycle.value if lifecycle is not None else "unknown"
+        return CheckResult(
+            category="freshness",
+            status=ReadinessStatus.SKIP,
+            message=(
+                f"Lifecycle is {phase}; content is intentionally inactive and "
+                "a dormant scheduler success is not a content refresh."
+            ),
+        )
+
     event_stmt = select(Event).where(
         Event.key == event_key,  # type: ignore[arg-type]
         Event.is_active.is_(True),  # type: ignore[attr-defined]
@@ -311,7 +342,16 @@ async def _check_freshness(
             ),
         )
 
-    age = now - state.freshness_tick_at
+    if state.content_refreshed_at is None:
+        return CheckResult(
+            category="freshness",
+            status=(
+                ReadinessStatus.FAIL if mode == "post-tick" else ReadinessStatus.SKIP
+            ),
+            message="No successful content refresh has been recorded for this event.",
+        )
+
+    age = now - state.content_refreshed_at
     threshold = timedelta(hours=staleness_hours)
     if age > threshold:
         if mode != "post-tick":
@@ -319,8 +359,8 @@ async def _check_freshness(
                 category="freshness",
                 status=ReadinessStatus.SKIP,
                 message=(
-                    f"event_desk_state.freshness_tick_at="
-                    f"{state.freshness_tick_at.isoformat()} is stale ({age} old, "
+                    f"event_desk_state.content_refreshed_at="
+                    f"{state.content_refreshed_at.isoformat()} is stale ({age} old, "
                     f"exceeds {staleness_hours}h threshold as of {now.isoformat()}), "
                     "but staleness isn't gated pre-tick; skipping so a stale prior "
                     "state never blocks enabling the cron that would refresh it."
@@ -330,8 +370,8 @@ async def _check_freshness(
             category="freshness",
             status=ReadinessStatus.FAIL,
             message=(
-                f"event_desk_state.freshness_tick_at="
-                f"{state.freshness_tick_at.isoformat()} is stale ({age} old, exceeds "
+                f"event_desk_state.content_refreshed_at="
+                f"{state.content_refreshed_at.isoformat()} is stale ({age} old, exceeds "
                 f"{staleness_hours}h threshold as of {now.isoformat()})."
             ),
         )
@@ -339,14 +379,20 @@ async def _check_freshness(
         category="freshness",
         status=ReadinessStatus.PASS,
         message=(
-            f"event_desk_state fresh as of {state.freshness_tick_at.isoformat()} "
+            f"content projection refreshed at {state.content_refreshed_at.isoformat()} "
             f"({age} old)."
         ),
     )
 
 
 async def _check_render_snapshots(
-    db: AsyncSession, *, mode: ReadinessMode, event_key: str
+    db: AsyncSession,
+    *,
+    mode: ReadinessMode,
+    event_key: str,
+    now: datetime,
+    staleness_hours: float,
+    lifecycle: EventLifecyclePhase | None,
 ) -> CheckResult:
     """Category 4 -- render snapshots.
 
@@ -364,6 +410,20 @@ async def _check_render_snapshots(
     matrix (naming what's missing), or any present snapshot at a stale
     ``schema_version``.
     """
+    if lifecycle not in {
+        EventLifecyclePhase.ACTIVE,
+        EventLifecyclePhase.WINDDOWN,
+    }:
+        phase = lifecycle.value if lifecycle is not None else "unknown"
+        return CheckResult(
+            category="render_snapshots",
+            status=ReadinessStatus.SKIP,
+            message=(
+                f"Lifecycle is {phase}; snapshot materialization is "
+                "intentionally inactive."
+            ),
+        )
+
     event_stmt = select(Event).where(
         Event.key == event_key,  # type: ignore[arg-type]
         Event.is_active.is_(True),  # type: ignore[attr-defined]
@@ -427,7 +487,24 @@ async def _check_render_snapshots(
     missing = EXPECTED_RENDER_VARIANTS - present
     stale = [s for s in snapshots if s.schema_version != CURRENT_SCHEMA_VERSION]
 
-    if missing or stale:
+    required_snapshots = [
+        snapshot
+        for snapshot in snapshots
+        if (
+            snapshot.daily_state,
+            snapshot.tracker_cohort,
+            snapshot.tracker_stat_view,
+        )
+        in EXPECTED_RENDER_VARIANTS
+    ]
+    oldest_snapshot = min(
+        (snapshot.updated_at for snapshot in required_snapshots), default=None
+    )
+    snapshot_age = now - oldest_snapshot if oldest_snapshot is not None else None
+    snapshot_too_old = snapshot_age is not None and snapshot_age > timedelta(
+        hours=staleness_hours
+    )
+    if missing or stale or snapshot_too_old:
         problems = []
         if missing:
             missing_str = ", ".join(
@@ -441,6 +518,13 @@ async def _check_render_snapshots(
             problems.append(
                 f"{len(stale)} of {len(snapshots)} present snapshot(s) carry a stale "
                 f"schema_version (expected {CURRENT_SCHEMA_VERSION})"
+            )
+        if snapshot_too_old:
+            assert oldest_snapshot is not None
+            assert snapshot_age is not None
+            problems.append(
+                f"oldest required snapshot watermark {oldest_snapshot.isoformat()} is stale "
+                f"({snapshot_age} old)"
             )
         return CheckResult(
             category="render_snapshots",
@@ -457,7 +541,161 @@ async def _check_render_snapshots(
         status=ReadinessStatus.PASS,
         message=(
             f"Full {len(EXPECTED_RENDER_VARIANTS)}-variant render snapshot matrix "
-            f"present, schema_version={CURRENT_SCHEMA_VERSION} up to date."
+            f"present, schema_version={CURRENT_SCHEMA_VERSION}, oldest required "
+            f"snapshot watermark {oldest_snapshot.isoformat() if oldest_snapshot else 'unknown'}."
+        ),
+    )
+
+
+async def _resolve_lifecycle(
+    db: AsyncSession, *, now: datetime, event_key: str
+) -> EventLifecyclePhase | None:
+    """Resolve lifecycle from games, falling back to configured date assertions."""
+    event = (
+        await db.execute(select(Event).where(Event.key == event_key))  # type: ignore[arg-type]
+    ).scalar_one_or_none()
+    if event is None:
+        return None
+    raw_ids = event.calendar_ref.get("competition_ids")
+    competition_ids = (
+        [value for value in raw_ids if isinstance(value, int)]
+        if isinstance(raw_ids, list)
+        else []
+    )
+    facts = await calendar_facts_for_competition_ids(
+        db, competition_ids=competition_ids, today=to_eastern_date(now)
+    )
+    game_dates = list(facts.game_dates)
+    if not game_dates and competition_ids:
+        competitions = (
+            (
+                await db.execute(
+                    select(SummerLeagueCompetition).where(
+                        SummerLeagueCompetition.id.in_(competition_ids)  # type: ignore[union-attr]
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for competition in competitions:
+            if competition.starts_on is None or competition.ends_on is None:
+                continue
+            current = competition.starts_on
+            while current <= competition.ends_on:
+                game_dates.append(current)
+                current += timedelta(days=1)
+    desk_event = DeskEvent(
+        key=event.key,
+        priority=event.priority,
+        window_priors=WindowPriors.from_dict(event.window_priors),
+        game_dates=tuple(game_dates),
+    )
+    return lifecycle_phase(now, desk_event)
+
+
+async def _check_scheduler(
+    db: AsyncSession,
+    *,
+    mode: ReadinessMode,
+    now: datetime,
+    staleness_hours: float,
+    lifecycle: EventLifecyclePhase | None,
+) -> CheckResult:
+    """Report scheduler health independently from content freshness."""
+    state = await get_pipeline_freshness(db, SummerLeaguePipelineJob.DESK)
+    if state is None:
+        return CheckResult(
+            category="scheduler",
+            status=(
+                ReadinessStatus.SKIP if mode == "preflight" else ReadinessStatus.FAIL
+            ),
+            message="Desk scheduler has never recorded a run.",
+        )
+    if state.last_completed_at is None or state.last_outcome is None:
+        return CheckResult(
+            category="scheduler",
+            status=ReadinessStatus.FAIL,
+            message="Desk scheduler has a start but no completed outcome.",
+        )
+    incomplete_run = (
+        state.last_started_at is not None
+        and state.last_started_at > state.last_completed_at
+    )
+    age = now - state.last_completed_at
+    active = lifecycle in {
+        EventLifecyclePhase.ACTIVE,
+        EventLifecyclePhase.WINDDOWN,
+    }
+    healthy = (
+        state.last_outcome == SummerLeaguePipelineOutcome.SUCCEEDED
+        and not incomplete_run
+        and age <= timedelta(hours=staleness_hours)
+        and state.last_content_updated is active
+    )
+    status = ReadinessStatus.PASS if healthy else ReadinessStatus.FAIL
+    if mode == "preflight" and not healthy:
+        status = ReadinessStatus.SKIP
+    return CheckResult(
+        category="scheduler",
+        status=status,
+        message=(
+            f"image={state.last_job_image or 'unknown'} "
+            f"started={state.last_started_at.isoformat() if state.last_started_at else 'unknown'} "
+            f"completed={state.last_completed_at.isoformat()} "
+            f"outcome={state.last_outcome.value} "
+            f"incomplete_newer_run={str(incomplete_run).lower()} "
+            f"content_updated={str(state.last_content_updated).lower()}"
+        ),
+    )
+
+
+async def _check_source_freshness(
+    db: AsyncSession,
+    *,
+    mode: ReadinessMode,
+    now: datetime,
+    staleness_hours: float,
+    lifecycle: EventLifecyclePhase | None,
+) -> CheckResult:
+    """Report the source observation watermark and whether data advanced."""
+    active = lifecycle in {
+        EventLifecyclePhase.ACTIVE,
+        EventLifecyclePhase.WINDDOWN,
+    }
+    if not active:
+        return CheckResult(
+            category="source_freshness",
+            status=ReadinessStatus.SKIP,
+            message="Source ingestion is intentionally inactive outside the event window.",
+        )
+    state = await get_pipeline_freshness(db, SummerLeaguePipelineJob.DESK)
+    refreshed_at = state.last_source_refreshed_at if state else None
+    if refreshed_at is None:
+        return CheckResult(
+            category="source_freshness",
+            status=(
+                ReadinessStatus.FAIL if mode == "post-tick" else ReadinessStatus.SKIP
+            ),
+            message="No successful source refresh watermark is available.",
+        )
+    age = now - refreshed_at
+    status = (
+        ReadinessStatus.FAIL
+        if mode == "post-tick" and age > timedelta(hours=staleness_hours)
+        else ReadinessStatus.PASS
+    )
+    advanced_at = (
+        state.last_source_advanced_at.isoformat()
+        if state is not None and state.last_source_advanced_at is not None
+        else "unchanged"
+    )
+    return CheckResult(
+        category="source_freshness",
+        status=status,
+        message=(
+            f"source_refreshed_at={refreshed_at.isoformat()} "
+            f"source_advanced_at={advanced_at}"
         ),
     )
 
@@ -482,28 +720,67 @@ async def build_readiness_report(
             after a deliberate manual tick).
         now: Override for "now" (tests only); defaults to the current UTC instant.
         event_key: The registered event's stable key. Defaults to Summer League's.
-        staleness_hours: How old ``event_desk_state.freshness_tick_at`` may be
-            before the freshness category fails in ``post-tick`` mode.
+        staleness_hours: How old active-window source, projection, and
+            snapshot watermarks may be before post-tick readiness fails.
 
     Returns:
         A :class:`ReadinessReport` with one :class:`CheckResult` per category.
     """
     resolved_now = now if now is not None else datetime.utcnow()
     today_year = to_eastern_date(resolved_now).year
+    lifecycle = await _resolve_lifecycle(db, now=resolved_now, event_key=event_key)
+    content_active = lifecycle in {
+        EventLifecyclePhase.ACTIVE,
+        EventLifecyclePhase.WINDDOWN,
+    }
+    baselines = (
+        CheckResult(
+            category="baselines",
+            status=ReadinessStatus.SKIP,
+            message=(
+                f"Lifecycle is {lifecycle.value}; grading baselines are "
+                "intentionally inactive."
+            ),
+        )
+        if mode == "post-tick" and lifecycle is not None and not content_active
+        else await _check_baselines(db)
+    )
 
     results = (
         await _check_registration(
             db, mode=mode, today_year=today_year, event_key=event_key
         ),
-        await _check_baselines(db),
+        baselines,
+        await _check_scheduler(
+            db,
+            mode=mode,
+            now=resolved_now,
+            staleness_hours=staleness_hours,
+            lifecycle=lifecycle,
+        ),
+        await _check_source_freshness(
+            db,
+            mode=mode,
+            now=resolved_now,
+            staleness_hours=staleness_hours,
+            lifecycle=lifecycle,
+        ),
         await _check_freshness(
             db,
             mode=mode,
             now=resolved_now,
             event_key=event_key,
             staleness_hours=staleness_hours,
+            lifecycle=lifecycle,
         ),
-        await _check_render_snapshots(db, mode=mode, event_key=event_key),
+        await _check_render_snapshots(
+            db,
+            mode=mode,
+            event_key=event_key,
+            now=resolved_now,
+            staleness_hours=staleness_hours,
+            lifecycle=lifecycle,
+        ),
     )
     return ReadinessReport(mode=mode, now=resolved_now, results=results)
 
@@ -549,8 +826,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_STALENESS_HOURS,
         help=(
-            "How old event_desk_state.freshness_tick_at may be before the "
-            "freshness category fails in post-tick mode (default: "
+            "How old active-window source, projection, and snapshot watermarks "
+            "may be before post-tick readiness fails (default: "
             f"{DEFAULT_STALENESS_HOURS})."
         ),
     )

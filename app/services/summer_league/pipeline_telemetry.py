@@ -74,13 +74,15 @@ class PipelineTelemetry:
                 extra,
             )
 
-    def finish(self, outcome: str) -> None:
+    def finish(self, outcome: str, **fields: object) -> None:
         """Emit the run-level timing and final outcome."""
         duration_ms = round((perf_counter() - self._started_at) * 1000, 1)
+        extra = "".join(f" {key}={value}" for key, value in fields.items())
         self.logger.info(
-            "summer_league_pipeline_run job=%s run_id=%s outcome=%s duration_ms=%s",
+            "summer_league_pipeline_run job=%s run_id=%s outcome=%s duration_ms=%s%s",
             self.job,
             self.run_id,
             outcome,
             duration_ms,
+            extra,
         )

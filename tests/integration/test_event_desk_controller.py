@@ -8,22 +8,36 @@ must register the SL `events` row, resolve calendar facts from
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.event_desk import Event, EventDailyState, EventDeskState, EventLifecyclePhase
-from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueGame, SummerLeagueGameStatus
+from app.schemas.event_desk import (
+    Event,
+    EventDailyState,
+    EventDeskState,
+    EventLifecyclePhase,
+)
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeagueGameStatus,
+)
 from app.services.event_desk.controller import run_event_desk_tick
-from app.services.event_desk.registry import GameStatus, calendar_facts_for_competition_ids
+from app.services.event_desk.registry import (
+    GameStatus,
+    calendar_facts_for_competition_ids,
+)
 from app.services.summer_league.scoreboard_ingest import EVENT_KEY_SUMMER_LEAGUE
 
 _YEAR = 2026
 
 
-async def _make_competition(db: AsyncSession, *, venue_slug: str = "vegas") -> SummerLeagueCompetition:
+async def _make_competition(
+    db: AsyncSession, *, venue_slug: str = "vegas"
+) -> SummerLeagueCompetition:
     competition = SummerLeagueCompetition(
         year=_YEAR,
         league_id="10",
@@ -61,8 +75,10 @@ async def _make_game(
 
 @pytest.mark.asyncio
 async def test_tick_registers_sl_event_row(db_session: AsyncSession) -> None:
-    """The tick creates/refreshes the `events` row for Summer League with the
-    resolved competition_ids and the pinned V1 priors/priority."""
+    """Create or refresh the Summer League event row.
+
+    The row carries resolved competition IDs and the pinned V1 priors/priority.
+    """
     competition = await _make_competition(db_session)
     assert competition.id is not None
     await _make_game(
@@ -75,7 +91,7 @@ async def test_tick_registers_sl_event_row(db_session: AsyncSession) -> None:
     )
 
     now = datetime(2026, 7, 10, 20, 0)
-    await run_event_desk_tick(db_session, now=now)
+    await run_event_desk_tick(db_session, now=now, content_updated=True)
 
     result = await db_session.execute(
         select(Event).where(Event.key == EVENT_KEY_SUMMER_LEAGUE)  # type: ignore[arg-type]
@@ -91,8 +107,10 @@ async def test_tick_registers_sl_event_row(db_session: AsyncSession) -> None:
 async def test_tick_upserts_active_live_state_and_sl_owns_home(
     db_session: AsyncSession,
 ) -> None:
-    """With a bridged multi-day window and a game in progress today, the controller
-    resolves lifecycle=active, daily_state=live, and SL (unopposed) owns home."""
+    """Resolve an active live state owned by Summer League.
+
+    The calendar uses a bridged multi-day window with a game in progress today.
+    """
     competition = await _make_competition(db_session)
     assert competition.id is not None
     # Gap-bridged cluster: Jul 5 -> Jul 8 -> Jul 10 (gaps of 3 and 2 days, both
@@ -123,14 +141,14 @@ async def test_tick_upserts_active_live_state_and_sl_owns_home(
     )
 
     now = datetime(2026, 7, 10, 20, 0)
-    states = await run_event_desk_tick(db_session, now=now)
+    states = await run_event_desk_tick(db_session, now=now, content_updated=True)
 
     assert len(states) == 1
     state = states[0]
     assert state.lifecycle_phase == EventLifecyclePhase.ACTIVE
     assert state.daily_state == EventDailyState.LIVE
     assert state.is_home_owner is True
-    assert state.freshness_tick_at == now
+    assert state.content_refreshed_at == now
     assert state.next_tick_eta == datetime(2026, 7, 10, 21, 0)
 
     # Persisted row matches the returned DTO (single row per event, per the unique
@@ -147,8 +165,10 @@ async def test_tick_upserts_active_live_state_and_sl_owns_home(
 async def test_tick_is_idempotent_and_refreshes_existing_state_row(
     db_session: AsyncSession,
 ) -> None:
-    """A second tick updates the same `event_desk_state` row rather than inserting
-    a duplicate (the `uq_event_desk_state_event` constraint's whole point)."""
+    """Update the same state row on a second tick.
+
+    The unique event constraint prevents a duplicate state row.
+    """
     competition = await _make_competition(db_session)
     assert competition.id is not None
     await _make_game(
@@ -161,14 +181,62 @@ async def test_tick_is_idempotent_and_refreshes_existing_state_row(
     )
 
     first_tick_at = datetime(2026, 7, 10, 12, 0)  # before the flip -> Recap persists
-    await run_event_desk_tick(db_session, now=first_tick_at)
+    await run_event_desk_tick(db_session, now=first_tick_at, content_updated=True)
 
     second_tick_at = datetime(2026, 7, 10, 19, 5)  # past tip, stale status -> Live
-    states = await run_event_desk_tick(db_session, now=second_tick_at)
+    states = await run_event_desk_tick(
+        db_session, now=second_tick_at, content_updated=True
+    )
 
     assert len(states) == 1
     assert states[0].daily_state == EventDailyState.LIVE
-    assert states[0].freshness_tick_at == second_tick_at
+    assert states[0].content_refreshed_at == second_tick_at
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_only_tick_preserves_content_watermark(
+    db_session: AsyncSession,
+) -> None:
+    """Lifecycle observation advances independently from content freshness."""
+    competition = await _make_competition(db_session)
+    assert competition.id is not None
+    await _make_game(
+        db_session,
+        competition_id=competition.id,
+        game_date=date(2026, 7, 10),
+        tip_datetime=datetime(2026, 7, 10, 19, 0),
+        status=SummerLeagueGameStatus.SCHEDULED,
+        suffix="0099",
+    )
+    refreshed_at = datetime(2026, 7, 10, 18, 0)
+    observed_at = datetime(2026, 7, 10, 19, 0)
+    await run_event_desk_tick(db_session, now=refreshed_at, content_updated=True)
+
+    states = await run_event_desk_tick(
+        db_session, now=observed_at, content_updated=False
+    )
+
+    assert states[0].lifecycle_observed_at == observed_at
+    assert states[0].content_refreshed_at == refreshed_at
+    assert states[0].next_tick_eta == refreshed_at + timedelta(hours=1)
+
+
+@pytest.mark.asyncio
+async def test_lifecycle_only_first_tick_has_null_content_watermark(
+    db_session: AsyncSession,
+) -> None:
+    """Represent observed lifecycle state without inventing a content refresh."""
+    await _make_competition(db_session)
+
+    states = await run_event_desk_tick(
+        db_session,
+        now=datetime(2026, 1, 1, 12, 0),
+        content_updated=False,
+    )
+
+    assert states[0].lifecycle_phase == EventLifecyclePhase.DORMANT
+    assert states[0].content_refreshed_at is None
+    assert states[0].next_tick_eta is None
 
     result = await db_session.execute(select(EventDeskState))
     rows = result.scalars().all()
@@ -179,8 +247,10 @@ async def test_tick_is_idempotent_and_refreshes_existing_state_row(
 async def test_tick_off_window_yields_no_home_owner_and_null_daily_state(
     db_session: AsyncSession,
 ) -> None:
-    """Far outside the SL calendar window, the lifecycle phase is Dormant, the
-    daily_state stays null, and SL doesn't own the home page."""
+    """Resolve Dormant far outside the Summer League window.
+
+    The daily state stays null and Summer League does not own the home page.
+    """
     competition = await _make_competition(db_session)
     assert competition.id is not None
     await _make_game(
@@ -193,7 +263,7 @@ async def test_tick_off_window_yields_no_home_owner_and_null_daily_state(
     )
 
     now = datetime(2026, 1, 1, 12, 0)
-    states = await run_event_desk_tick(db_session, now=now)
+    states = await run_event_desk_tick(db_session, now=now, content_updated=True)
 
     assert len(states) == 1
     assert states[0].lifecycle_phase == EventLifecyclePhase.DORMANT
@@ -205,11 +275,14 @@ async def test_tick_off_window_yields_no_home_owner_and_null_daily_state(
 async def test_calendar_facts_excludes_postponed_tip_but_surfaces_postponed_status(
     db_session: AsyncSession,
 ) -> None:
-    """`calendar_facts_for_competition_ids` re-detects a postponed game from
+    """Re-detect a postponed game from persisted status text.
+
+    `calendar_facts_for_competition_ids` reads the marker from
     ``status_text`` (persisted as `SCHEDULED` on the DB status column -- #529) and
     withholds its tip from `today_schedule` while still surfacing the terminal
     `GameStatus.POSTPONED` in `today_statuses` -- the provider-layer half of the
-    #529/#530 follow-up fix."""
+    #529/#530 follow-up fix.
+    """
     competition = await _make_competition(db_session)
     assert competition.id is not None
     real_tip = datetime(2026, 7, 10, 23, 0)
@@ -248,11 +321,14 @@ async def test_calendar_facts_excludes_postponed_tip_but_surfaces_postponed_stat
 async def test_calendar_facts_maps_db_postponed_and_canceled_status_directly(
     db_session: AsyncSession,
 ) -> None:
-    """Fix #4: a row persisted with the real POSTPONED/CANCELED DB status maps to
+    """Map persisted POSTPONED and CANCELED statuses directly.
+
+    Fix #4 ensures a row with the real database status maps to
     `GameStatus.POSTPONED` with no ``status_text`` marker needed -- the direct
     status-level reconciliation, as distinct from the pre-fix-#4 ``status_text``
     fallback exercised by `test_calendar_facts_excludes_postponed_tip_but_surfaces_postponed_status`
-    above (which still persists SCHEDULED+"PPD", proving that legacy path stays green)."""
+    above (which still persists SCHEDULED+"PPD", proving that legacy path stays green).
+    """
     competition = await _make_competition(db_session)
     assert competition.id is not None
     real_tip = datetime(2026, 7, 10, 23, 0)
@@ -302,9 +378,12 @@ async def test_calendar_facts_maps_db_postponed_and_canceled_status_directly(
 async def test_tick_postponed_only_day_resolves_recap_not_live(
     db_session: AsyncSession,
 ) -> None:
-    """Core regression (#529/#530 follow-up): a day whose only game is postponed,
+    """Resolve Recap when the day's only game is postponed.
+
+    Core regression (#529/#530 follow-up): a day whose only game is postponed,
     with its original tip already in the past, must resolve to Recap -- never get
-    stuck in Live forever off a game that will never tip."""
+    stuck in Live forever off a game that will never tip.
+    """
     competition = await _make_competition(db_session)
     assert competition.id is not None
     # Gap-bridged cluster so Jul 10 sits inside one Active window (same shape as
@@ -338,7 +417,7 @@ async def test_tick_postponed_only_day_resolves_recap_not_live(
     )
 
     now = datetime(2026, 7, 10, 23, 0)  # hours past the postponed game's original tip
-    states = await run_event_desk_tick(db_session, now=now)
+    states = await run_event_desk_tick(db_session, now=now, content_updated=True)
 
     assert len(states) == 1
     assert states[0].lifecycle_phase == EventLifecyclePhase.ACTIVE
@@ -349,10 +428,13 @@ async def test_tick_postponed_only_day_resolves_recap_not_live(
 async def test_tick_mixed_day_preview_then_live_then_recap_around_postponed_game(
     db_session: AsyncSession,
 ) -> None:
-    """A mixed day -- one real game plus one postponed game with an earlier past
+    """Ignore a postponed tip when resolving a mixed day.
+
+    A mixed day -- one real game plus one postponed game with an earlier past
     tip -- must not flip Live off the postponed game's tip. It stays Preview until
     the real game's own tip, goes Live there, then reaches Recap once the real game
-    finals (the postponed game staying postponed forever)."""
+    finals (the postponed game staying postponed forever).
+    """
     competition = await _make_competition(db_session)
     assert competition.id is not None
     await _make_game(
@@ -388,7 +470,9 @@ async def test_tick_mixed_day_preview_then_live_then_recap_around_postponed_game
     # and well after the postponed game's own past tip -- must stay Preview, not
     # jump to Live off the postponed game.
     still_preview_at = datetime(2026, 7, 8, 18, 0)
-    states = await run_event_desk_tick(db_session, now=still_preview_at)
+    states = await run_event_desk_tick(
+        db_session, now=still_preview_at, content_updated=True
+    )
     assert states[0].daily_state == EventDailyState.PREVIEW
 
     # `_upsert_event_desk_state` writes via a raw Core `INSERT ... ON CONFLICT`, which
@@ -404,7 +488,9 @@ async def test_tick_mixed_day_preview_then_live_then_recap_around_postponed_game
 
     # At the real game's own tip -- Live.
     at_real_tip = real_tip
-    states = await run_event_desk_tick(db_session, now=at_real_tip)
+    states = await run_event_desk_tick(
+        db_session, now=at_real_tip, content_updated=True
+    )
     assert states[0].daily_state == EventDailyState.LIVE
 
     db_session.expire_all()
@@ -414,5 +500,7 @@ async def test_tick_mixed_day_preview_then_live_then_recap_around_postponed_game
     real_game.status = SummerLeagueGameStatus.FINAL
     await db_session.flush()
     after_final = datetime(2026, 7, 9, 1, 0)
-    states = await run_event_desk_tick(db_session, now=after_final)
+    states = await run_event_desk_tick(
+        db_session, now=after_final, content_updated=True
+    )
     assert states[0].daily_state == EventDailyState.RECAP

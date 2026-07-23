@@ -94,13 +94,13 @@ Job A must have run first.
 T2/T3/T4 table, the tick resolves the Summer League event's inner daily
 state (Preview/Live/Recap) via the same pure state machine the framework
 controller uses (`app.services.event_desk.state_machine.inner_state`).
-When that resolves to ``None`` (the event's outer lifecycle phase isn't
-``active`` -- Dormant, Announced, Warm-up, Wind-down, or Archived), steps
-0-4 are skipped entirely and the tick only calls
-``event_desk.controller.run_event_desk_tick`` once, which stamps the
-freshness fields (``freshness_tick_at`` / ``next_tick_eta``) and leaves
-``daily_state``/``hero_ref`` untouched -- "safe freshness behavior," per
-spec, not a full state write.
+When that resolves to ``None`` (the event is not in an Active or Wind-down
+content window -- Dormant, Announced, Warm-up, or Archived), steps
+0-7 are skipped entirely. The scheduler records a successful no-op with
+``content_updated=false`` in ``summer_league_pipeline_states``, while
+``event_desk_state`` and all render snapshots remain byte-for-byte unchanged.
+If content has never been built, no state row is created merely to claim
+freshness.
 
 **#527 pre-anchor bootstrap.** The dormancy resolver above derives the
 event's outer lifecycle phase from known ``summer_league_games`` rows, which
@@ -215,6 +215,7 @@ from app.services.summer_league.desk_grades import (  # noqa: E402
     grade_players_bulk,
 )
 from app.services.summer_league.desk_read import (  # noqa: E402
+    _effective_now,
     build_desk_render_variants,
 )
 from app.services.summer_league.desk_storylines import (  # noqa: E402
@@ -235,6 +236,7 @@ from app.services.summer_league.normalization import (  # noqa: E402
 from app.services.summer_league.pipeline_state import (  # noqa: E402
     complete_pipeline,
     record_pipeline_failure,
+    start_pipeline,
 )
 from app.services.summer_league.pipeline_telemetry import (  # noqa: E402
     PipelineTelemetry,
@@ -279,8 +281,12 @@ class DeskTickResult:
     """Summary of one :func:`run_desk_tick` call -- every stage's outcome."""
 
     now: datetime
+    executed_at: datetime
     dormant: bool
     daily_state: Optional[EventDailyState]
+    content_updated: bool
+    source_refreshed: bool = False
+    source_advanced: bool = False
     baseline_version: Optional[str] = None
     scoreboard_report: Optional[ScoreboardIngestReport] = None
     # Step 1 -- targeted live raw refresh (#531/#530). `None` on a dormant
@@ -311,8 +317,10 @@ async def _resolve_daily_state(
     ``app.services.event_desk.controller.run_event_desk_tick`` performs
     internally (that helper is private to the controller module) so this
     tick can decide, *before* touching the network or any T2/T3/T4 table,
-    whether it's off-window (:func:`~app.services.event_desk.state_machine.inner_state`
-    returns ``None``) and therefore inert. ``registration.sync`` is the same
+    whether it's off-window and therefore inert. Wind-down is content-active
+    even though the inner state machine only accepts Active events, so this
+    pre-check maps Wind-down directly to Recap, matching the request path.
+    ``registration.sync`` is the same
     idempotent ``events`` row upsert the controller's own first step
     performs -- the only "write" this pre-check does.
 
@@ -321,8 +329,8 @@ async def _resolve_daily_state(
         now: The tick's reference instant (naive UTC).
 
     Returns:
-        The resolved daily state, or ``None`` when the event's outer
-        lifecycle phase isn't ``active``.
+        The resolved daily state, or ``None`` outside the Active/Wind-down
+        content window.
     """
     registration = SUMMER_LEAGUE_REGISTRATION
     event_row = await registration.sync(db, now.date())
@@ -333,6 +341,8 @@ async def _resolve_daily_state(
         window_priors=WindowPriors.from_dict(event_row.window_priors),
         game_dates=calendar_facts.game_dates,
     )
+    if lifecycle_phase(now, desk_event) == EventLifecyclePhase.WINDDOWN:
+        return EventDailyState.RECAP
     return inner_state(
         now, calendar_facts.today_schedule, calendar_facts.today_statuses, desk_event
     )
@@ -896,7 +906,7 @@ async def _materialize_render_snapshots(db: AsyncSession, *, now: datetime) -> i
         off-window (nothing to materialize; any prior snapshots are left
         untouched, never truncated).
     """
-    result = await build_desk_render_variants(db, now=now)
+    result = await build_desk_render_variants(db, now=now, now_is_effective=True)
     if result is None:
         return 0
     event_id, variants = result
@@ -1015,7 +1025,8 @@ async def run_desk_tick(
     # production clock only after the wait so phase and freshness calculations
     # describe the instant this transaction can actually begin its work. Tests
     # keep their explicit deterministic override unchanged.
-    resolved_now = now if now is not None else datetime.utcnow()
+    executed_at = now if now is not None else datetime.utcnow()
+    resolved_now = _effective_now(executed_at, scheduled_write=True)
 
     daily_state = await _resolve_daily_state(db, now=resolved_now)
 
@@ -1048,35 +1059,30 @@ async def run_desk_tick(
         daily_state = await _resolve_daily_state(db, now=resolved_now)
 
     if daily_state is None:
-        # Off-window/dormant: inert. `run_event_desk_tick` still upserts
-        # event_desk_state (phase + freshness stamp), but every network call
-        # and every T2/T3/T4 write below is skipped entirely. Step 7 still
-        # runs (cheap: `build_desk_render_variants` re-resolves the window
-        # itself, honoring `sl_desk_force_mode`, and is a genuine no-op --
-        # `materialized_variant_count=0` -- for a real off-window event; it
-        # only actually writes rows here under a force-mode QA override that
-        # fakes an in-window state this tick's OWN resolver above didn't see).
+        # Off-window/dormant: content-state inert. The registration pre-check
+        # may sync the canonical event row, but lifecycle/content state and
+        # render snapshots are left exactly as they were. Scheduler success is
+        # recorded separately by the CLI's pipeline-state projection.
         with (
-            telemetry.step("event_desk_state")
-            if telemetry is not None
-            else nullcontext()
-        ):
-            states = await run_event_desk_tick(db, now=resolved_now)
-        with (
-            telemetry.step("snapshot_materialization")
-            if telemetry is not None
-            else nullcontext()
-        ):
-            materialized_variant_count = await _materialize_render_snapshots(
-                db, now=resolved_now
+            telemetry.step(
+                "dormant_noop",
+                executed_at=executed_at.isoformat(),
+                effective_data_at=resolved_now.isoformat(),
+                content_updated=False,
             )
+            if telemetry is not None
+            else nullcontext()
+        ):
+            pass
         return DeskTickResult(
             now=resolved_now,
+            executed_at=executed_at,
             dormant=True,
             daily_state=None,
-            event_desk_states=tuple(states),
+            content_updated=False,
+            event_desk_states=(),
             bootstrapped=bootstrap_report is not None,
-            materialized_variant_count=materialized_variant_count,
+            materialized_variant_count=0,
         )
 
     baseline_version = await _active_baseline_version(db)
@@ -1252,7 +1258,7 @@ async def run_desk_tick(
     # snapshot the step-0 pre-check saw, and is only reached once every
     # required step above has genuinely succeeded).
     with telemetry.step("event_desk_state") if telemetry is not None else nullcontext():
-        states = await run_event_desk_tick(db, now=resolved_now)
+        states = await run_event_desk_tick(db, now=resolved_now, content_updated=True)
 
     # Step 7 -- render snapshot materialization (#551, launch-readiness item
     # 10). The FINAL step, only reached once every required step above has
@@ -1270,8 +1276,17 @@ async def run_desk_tick(
 
     return DeskTickResult(
         now=resolved_now,
+        executed_at=executed_at,
         dormant=False,
         daily_state=daily_state,
+        content_updated=True,
+        source_refreshed=not scoreboard_report.errors,
+        source_advanced=(
+            bool(normalized_ids)
+            or bool(live_refresh_report.written)
+            or bool(scoreboard_report.games_created)
+            or bool(scoreboard_report.games_updated)
+        ),
         baseline_version=baseline_version,
         scoreboard_report=scoreboard_report,
         live_refresh_report=live_refresh_report,
@@ -1292,22 +1307,21 @@ def _summarize(result: DeskTickResult) -> str:
             if result.bootstrapped
             else ""
         )
-        variant_note = (
-            f" (materialized {result.materialized_variant_count} render "
-            "snapshot variants under a force-mode override)"
-            if result.materialized_variant_count
-            else ""
-        )
         return (
-            f"Summer League Desk tick @ {result.now.isoformat()}: "
-            f"off-window (dormant) -- no-op{suffix}{variant_note}."
+            f"Summer League Desk tick executed_at={result.executed_at.isoformat()} "
+            f"effective_data_at={result.now.isoformat()}: off-window (dormant) -- "
+            f"no-op content_updated=false{suffix}."
         )
 
     lines = [
-        f"Summer League Desk tick @ {result.now.isoformat()}: "
+        f"Summer League Desk tick executed_at={result.executed_at.isoformat()} "
+        f"effective_data_at={result.now.isoformat()}: "
         f"daily_state={result.daily_state.value if result.daily_state else None} "
         f"baseline_version={result.baseline_version}"
         f"{' (#527 bootstrap ingest ran)' if result.bootstrapped else ''}",
+        f"  content_updated={str(result.content_updated).lower()} "
+        f"source_refreshed={str(result.source_refreshed).lower()} "
+        f"source_advanced={str(result.source_advanced).lower()}",
         f"  graded_players={len(result.graded_player_ids)} "
         f"normalized_competitions={list(result.normalized_competition_ids)}",
         f"  materialized_render_snapshot_variants={result.materialized_variant_count}",
@@ -1338,6 +1352,14 @@ async def _run(args: argparse.Namespace) -> None:
     now = datetime.fromisoformat(args.now) if args.now else None
     telemetry = PipelineTelemetry(job="desk", logger=logger)
     async with SessionLocal() as db:
+        pipeline_state = await start_pipeline(
+            db,
+            job=SummerLeaguePipelineJob.DESK,
+            job_image=os.getenv("FLY_IMAGE_REF") or os.getenv("FLY_IMAGE"),
+        )
+        pipeline_started_at = pipeline_state.last_started_at
+        assert pipeline_started_at is not None
+        await db.commit()
         try:
             with telemetry.step("desk_tick"):
                 result = await run_desk_tick(
@@ -1352,6 +1374,11 @@ async def _run(args: argparse.Namespace) -> None:
                 job=SummerLeaguePipelineJob.DESK,
                 metrics_rebuilt=bool(result.normalized_competition_ids),
                 snapshots_materialized=bool(result.materialized_variant_count),
+                source_refreshed=result.source_refreshed,
+                source_advanced=result.source_advanced,
+                projections_refreshed=result.content_updated,
+                content_updated=result.content_updated,
+                started_at=pipeline_started_at,
             )
             await db.commit()
         except Exception as exc:
@@ -1362,12 +1389,20 @@ async def _run(args: argparse.Namespace) -> None:
                         db,
                         job=SummerLeaguePipelineJob.DESK,
                         reason=f"{type(exc).__name__}: {exc}",
+                        started_at=pipeline_started_at,
                     )
             except Exception:
                 logger.exception("Could not record failed Summer League Desk tick")
-            telemetry.finish("failed")
+            telemetry.finish("failed", content_updated=False)
             raise
-    telemetry.finish("succeeded")
+    telemetry.finish(
+        "succeeded",
+        executed_at=result.executed_at.isoformat(),
+        effective_data_at=result.now.isoformat(),
+        content_updated=result.content_updated,
+        source_refreshed=result.source_refreshed,
+        source_advanced=result.source_advanced,
+    )
     print(_summarize(result), flush=True)
     await engine.dispose()
 

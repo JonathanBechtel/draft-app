@@ -51,11 +51,12 @@ async def _upsert_event_desk_state(
     phase: EventLifecyclePhase,
     daily_state: Optional[EventDailyState],
     is_home_owner: bool,
+    content_updated: bool,
 ) -> EventDeskState:
-    """Idempotently upsert one event's `event_desk_state` row (keyed by `event_id`)."""
+    """Upsert lifecycle state without assuming user-facing content changed."""
     values = {
         "event_id": event_id,
-        "as_of": now,
+        "lifecycle_observed_at": now,
         "lifecycle_phase": phase,
         "daily_state": daily_state,
         "is_home_owner": is_home_owner,
@@ -63,13 +64,21 @@ async def _upsert_event_desk_state(
         # (#504 storyline engine, #508 desk read service) — this controller only
         # resolves phase/state/ownership.
         "hero_ref": None,
-        "freshness_tick_at": now,
-        "next_tick_eta": now + TICK_INTERVAL,
+        "content_refreshed_at": now if content_updated else None,
+        "next_tick_eta": now + TICK_INTERVAL if content_updated else None,
     }
     stmt = insert(EventDeskState).values(**values)
+    update_values = {
+        key: value
+        for key, value in values.items()
+        if key not in {"event_id", "content_refreshed_at", "next_tick_eta"}
+    }
+    if content_updated:
+        update_values["content_refreshed_at"] = now
+        update_values["next_tick_eta"] = now + TICK_INTERVAL
     stmt = stmt.on_conflict_do_update(
         constraint="uq_event_desk_state_event",
-        set_={k: v for k, v in values.items() if k != "event_id"},
+        set_=update_values,
     )
     await db.execute(stmt)
     await db.flush()
@@ -103,6 +112,7 @@ async def run_event_desk_tick(
     *,
     now: datetime | None = None,
     registrations: Sequence[EventRegistration] = REGISTERED_EVENTS,
+    content_updated: bool,
 ) -> list[EventDeskState]:
     """Evaluate every registered event and upsert its `event_desk_state` row.
 
@@ -110,7 +120,9 @@ async def run_event_desk_tick(
     this tick's calendar facts via its content provider, (3) compute lifecycle phase
     + (if Active) inner daily state, (4) determine home ownership via
     `lifecycle.resolve_home_owner` across every registered event, (5) upsert
-    `event_desk_state`. Does not commit; the caller controls the transaction
+    `event_desk_state`. Lifecycle observation and successful content refresh
+    are deliberately separate: callers must state whether this invocation
+    produced content. Does not commit; the caller controls the transaction
     (mirrors every other Summer League ingest/tick step in this repo).
 
     Args:
@@ -119,6 +131,9 @@ async def run_event_desk_tick(
         registrations: Override for the registered-events list (tests only);
             defaults to :data:`~app.services.event_desk.registry.REGISTERED_EVENTS`
             (Summer League only in V1).
+        content_updated: Whether this invocation successfully rebuilt useful
+            user-facing projections. False preserves the prior content
+            watermark and ``next_tick_eta``.
 
     Returns:
         One upserted :class:`~app.schemas.event_desk.EventDeskState` row per
@@ -161,6 +176,7 @@ async def run_event_desk_tick(
             phase=phase,
             daily_state=daily_state,
             is_home_owner=owner is not None and owner.key == desk_event.key,
+            content_updated=content_updated,
         )
         states.append(state)
     return states

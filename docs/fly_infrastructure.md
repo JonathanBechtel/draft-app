@@ -87,6 +87,12 @@ are serialized.
   `summer_league_pipeline_run` summary.  These records identify whether delay
   was in provider fetch, lock acquisition, normalization, metrics, Desk
   projections, or snapshots.
+- Desk pipeline state distinguishes scheduler health (`last_started_at`,
+  `last_completed_at`, `last_outcome`, `last_job_image`) from source observation,
+  actual source advance, projection refresh, snapshot materialization, and the
+  per-run `last_content_updated` outcome. A successful dormant run updates only
+  scheduler completion and records `last_content_updated=false`; it does not move
+  content watermarks.
 
 For an incident, inspect the full-ingestion state row before forcing a rerun.
 `pending_reconciliation=true` means the next successful full run must catch up;

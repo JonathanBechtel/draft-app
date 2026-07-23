@@ -19,7 +19,9 @@ from app.config import settings
 from app.services.summer_league.desk_read import _effective_now
 
 
-def test_effective_now_passthrough_when_no_override(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_effective_now_passthrough_when_no_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """With no `sl_desk_force_date` set, an explicit `now` passes through unchanged."""
     monkeypatch.setattr(settings, "sl_desk_force_date", None)
     now = datetime(2026, 7, 10, 23, 5)
@@ -53,3 +55,30 @@ def test_effective_now_date_override_replaces_date_keeps_time(
     now = datetime(2020, 1, 1, 23, 5)  # an otherwise off-window instant.
     resolved = _effective_now(now)
     assert resolved == datetime(2026, 7, 15, 23, 5)
+
+
+def test_effective_now_rejects_force_date_for_production_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scheduled production write cannot silently replay a historical date."""
+    from datetime import date
+
+    monkeypatch.setattr(settings, "env", "prod")
+    monkeypatch.setattr(settings, "sl_desk_force_date", date(2026, 7, 15))
+
+    with pytest.raises(RuntimeError, match="scheduled production Desk write"):
+        _effective_now(datetime(2026, 7, 22, 12, 0), scheduled_write=True)
+
+
+def test_effective_now_allows_force_date_for_staging_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Staging remains an explicit QA/demo context for force-date writes."""
+    from datetime import date
+
+    monkeypatch.setattr(settings, "env", "stage")
+    monkeypatch.setattr(settings, "sl_desk_force_date", date(2026, 7, 15))
+
+    assert _effective_now(
+        datetime(2026, 7, 22, 12, 0), scheduled_write=True
+    ) == datetime(2026, 7, 15, 12, 0)

@@ -141,10 +141,12 @@ class Event(SQLModel, table=True):  # type: ignore[call-arg]
 
 
 class EventDeskState(SQLModel, table=True):  # type: ignore[call-arg]
-    """The upserted-each-tick snapshot of a registered event's desk state.
+    """The latest lifecycle observation and successful content watermark.
 
-    One row per event, overwritten on every EventDesk controller tick (ticket #506) --
-    this is a freshness/state cache, not an append-only history.
+    ``lifecycle_observed_at`` records when the controller evaluated the event.
+    ``content_refreshed_at`` records a different fact: when user-facing Desk
+    projections were last rebuilt successfully.  A lifecycle-only observation
+    must never advance the content watermark or its next expected refresh.
     """
 
     __tablename__ = "event_desk_state"
@@ -155,7 +157,9 @@ class EventDeskState(SQLModel, table=True):  # type: ignore[call-arg]
 
     id: Optional[int] = Field(default=None, primary_key=True)
     event_id: int = Field(foreign_key="events.id")
-    as_of: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    lifecycle_observed_at: datetime = Field(
+        default_factory=datetime.utcnow, nullable=False
+    )
 
     lifecycle_phase: EventLifecyclePhase = Field(
         sa_column=_enum_column(EventLifecyclePhase, "event_lifecycle_phase_enum")
@@ -177,5 +181,5 @@ class EventDeskState(SQLModel, table=True):  # type: ignore[call-arg]
         default=None, sa_column=Column(JSONB, nullable=True)
     )
 
-    freshness_tick_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    content_refreshed_at: Optional[datetime] = Field(default=None)
     next_tick_eta: Optional[datetime] = Field(default=None)

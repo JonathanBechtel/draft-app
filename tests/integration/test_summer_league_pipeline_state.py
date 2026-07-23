@@ -26,6 +26,7 @@ from app.services.summer_league.pipeline_state import (
     full_reconciliation_is_pending,
     get_pipeline_freshness,
     record_pipeline_failure,
+    start_pipeline,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -161,6 +162,100 @@ async def test_desk_and_full_ingestion_freshness_are_independently_tracked(
     assert full_state.last_succeeded_at == full_completed
     assert full_state.last_snapshots_materialized_at == full_completed
     assert full_state.last_metrics_rebuilt_at == full_completed
+
+
+async def test_desk_scheduler_and_useful_refresh_signals_are_independent(
+    db_session: AsyncSession,
+) -> None:
+    """A healthy dormant run completes without advancing content watermarks."""
+    active_completed = datetime(2026, 7, 19, 12, 0)
+    dormant_started = datetime(2026, 7, 22, 12, 0)
+    dormant_completed = datetime(2026, 7, 22, 12, 1)
+    await complete_pipeline(
+        db_session,
+        job=SummerLeaguePipelineJob.DESK,
+        metrics_rebuilt=False,
+        snapshots_materialized=True,
+        source_refreshed=True,
+        source_advanced=True,
+        projections_refreshed=True,
+        content_updated=True,
+        now=active_completed,
+    )
+    await start_pipeline(
+        db_session,
+        job=SummerLeaguePipelineJob.DESK,
+        job_image="registry/app:dormant",
+        now=dormant_started,
+    )
+    state = await complete_pipeline(
+        db_session,
+        job=SummerLeaguePipelineJob.DESK,
+        metrics_rebuilt=False,
+        snapshots_materialized=False,
+        content_updated=False,
+        started_at=dormant_started,
+        now=dormant_completed,
+    )
+
+    assert state.last_started_at == dormant_started
+    assert state.last_completed_at == dormant_completed
+    assert state.last_job_image == "registry/app:dormant"
+    assert state.last_succeeded_at == dormant_completed
+    assert state.last_content_updated is False
+    assert state.last_source_refreshed_at == active_completed
+    assert state.last_source_advanced_at == active_completed
+    assert state.last_projection_refreshed_at == active_completed
+    assert state.last_snapshots_materialized_at == active_completed
+
+
+async def test_older_completion_cannot_overwrite_a_newer_pipeline_start(
+    db_session: AsyncSession,
+) -> None:
+    """An overlapping older run cannot make the newer in-progress run look complete."""
+    prior_completed = datetime(2026, 7, 19, 10, 0)
+    older_started = datetime(2026, 7, 19, 11, 0)
+    newer_started = datetime(2026, 7, 19, 11, 1)
+    await complete_pipeline(
+        db_session,
+        job=SummerLeaguePipelineJob.DESK,
+        metrics_rebuilt=False,
+        snapshots_materialized=False,
+        now=prior_completed,
+    )
+    await start_pipeline(
+        db_session, job=SummerLeaguePipelineJob.DESK, now=older_started
+    )
+    await start_pipeline(
+        db_session, job=SummerLeaguePipelineJob.DESK, now=newer_started
+    )
+
+    state = await complete_pipeline(
+        db_session,
+        job=SummerLeaguePipelineJob.DESK,
+        metrics_rebuilt=False,
+        snapshots_materialized=True,
+        content_updated=True,
+        started_at=older_started,
+        now=datetime(2026, 7, 19, 11, 2),
+    )
+
+    assert state.last_started_at == newer_started
+    assert state.last_completed_at == prior_completed
+    assert state.last_outcome is None
+    assert state.last_content_updated is None
+
+    state = await complete_pipeline(
+        db_session,
+        job=SummerLeaguePipelineJob.DESK,
+        metrics_rebuilt=False,
+        snapshots_materialized=True,
+        content_updated=True,
+        started_at=newer_started,
+        now=datetime(2026, 7, 19, 11, 3),
+    )
+    assert state.last_completed_at == datetime(2026, 7, 19, 11, 3)
+    assert state.last_outcome == SummerLeaguePipelineOutcome.SUCCEEDED
 
 
 # ---------------------------------------------------------------------------
