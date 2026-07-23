@@ -109,6 +109,9 @@ async def start_pipeline(
     state = await _state_for(db, job)
     state.last_started_at = started_at
     state.last_job_image = job_image
+    state.last_outcome = None
+    state.last_content_updated = None
+    state.last_failure_reason = None
     state.updated_at = started_at
     await db.flush()
     return state
@@ -124,11 +127,14 @@ async def complete_pipeline(
     source_advanced: bool = False,
     projections_refreshed: bool = False,
     content_updated: bool = False,
+    started_at: datetime | None = None,
     now: datetime | None = None,
 ) -> SummerLeaguePipelineState:
-    """Record scheduler success and independently advance useful-work signals."""
+    """Record success unless a newer invocation has replaced this start token."""
     completed_at = now or datetime.utcnow()
     state = await _state_for(db, job)
+    if started_at is not None and state.last_started_at != started_at:
+        return state
     state.last_outcome = SummerLeaguePipelineOutcome.SUCCEEDED
     state.last_completed_at = completed_at
     state.last_succeeded_at = completed_at
@@ -157,11 +163,14 @@ async def record_pipeline_failure(
     *,
     job: SummerLeaguePipelineJob,
     reason: str,
+    started_at: datetime | None = None,
     now: datetime | None = None,
 ) -> SummerLeaguePipelineState:
-    """Persist a scheduled-job failure without changing pending work."""
+    """Persist failure unless a newer invocation has replaced this start token."""
     failed_at = now or datetime.utcnow()
     state = await _state_for(db, job)
+    if started_at is not None and state.last_started_at != started_at:
+        return state
     state.last_outcome = SummerLeaguePipelineOutcome.FAILED
     state.last_completed_at = failed_at
     state.last_content_updated = False

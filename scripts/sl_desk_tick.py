@@ -1352,11 +1352,13 @@ async def _run(args: argparse.Namespace) -> None:
     now = datetime.fromisoformat(args.now) if args.now else None
     telemetry = PipelineTelemetry(job="desk", logger=logger)
     async with SessionLocal() as db:
-        await start_pipeline(
+        pipeline_state = await start_pipeline(
             db,
             job=SummerLeaguePipelineJob.DESK,
             job_image=os.getenv("FLY_IMAGE_REF") or os.getenv("FLY_IMAGE"),
         )
+        pipeline_started_at = pipeline_state.last_started_at
+        assert pipeline_started_at is not None
         await db.commit()
         try:
             with telemetry.step("desk_tick"):
@@ -1376,6 +1378,7 @@ async def _run(args: argparse.Namespace) -> None:
                 source_advanced=result.source_advanced,
                 projections_refreshed=result.content_updated,
                 content_updated=result.content_updated,
+                started_at=pipeline_started_at,
             )
             await db.commit()
         except Exception as exc:
@@ -1386,6 +1389,7 @@ async def _run(args: argparse.Namespace) -> None:
                         db,
                         job=SummerLeaguePipelineJob.DESK,
                         reason=f"{type(exc).__name__}: {exc}",
+                        started_at=pipeline_started_at,
                     )
             except Exception:
                 logger.exception("Could not record failed Summer League Desk tick")
