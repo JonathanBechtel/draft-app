@@ -563,6 +563,40 @@ async def test_post_tick_full_render_snapshot_matrix_passes(
     assert str(len(EXPECTED_RENDER_VARIANTS)) in snapshots.message
 
 
+async def test_post_tick_stale_variant_cannot_hide_behind_newer_snapshot(
+    db_session: AsyncSession,
+) -> None:
+    """Every required variant must be fresh, not merely the newest matrix row."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await _seed_state(db_session, event=event, freshness_tick_at=_NOW)
+    await _seed_full_render_snapshot_matrix(db_session, event=event)
+    assert event.id is not None
+    stale_variant = next(iter(EXPECTED_RENDER_VARIANTS))
+    daily_state, cohort, stat_view = stale_variant
+    row = (
+        await db_session.execute(
+            select(EventDeskRenderSnapshot).where(
+                EventDeskRenderSnapshot.event_id == event.id,
+                EventDeskRenderSnapshot.daily_state == daily_state,
+                EventDeskRenderSnapshot.tracker_cohort == cohort,
+                EventDeskRenderSnapshot.tracker_stat_view == stat_view,
+            )
+        )
+    ).scalar_one()
+    row.updated_at = _NOW - timedelta(hours=5)
+    await db_session.commit()
+
+    report = await build_readiness_report(
+        db_session, mode="post-tick", now=_NOW, staleness_hours=2.0
+    )
+
+    snapshots = _result_for(report, "render_snapshots")
+    assert snapshots.status == ReadinessStatus.FAIL
+    assert "oldest required snapshot watermark" in snapshots.message
+
+
 async def test_preflight_render_snapshots_zero_is_skip(
     db_session: AsyncSession,
 ) -> None:
@@ -704,3 +738,26 @@ async def test_post_tick_active_stale_source_watermark_fails(
     source = _result_for(report, "source_freshness")
     assert source.status == ReadinessStatus.FAIL
     assert "source_refreshed_at" in source.message
+
+
+async def test_post_tick_newer_unfinished_scheduler_run_fails(
+    db_session: AsyncSession,
+) -> None:
+    """A newer start without completion cannot inherit the prior successful outcome."""
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await _seed_state(db_session, event=event, freshness_tick_at=_NOW)
+    await _seed_full_render_snapshot_matrix(db_session, event=event)
+    pipeline = (
+        await db_session.execute(select(SummerLeaguePipelineState))
+    ).scalar_one()
+    pipeline.last_completed_at = _NOW - timedelta(minutes=5)
+    pipeline.last_started_at = _NOW
+    await db_session.commit()
+
+    report = await build_readiness_report(db_session, mode="post-tick", now=_NOW)
+
+    scheduler = _result_for(report, "scheduler")
+    assert scheduler.status == ReadinessStatus.FAIL
+    assert "incomplete_newer_run=true" in scheduler.message

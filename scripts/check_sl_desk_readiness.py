@@ -487,9 +487,23 @@ async def _check_render_snapshots(
     missing = EXPECTED_RENDER_VARIANTS - present
     stale = [s for s in snapshots if s.schema_version != CURRENT_SCHEMA_VERSION]
 
-    newest_snapshot = max(s.updated_at for s in snapshots)
-    snapshot_age = now - newest_snapshot
-    snapshot_too_old = snapshot_age > timedelta(hours=staleness_hours)
+    required_snapshots = [
+        snapshot
+        for snapshot in snapshots
+        if (
+            snapshot.daily_state,
+            snapshot.tracker_cohort,
+            snapshot.tracker_stat_view,
+        )
+        in EXPECTED_RENDER_VARIANTS
+    ]
+    oldest_snapshot = min(
+        (snapshot.updated_at for snapshot in required_snapshots), default=None
+    )
+    snapshot_age = now - oldest_snapshot if oldest_snapshot is not None else None
+    snapshot_too_old = snapshot_age is not None and snapshot_age > timedelta(
+        hours=staleness_hours
+    )
     if missing or stale or snapshot_too_old:
         problems = []
         if missing:
@@ -506,8 +520,10 @@ async def _check_render_snapshots(
                 f"schema_version (expected {CURRENT_SCHEMA_VERSION})"
             )
         if snapshot_too_old:
+            assert oldest_snapshot is not None
+            assert snapshot_age is not None
             problems.append(
-                f"snapshot watermark {newest_snapshot.isoformat()} is stale "
+                f"oldest required snapshot watermark {oldest_snapshot.isoformat()} is stale "
                 f"({snapshot_age} old)"
             )
         return CheckResult(
@@ -525,8 +541,8 @@ async def _check_render_snapshots(
         status=ReadinessStatus.PASS,
         message=(
             f"Full {len(EXPECTED_RENDER_VARIANTS)}-variant render snapshot matrix "
-            f"present, schema_version={CURRENT_SCHEMA_VERSION}, snapshot watermark "
-            f"{newest_snapshot.isoformat()}."
+            f"present, schema_version={CURRENT_SCHEMA_VERSION}, oldest required "
+            f"snapshot watermark {oldest_snapshot.isoformat() if oldest_snapshot else 'unknown'}."
         ),
     )
 
@@ -582,6 +598,10 @@ async def _check_scheduler(
             status=ReadinessStatus.FAIL,
             message="Desk scheduler has a start but no completed outcome.",
         )
+    incomplete_run = (
+        state.last_started_at is not None
+        and state.last_started_at > state.last_completed_at
+    )
     age = now - state.last_completed_at
     active = lifecycle in {
         EventLifecyclePhase.ACTIVE,
@@ -589,6 +609,7 @@ async def _check_scheduler(
     }
     healthy = (
         state.last_outcome == SummerLeaguePipelineOutcome.SUCCEEDED
+        and not incomplete_run
         and age <= timedelta(hours=staleness_hours)
         and state.last_content_updated is active
     )
@@ -603,6 +624,7 @@ async def _check_scheduler(
             f"started={state.last_started_at.isoformat() if state.last_started_at else 'unknown'} "
             f"completed={state.last_completed_at.isoformat()} "
             f"outcome={state.last_outcome.value} "
+            f"incomplete_newer_run={str(incomplete_run).lower()} "
             f"content_updated={str(state.last_content_updated).lower()}"
         ),
     )
