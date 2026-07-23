@@ -94,8 +94,8 @@ Job A must have run first.
 T2/T3/T4 table, the tick resolves the Summer League event's inner daily
 state (Preview/Live/Recap) via the same pure state machine the framework
 controller uses (`app.services.event_desk.state_machine.inner_state`).
-When that resolves to ``None`` (the event's outer lifecycle phase isn't
-``active`` -- Dormant, Announced, Warm-up, Wind-down, or Archived), steps
+When that resolves to ``None`` (the event is not in an Active or Wind-down
+content window -- Dormant, Announced, Warm-up, or Archived), steps
 0-7 are skipped entirely. The scheduler records a successful no-op with
 ``content_updated=false`` in ``summer_league_pipeline_states``, while
 ``event_desk_state`` and all render snapshots remain byte-for-byte unchanged.
@@ -317,8 +317,10 @@ async def _resolve_daily_state(
     ``app.services.event_desk.controller.run_event_desk_tick`` performs
     internally (that helper is private to the controller module) so this
     tick can decide, *before* touching the network or any T2/T3/T4 table,
-    whether it's off-window (:func:`~app.services.event_desk.state_machine.inner_state`
-    returns ``None``) and therefore inert. ``registration.sync`` is the same
+    whether it's off-window and therefore inert. Wind-down is content-active
+    even though the inner state machine only accepts Active events, so this
+    pre-check maps Wind-down directly to Recap, matching the request path.
+    ``registration.sync`` is the same
     idempotent ``events`` row upsert the controller's own first step
     performs -- the only "write" this pre-check does.
 
@@ -327,8 +329,8 @@ async def _resolve_daily_state(
         now: The tick's reference instant (naive UTC).
 
     Returns:
-        The resolved daily state, or ``None`` when the event's outer
-        lifecycle phase isn't ``active``.
+        The resolved daily state, or ``None`` outside the Active/Wind-down
+        content window.
     """
     registration = SUMMER_LEAGUE_REGISTRATION
     event_row = await registration.sync(db, now.date())
@@ -339,6 +341,8 @@ async def _resolve_daily_state(
         window_priors=WindowPriors.from_dict(event_row.window_priors),
         game_dates=calendar_facts.game_dates,
     )
+    if lifecycle_phase(now, desk_event) == EventLifecyclePhase.WINDDOWN:
+        return EventDailyState.RECAP
     return inner_state(
         now, calendar_facts.today_schedule, calendar_facts.today_statuses, desk_event
     )

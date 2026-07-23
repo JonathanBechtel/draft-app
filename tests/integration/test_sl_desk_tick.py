@@ -597,6 +597,31 @@ async def test_desk_tick_off_window_is_a_no_op(db_session: AsyncSession) -> None
     assert result.content_updated is False
 
 
+async def test_tick_precheck_treats_winddown_as_content_active(
+    db_session: AsyncSession,
+) -> None:
+    """The post-roll window resolves to Recap instead of the dormant no-op path."""
+    game_day = date(2026, 7, 20)
+    competition = await _seed_competition(db_session, year=game_day.year)
+    home = await _seed_team(db_session, competition)
+    away = await _seed_team(db_session, competition)
+    await _seed_game(
+        db_session,
+        competition,
+        home,
+        away,
+        game_date=game_day,
+        tip_datetime=datetime(2026, 7, 20, 20, 0),
+        status=SummerLeagueGameStatus.FINAL,
+    )
+
+    daily_state = await desk_tick_module._resolve_daily_state(
+        db_session, now=datetime(2026, 7, 21, 16, 0)
+    )
+
+    assert daily_state == EventDailyState.RECAP
+
+
 async def test_force_date_uses_one_effective_clock_for_entire_staging_tick(
     db_session: AsyncSession,
     tmp_path: Path,
