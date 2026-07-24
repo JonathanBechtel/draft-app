@@ -30,14 +30,37 @@ Every item is a **redundancy or self-conflict**, not a file. Each carries:
     and get its own verification, not be smuggled into a "cleanup" PR.
 - **Prereq / sequence** — what must land first.
 
-## Guiding principle (from doc #5)
+## Guiding principles (from doc #5)
+
+**P1 — One canonical record; projections are thin readers.**
 
 > Keep one durable canonical record. Everything users see is a thin, disposable projection
 > computed *from* that record through *one* code path, each carrying an explicit watermark.
 
-Every redundancy below is a violation of that principle in one of two directions: the same
-computation done N times (stat math, percentiles), or the same fact stored N times and
-allowed to drift (roster status, freshness clocks, offline-vs-live stat columns).
+Every redundancy below is a violation of P1 in one of two directions: the same computation done
+N times (stat math, percentiles), or the same fact stored N times and allowed to drift (roster
+status, freshness clocks, offline-vs-live stat columns).
+
+**P2 — Longitudinal-first: retain history by default; destructive rebuild is the exception.**
+
+> Anything that carries analytical or evidentiary value is materialized **append-only and
+> as-of-dated**, with an atomic current-version pointer. History is never overwritten. The
+> "wipe clean and recompute" rebuild is an **anti-pattern**, not a shortcut — it destroys the
+> product's most valuable asset (the time axis) on every run.
+
+This is a default posture for *most data work*, not a Summer League detail. The actionable line
+— **evidence vs. cache** — keeps it from becoming dogma:
+
+| Data kind | Example | Rule |
+|---|---|---|
+| **Canonical facts (assertions)** | game logs, affiliations, participation | Append-only, bitemporal; **never** destroyed. |
+| **Time-varying analytical projections** | player advanced lines, cohort baselines, environment profiles | **Dated version-flip; history retained.** ← the band the full-wipe violates. |
+| **Pure regenerable presentation caches** | render-snapshot variants | Overwrite-in-place OK (no independent value), but must stamp the **watermark of the projection they render**. |
+
+The codebase already exemplifies P2: `environment_profiles` and `cohort_baselines` version-flip
+today. P2 **promotes that existing pattern to the default** and demotes the destructive
+`rebuild_sl_metrics` full-wipe (`metrics.py:1443-1446`) to a rare, justified exception. Issue B
+(1.6) is the first application; the same rule governs every future spoke's materialization.
 
 ## Current-state note — battles already won (do NOT re-fight)
 
