@@ -67,6 +67,14 @@ metric off a neutral `Box` dataclass (`metrics.py:200-220`) and `LeagueContext`
 re-implemented from scratch at request time in four other places. This is the single most
 valuable cleanup and the foundation of doc #2.
 
+**This bucket is two independent tickets — keep them separate:**
+
+- **Issue A — dedupe-and-lift** (1.1–1.4 below). Consolidate the duplicated math; point every
+  surface at the one engine. Behavior-preserving, guarded by golden-number tests. Wave 1.
+- **Issue B — materialize-and-read, dated** (1.6 below). Stop recomputing live; read
+  precalculated values off the table. Separate risk profile; **depends on Issue A** (don't
+  freeze duplicated math into a table). Reframed by the longitudinal requirement — see 1.6.
+
 ### 1.1 — Box-derived ratio formulas implemented 3–8× each 🟢→🟡
 
 - **Evidence.** TS% denominator `2·(FGA + 0.44·FTA)` appears at **≥8 sites**: canonical
@@ -122,6 +130,38 @@ valuable cleanup and the foundation of doc #2.
 - **This is the one genuinely new piece** — it belongs to doc #2 and is what lets the engine
   answer "given this source's inputs, which metrics are computable" mechanically instead of by
   hard-coded assumption. Listed here so the dedupe work in 1.1–1.3 is designed to hang off it.
+
+### 1.6 — Issue B: materialize-and-read as **dated snapshots** (unlocks longitudinal) 🟡
+
+This is not really "store vs. recompute." It is "materialize as *as-of-dated* snapshots and
+read the latest" — where *read the latest* serves the Explorer and *read the series* serves a
+longitudinal view. One design change resolves an operational fire, a reproducibility gap, and a
+missing product capability at once.
+
+- **Current state.** SL player metrics **are** already materialized — `summer_league_player_seasons`,
+  one row per (player, competition), with `created_at`/`updated_at` but **no as-of date axis**
+  (`app/schemas/summer_league_metrics.py:105-235`). The Explorer nonetheless **ignores** that
+  table and recomputes live from box components (`explorer_service.py:2564-2577`). And
+  `rebuild_sl_metrics` **full-wipes** the table every run (`metrics.py:1443-1446`
+  `delete(SummerLeaguePlayerSeason)`). So history is destroyed on every rebuild.
+- **The convergence.** That full-wipe is the *same object* as three logged problems:
+  1. the live operational fire (the heavy unscoped wipe inside the mega-transaction, Bucket 3);
+  2. the reproducibility gap (destructive rebuild vs. clean versioned one, Bucket 6.1);
+  3. the reason no longitudinal view can exist (history overwritten each run).
+- **Collapse to.** Apply the **append-only, version-flip** pattern **already used in this
+  codebase** by `environment_profiles` and `cohort_baselines` (write a fresh dated version, flip
+  `is_current` atomically, never mutate priors) to the player-metrics table. This simultaneously
+  (a) removes the destructive wipe from the hot transaction, (b) makes rebuilds safe to re-run,
+  and (c) yields a daily time series of every player's advanced line for free.
+- **Two longitudinal grains it unlocks (scope honestly):**
+  - **Within-event daily trend** — near-term, cheap: how a player's cumulative GmSc / TS% / BPM
+    moved across the ~2-week tournament. Falls out of dated materialization almost for free.
+  - **Cross-stage career ledger** — the big initiative, already designed in
+    `docs/plans/player-longitudinal-evidence-layer-pitch.md` (Player Development Ledger, with
+    metric-family comparison semantics and minimum-sample rules). **Extend that, don't reinvent
+    it**; the within-event daily snapshots become one well-formed stage in that ledger.
+- **Class.** 🟡 — schema + rebuild-path change; graduates to doc #2 (engine) and coordinates
+  with doc #4 (backbone/journey-graph). Depends on Issue A.
 
 ---
 
@@ -186,8 +226,9 @@ still observed in production.
 - **4.2 — Offline stat columns vs. live recompute.** `summer_league_player_seasons` stores
   `ts_pct/efg_pct/…` (`metrics.py:1332-1360`) that the Explorer ignores and recomputes from box
   components at request time (`explorer_service.py:2564-2577`). Resolving Bucket 1.1 (one formula)
-  makes the stored column and the recompute provably equal; this item tracks *deciding* whether
-  to store-and-read or always-recompute once they can't diverge. 🟡 → doc #2.
+  makes the stored column and the recompute provably equal. The *decision* — store-and-read vs.
+  always-recompute — is answered by **Issue B / 1.6**: materialize as dated snapshots and read
+  the latest, which the longitudinal requirement makes the clear choice. 🟡 → doc #2.
 
 ---
 
@@ -227,8 +268,10 @@ is a trustworthy recovery tool rather than a gamble.
   mode. Snapshot materialization is `on_conflict_do_update` over a fixed key matrix (no stale
   rows unless the matrix shrinks).
 - **6.1 — `rebuild_sl_metrics` is a full unscoped wipe** (`metrics.py:1443-1446`). Re-runnable but
-  heavy and briefly empties tables inside the txn (ties to Bucket 3). **Collapse to:** scoped
-  rebuild + atomic publish. 🟡 → doc #3.
+  heavy and briefly empties tables inside the txn (ties to Bucket 3). **Collapse to:** the
+  append-only, dated version-flip publish of **Issue B / 1.6** — the single change that fixes the
+  operational fire, the reproducibility gap, *and* unlocks longitudinal history. 🟡 → doc #3 (op)
+  / doc #2 (materialization shape).
 - **6.2 — Batch-progress can silently skip corrected files.** Durable per-game markers
   (`_run_batched_phase:603-615`) mean a re-run will *not* reprocess a changed-but-already-marked
   game unless dirty-detection fires or an operator sets `SL_INGEST_FULL_RECONCILE`
@@ -264,7 +307,9 @@ roster dual-write (with doc #4), 6.1/6.2 idempotency hardening.
 
 1. **Live timeouts:** is the mega-transaction (`ingest_runner.py:1308-1348`) the cause, or are
    the shipped lock/transaction fixes simply not on the deployed image? (Bucket 3 action item.)
-2. **Store vs. recompute:** once one formula makes them equal, do we keep the materialized stat
-   columns (fast reads) or always recompute live (simpler, one path)? (Bucket 4.2.)
+2. **Store vs. recompute → resolved as dated materialization.** Rather than a binary, Issue B /
+   1.6 materializes as-of-dated snapshots (version-flip, like `environment_profiles`) and reads
+   the latest — which also yields longitudinal history. Confirm appetite for the schema change
+   and the within-event daily-trend product surface it unlocks.
 3. **Second spoke shape:** confirmed as "next multi-day basketball competition, TBD" — enough to
    design the engine/backbone generically without freezing an Event Desk framework at N=1.
