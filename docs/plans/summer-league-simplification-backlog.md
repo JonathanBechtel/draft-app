@@ -57,10 +57,18 @@ This is a default posture for *most data work*, not a Summer League detail. The 
 | **Time-varying analytical projections** | player advanced lines, cohort baselines, environment profiles | **Dated version-flip; history retained.** ← the band the full-wipe violates. |
 | **Pure regenerable presentation caches** | render-snapshot variants | Overwrite-in-place OK (no independent value), but must stamp the **watermark of the projection they render**. |
 
-The codebase already exemplifies P2: `environment_profiles` and `cohort_baselines` version-flip
-today. P2 **promotes that existing pattern to the default** and demotes the destructive
-`rebuild_sl_metrics` full-wipe (`metrics.py:1443-1446`) to a rare, justified exception. Issue B
-(1.6) is the first application; the same rule governs every future spoke's materialization.
+**Good news — the anti-pattern is narrowly concentrated, not systemic** (full inventory in
+Appendix A). An app-wide audit found the SL metrics rebuild is essentially the *only* analytics
+offender. The rest of the app is already longitudinal-first, and in fact carries a **mature,
+reusable versioning primitive** the SL rebuild simply never adopted: offline percentiles/z-scores
+(`compute_metrics.py`), combine scores, and KNN comps all write versioned `MetricSnapshot` +
+`player_metric_values` rows (`run_key`/`version`/`is_current`); consensus writes append-only
+snapshots; `environment_profiles` and `cohort_baselines` version-flip.
+
+So P2 **promotes an existing, proven pattern to the default** — it does not impose a new one. It
+demotes the destructive `rebuild_sl_metrics` full-wipe (`metrics.py:1443-1446`) to a rare,
+justified exception. Issue B (1.6) is the first application; the same rule governs every future
+spoke's materialization.
 
 ## Current-state note — battles already won (do NOT re-fight)
 
@@ -336,3 +344,52 @@ roster dual-write (with doc #4), 6.1/6.2 idempotency hardening.
    and the within-event daily-trend product surface it unlocks.
 3. **Second spoke shape:** confirmed as "next multi-day basketball competition, TBD" — enough to
    design the engine/backbone generically without freezing an Event Desk framework at N=1.
+4. **Materialization primitive for SL metrics (doc #2 fork):** adopt the generic
+   `MetricSnapshot`/`player_metric_values` versioning the rest of the app's offline analytics
+   already use (reuse infra, more consolidation), or a per-table dated version-flip like
+   `environment_profiles` (table-local, simpler shape match)? See Appendix A.
+
+---
+
+# Appendix A — P2 anti-pattern audit (app-wide)
+
+Verified read-only sweep of `scripts/`, `app/services/`, `app/cli/` for destructive-overwrite
+("wipe-and-recompute") data patterns, classified against P2. **Finding: the anti-pattern is
+narrowly concentrated in the Summer League metrics rebuild; the rest of the app is already
+longitudinal-first.**
+
+### Offenders (fix under P2)
+
+| path:line | what it wipes | version/as-of dim today? | severity |
+|---|---|---|---|
+| `metrics.py:1444-1446` (`rebuild`, unscoped; via `scripts/rebuild_sl_metrics.py`) | **all** `SummerLeaguePlayerSeason` + `MetricContext` + `MetricModel` rows | No (Season/Context); **MetricModel *is* versioned but is also deleted** | **HIGH** — destroys the computed advanced-metric basket *and* the auditable model-fit history every run |
+| `metrics.py:1468-1475` (`rebuild`, scoped by competition; hourly desk tick) | same tables, scoped to touched competitions | No | **HIGH** — same destroy-and-repopulate; scope limits blast radius, not the missing time-axis |
+| `draft_order_service.py:96-100` (`bulk_replace_draft_order`) | all `DraftPickSlot` rows for a draft year (pick ownership, trades) | No (`created_at`/`updated_at` only) | **LOW** — admin-curated reference, not computed analytics; but trade/ownership history over a cycle is unrecoverable |
+
+**Note on the top offender:** because `SummerLeagueMetricModel` was *designed* versioned/auditable
+but is deleted wholesale, the P2 fix must also stop deleting prior `MetricModel` fits so the
+history the table already models actually survives.
+
+### Already compliant (the pattern to adopt) — leave alone
+
+- **`MetricSnapshot` + `player_metric_values`** (`compute_metrics.py`, `compute_combine_scores.py`)
+  — versioned `run_key`/`version`/`is_current`; deletes only under explicit `--replace-run`.
+  **This is the reusable primitive SL metrics should align to.**
+- **`compute_similarity.py`** (KNN comps) — recomputes derived comps scoped to an immutable
+  `MetricSnapshot` version; a new run targets a new snapshot.
+- **`consensus_service.py`** — consensus blend writes append-only snapshots (`computed_at`);
+  schema docstring: "append-only, never updated."
+- **`environment_profiles`** and **`cohort_baselines`** — textbook version-flip with atomic
+  current-pointer and rollback.
+
+### Cache-exempt (regenerable presentation; overwrite-in-place OK)
+
+`event_desk_render_snapshots` (stamps upstream watermark ✓), SL Desk T3/T4 storylines & slate,
+desk player grades (version-keyed upsert), `batch_progress` (transient pipeline state), video
+manual-mention reconciliation.
+
+### Out of scope (not recompute wipes)
+
+Admin entity deletions (`admin_player_service`, `admin_auth_service`), player-merge/dedup cleanups
+(`deduplicate_players.py`, `merge_*_dup_players.py`), and seed/demo fixtures — all delete specific
+chosen rows on explicit action, not history on recompute.
