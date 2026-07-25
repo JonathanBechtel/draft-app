@@ -70,6 +70,15 @@ in the company, because it is accumulated human + machine judgment, not scrapeab
 6. **Event-gated inclusion is a *publication* rule, not an *identity* rule (§9).** Players
    may enter via boards, news, or source records before any marquee event; marquee-event
    presence gates what gets *published*, not who exists in the graph.
+7. **Longitudinal-first — retain history by default (added 2026-07-25).** Anything carrying
+   analytical or evidentiary value is materialized **append-only and as-of-dated**, with an
+   atomic current-version pointer. **"Wipe clean and recompute" is an anti-pattern, not a
+   shortcut** — it destroys the time axis, which is the backbone's whole point. This extends
+   principle 4: aggregates are not merely *versioned in metadata*, their prior versions
+   **survive**. The line is evidence vs. cache: canonical assertions are never destroyed;
+   time-varying analytical projections use dated version-flip; only pure regenerable
+   presentation caches may be overwritten in place (and must stamp the watermark of what they
+   render). See `summer-league-simplification-backlog.md` §P2 and its app-wide audit.
 
 ---
 
@@ -86,6 +95,35 @@ PROVENANCE     source_system · source_document/snapshot · source_record · ass
 
 Lower layers block upper ones. The identity *hub* largely exists; **provenance,
 org/team split, participation, affiliation assertions, and all projections are new.**
+*(Superseded in part — see the §4 status update: participation and affiliation assertions have
+since shipped.)*
+
+### Where each layer lives in code (added 2026-07-25)
+
+Maintained so the model and the codebase stay legible to each other. When a row here goes stale,
+one of the two is drifting — that is the signal this table exists to give.
+
+| Layer | Concept | Today | Domain type |
+|---|---|---|---|
+| Identity | canonical player | `players_master`, `player_external_ids`, `player_aliases` | `PlayerRef` |
+| Identity | resolution + review | `summer_league_source_players`, `_player_resolution_reviews` *(SL-namespaced)* | `SourceIdentity`, `ResolutionOutcome` |
+| Provenance | source document / record | `summer_league_raw_runs`, `_raw_files` *(SL-namespaced)* | `SourceDocumentRef`, `SourceRecordRef`, `Evidence` |
+| Canon | organization → team/program | **not built — the live blocker (§7a)** | `OrganizationRef`, `TeamProgramRef` |
+| Canon | competition → edition | `summer_league_competitions` *(SL-namespaced; names the parent concept, models the child)* | `CompetitionRef`, `EditionRef` |
+| Canon | team_entry | `summer_league_team_entries` *(SL-namespaced)* | `TeamEntryRef` |
+| Canon | game | `summer_league_games` *(SL-namespaced)* | `GameRef` |
+| Assertions | affiliations | `player_affiliations` ✅ *generic, supersession-first* | `AffiliationAssertion` |
+| Assertions | transactions / measurements | not built (`combine_anthro` is combine-scoped) | `Transaction`, `Measurement` |
+| Spoke | participation | `summer_league_participation` ✅ *correct grain* | `ParticipationRef` |
+| Spoke | game logs | `summer_league_player_game_logs`, `_team_game_logs` | — *(fat spoke, correctly)* |
+| Spoke | derived aggregates | `summer_league_player_seasons` ⚠️ *destructively rebuilt — violates principle 7* | `VersionStamps` |
+| Analytical | scope baselines | `summer_league_environment_*`, `_cohort_baselines` *(SL-namespaced; already scope-generic)* | `Scope` |
+| Projections | lifecycle | `player_lifecycle` *(denormalized; reducer not built)* | — |
+| Presentation | event desk | `events`, `event_desk_state`, `event_desk_render_snapshots` *(generic names, SL-coupled code)* | `Watermark` |
+
+*SL-namespaced* = the structure exists and works but lives under a `summer_league_` prefix; see
+`summer-league-journey-graph-alignment.md` for the promotion plan. Domain types are specified in
+`journey-graph-domain-vocabulary.md`.
 
 ---
 
@@ -99,12 +137,44 @@ org/team split, participation, affiliation assertions, and all projections are n
   (combine-scoped); the Summer League spoke; `board_entries.resolution_method` vocabulary;
   consensus board tables.
 
-### Corrections to the v1 inventory (from review)
+### Status update 2026-07-25 — items since BUILT (supersedes the corrections below)
+
+Verified against HEAD. Three items previously listed as missing have shipped for the Summer
+League spoke:
+
+- **Participation now EXISTS** — `SummerLeagueParticipation` (`app/schemas/summer_league.py:550`)
+  at exactly the §7b grain: one row per `(player, team_entry, stint)` with `stint_no`, an
+  `affiliation_id` FK, and player game logs referencing it rather than raw `(player, edition)`.
+  *(The v1 correction below is now historical.)*
+- **Affiliation assertions now EXIST with supersession** — `player_affiliations`
+  (`app/schemas/player_affiliation.py`) carries `effective_start`/`effective_end`,
+  `recorded_at`, `supersedes_id`, `superseded_at`, `retracted_at` — the §13.4 ratified
+  supersession-first model, shipped.
+- **SL retrofit onto participation is done** (§12 step 5).
+
+**The single remaining blocker for a second spoke is the org model (§7a).**
+`player_affiliation.py:73` reads `# team_program_id: reserved — added when the generic org
+model ships`, so affiliations can currently only target `nba_team_id`. Any non-NBA source
+(FIBA club, national team, academy, college program) has nothing to point at. This is a
+smaller, sharper gap than "generalize the backbone" — the rest of the hub is in place.
+
+**Two new consistency/debt findings:**
+
+- **`summer_league_player_seasons` is destructively rebuilt.** The metrics rebuild full-wipes it
+  (`app/services/summer_league/metrics.py:1443-1446` deletes all `SummerLeaguePlayerSeason` /
+  `MetricContext` / `MetricModel` rows). It therefore has **no time axis** and violates core
+  principle 7 — and it wipes `MetricModel`, whose own schema documents a version stamp so refits
+  are auditable. §7c's "versioned computation" intent is not realized in practice here.
+- **`roster_status` dual-write.** `SummerLeagueParticipation.roster_status` denormalizes what
+  `player_affiliations` already asserts — two writers for one truth, a drift risk that
+  §0's assertion-vs-projection split exists to prevent. Decide: derive it, or drop the copy.
+
+### Corrections to the v1 inventory (from the 2026-06-23 review — see status update above)
 - **Participation does NOT exist today.** SL game logs repeat `competition_id`,
   `team_entry_id`, source identity, and canonical `player_id` *inline on every log*
   (`app/schemas/summer_league.py:430`). `summer_league_player_seasons` is a **derived
   rollup**, not a player-season/roster *bridge* that logs reference. Participation is **new
-  infrastructure** (§7).
+  infrastructure** (§7). ***— RESOLVED 2026-07-25; participation shipped.***
 - **Merge is not audited or reversible.** `player_merge_service` reassigns/deletes across a
   manually maintained table list (`player_merge_service.py:83`) and does **not persist its
   actor** (`:520`). Event sourcing does not fix this (§6).
@@ -299,14 +369,19 @@ player-page International/Youth section.
 
 ## 12. Recommended revised critical path
 
-1. **Source/evidence primitives + identity-action audit** (§10, §6).
+*Progress marked 2026-07-25 — see §4 status update.*
+
+1. **Source/evidence primitives + identity-action audit** (§10, §6). — *open*
 2. **Organization → team/program → team_entry** model + `organization_relationship` (§7a).
-3. **Competition → edition → game** model (§7).
-4. **Participation** model — `(player, team_entry, stint)` (§7b).
+   — **⬅ THE LIVE BLOCKER.** Until this ships, `player_affiliations.team_program_id` stays
+   reserved and affiliations can only target `nba_team_id`, so no non-NBA spoke can assert
+   affiliation. Now the highest-priority backbone item.
+3. **Competition → edition → game** model (§7). — *open (SL-scoped equivalents exist)*
+4. **Participation** model — `(player, team_entry, stint)` (§7b). — **✅ DONE (SL-scoped)**
 5. **Retrofit Summer League** onto participation; prove the complete path (queries,
-   aggregation, resolution) **before** building the international spoke.
+   aggregation, resolution) **before** building the international spoke. — **✅ DONE**
 6. **Affiliation assertions** (supersession/bitemporal) + **versioned lifecycle reducer**
-   (§5).
+   (§5). — **✅ assertions DONE** (supersession-first, shipped); *reducer still open*.
 7. **International source-resolution + ingestion spoke.**
 8. **Measurements + computed aggregates** (§5c, §7c).
 9. **Timeline / read projections.**
@@ -356,9 +431,17 @@ follows, not replaces, steps 1–5.
    `player_connection_summary`.
 
 **Still open:**
-- **Level-adjusted metric model (§7c).** The rate layer (per-36/per-100) ships now as a shared
-  util; the level-adjustment translation model (per-level, per-season factors, versioned via
-  `calculation_version`) still needs its own spec — the moat piece.
+- **Level-adjusted metric model (§7c).** ⚠️ **Correction 2026-07-25:** the claim that "the rate
+  layer (per-36/per-100) ships now as a shared util" **did not hold in practice** — per-36/per-100
+  is implemented at least twice (Python `explorer_service.py:2527-2541` and SQL
+  `:2591-2607`), and core ratio formulas like TS% appear at ~8 sites. The shared-util intent
+  is now specified in **`summer-league-stat-engine-reuse-spec.md`** (doc #2), which defines the
+  source-agnostic engine, the metric registry (declare each formula once, with `registry_version`),
+  and a `metric → required inputs → source provides` capability model. **The level-adjustment
+  translation model itself remains open** — doc #2 supplies the engine it would live in, not the
+  translation study. Note doc #2's registry is designed to carry the Ledger's
+  `comparison_semantics` / `allowed_reference_kinds` / `minimum_sample_rule` fields, which are the
+  guardrails any level-adjustment work must respect.
 - **Bitemporal upgrade trigger** — the concrete feature that would force the
   supersession → bitemporal upgrade (reproduce-past-beliefs reproducibility).
 - **Auto-stitch numeric threshold** — to be set empirically from the backfill labeled set,
@@ -382,6 +465,18 @@ follows, not replaces, steps 1–5.
   on lifecycle; versioned reducer (`reducer_version`/`derived_at`/`input_watermark`);
   eligibility ruleset for draft year; richer aggregate provenance; basketball-first /
   sport-extensible (not sport-generic). Critical path reordered (§12).
+- **2026-07-25 — post-Summer-League retrospective pass.** Verified the doc against shipped code
+  after the SL launch. (1) §4 gap analysis updated: **participation** and **affiliation
+  assertions with supersession** are now BUILT (SL-scoped), and the SL retrofit is done —
+  §12 steps 4, 5, and the assertion half of 6 marked complete. (2) Identified the
+  **organization → team/program model (§7a, step 2) as the single live blocker** for a second
+  spoke, since `team_program_id` stays reserved until it ships. (3) Added **core principle 7,
+  longitudinal-first**, after an app-wide audit found the SL metrics rebuild destroys history on
+  every run — a concrete violation of §7c's versioned-computation intent. (4) Recorded the
+  `roster_status` dual-write as a drift risk. (5) Corrected the §13 claim that the per-36/per-100
+  rate layer shipped as a shared util — it did not; the shared engine is now specified in doc #2.
+  Companion docs from this pass: `summer-league-simplification-backlog.md`,
+  `summer-league-stat-engine-reuse-spec.md`, `summer-league-desk-simplification-spec.md`.
 - **2026-07-08 — open-items decision pass.** Resolved §13: transaction vocabulary (closed
   set), `org_kind` discriminator, auto-stitch three-band policy, and graph-store trigger rule
   (adopted along recommendation); user-ratified: affiliation temporal model =

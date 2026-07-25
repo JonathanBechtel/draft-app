@@ -49,6 +49,8 @@ New features should be scoped to **fit into the broader roadmap initiative**, no
 
 Call this out explicitly in product pitches and tech specs: state how the feature advances (or is constrained by) the journey-graph backbone. Mechanical fixes are exempt; anything net-new or data-shaped is not.
 
+**Architectural principles: `docs/plans/north-star-architecture.md`** is the canonical, short statement of how this app is built — one canonical record with thin projections (P1), longitudinal-first with retained history (P2), sources as adapters never stores (P3), and freshness meaning source currency not process time (P4). It carries the build practices and a map of the supporting specs. Read it before designing anything data-shaped; its closing **review questions** are the quickest check that a design fits.
+
 ---
 
 # Definition of Done
