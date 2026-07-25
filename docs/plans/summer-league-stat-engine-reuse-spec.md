@@ -144,13 +144,13 @@ the Explorer reads precalculated values *and* a daily time series exists. The op
 | **A. Reuse `MetricSnapshot` / `player_metric_values`** | Max consolidation — one materialization pattern app-wide; inherits `run_key`/`version`/`is_current` + rollback | `player_metric_values` is a tall/long shape (row per player×metric×version); SL's advanced line is a **wide** row (many columns per player-competition) — a real remodel with possible read-perf cost on the Explorer's wide scans |
 | **B. Table-local dated version-flip** (like `environment_profiles`) | Simple shape match to the existing wide `summer_league_player_seasons`; fastest to land; proven in-repo | Leaves two materialization patterns in the app |
 
-**Recommendation: option B for the table, adopting option A's *conventions*.** Keep the wide
+**DECIDED — option B: table-local version-flip, adopting option A's *conventions*.** Keep the wide
 `summer_league_player_seasons` shape (it fits the Explorer's access pattern), but give it the
 `MetricSnapshot` discipline — `run_key`, monotonic `version`, `is_current`, and an explicit
-`calculation_version` — and an as-of date. This gets P2 + longitudinal + the operational win (no
+`calculation_version` — plus an as-of date. This gets P2 + longitudinal + the operational win (no
 full-wipe in the hot transaction) with minimal remodel, while staying *conventionally* consistent
-with the rest of the app. Revisit folding into `player_metric_values` only if a later cross-spoke
-Explorer mode needs one physical store.
+with the rest of the app. Folding into `player_metric_values` is **not** pursued. This decision is
+settled — treat it as a constraint for downstream docs and tickets, not an open question.
 
 **Also (from the audit):** stop deleting `SummerLeagueMetricModel` on rebuild — it is already
 versioned/auditable by design (`metrics.py:1446` currently wipes it), so preserving its fit history
@@ -181,11 +181,14 @@ is part of this change.
 - **Consolidation (P1):** one engine, one registry, one compute path — the structural cure for the
   offline-vs-live divergence class of bug.
 
+## Decisions made
+
+- **Materialization primitive — SETTLED:** table-local dated version-flip on
+  `summer_league_player_seasons`, using `MetricSnapshot` conventions. Not `player_metric_values`. (§5)
+
 ## Open questions
 
-1. **Materialization primitive** — confirm option B-with-A's-conventions, or prefer full reuse of
-   `player_metric_values`? (§5)
-2. **SQL push-down** — invest in formula→SQL emission now, or the one-Python-one-SQL-per-metric
+1. **SQL push-down** — invest in formula→SQL emission now, or the one-Python-one-SQL-per-metric
    fallback with parity tests? (§4)
-3. **Daily-trend scope** — is the within-event daily trend a near-term product surface to spec, or
-   just a byproduct we retain until the full Ledger ships? (§6, doc #1 open Q on cadence/retention)
+2. **Daily-trend scope** — is the within-event daily trend a near-term product surface to spec, or
+   just a byproduct we retain until the full Ledger ships? (§6)
