@@ -141,16 +141,49 @@ the Explorer reads precalculated values *and* a daily time series exists. The op
 
 | Option | Pros | Cons |
 |---|---|---|
-| **A. Reuse `MetricSnapshot` / `player_metric_values`** | Max consolidation — one materialization pattern app-wide; inherits `run_key`/`version`/`is_current` + rollback | `player_metric_values` is a tall/long shape (row per player×metric×version); SL's advanced line is a **wide** row (many columns per player-competition) — a real remodel with possible read-perf cost on the Explorer's wide scans |
+| **A. Reuse `MetricSnapshot` / `player_metric_values`** | Max consolidation — one materialization pattern app-wide | `player_metric_values` is a tall/long shape (row per player×metric×version); SL's advanced line is a **wide** row (many columns per player-competition) — a real remodel with read-perf cost on the Explorer's wide scans. **And its conventions are dated — see below.** |
 | **B. Table-local dated version-flip** (like `environment_profiles`) | Simple shape match to the existing wide `summer_league_player_seasons`; fastest to land; proven in-repo | Leaves two materialization patterns in the app |
 
-**DECIDED — option B: table-local version-flip, adopting option A's *conventions*.** Keep the wide
-`summer_league_player_seasons` shape (it fits the Explorer's access pattern), but give it the
-`MetricSnapshot` discipline — `run_key`, monotonic `version`, `is_current`, and an explicit
-`calculation_version` — plus an as-of date. This gets P2 + longitudinal + the operational win (no
-full-wipe in the hot transaction) with minimal remodel, while staying *conventionally* consistent
-with the rest of the app. Folding into `player_metric_values` is **not** pursued. This decision is
-settled — treat it as a constraint for downstream docs and tickets, not an open question.
+**DECIDED — option B: table-local dated version-flip.** Keep the wide
+`summer_league_player_seasons` shape (it fits the Explorer's access pattern) and give it an
+append-only dated version-flip with an atomic current pointer. Folding into `player_metric_values`
+is **not** pursued. Settled — a constraint for downstream docs and tickets, not an open question.
+
+### Which conventions to copy — `environment_profiles`, NOT `MetricSnapshot`
+
+The repo contains **three generations** of temporal/versioning design. Breadth of use is not
+quality: `MetricSnapshot` is the most widely used *and* the weakest, because it predates the
+lessons the later designs absorbed.
+
+| | `MetricSnapshot` (`app/schemas/metrics.py:61`) | `environment_profiles` (`app/schemas/summer_league_environment.py`) |
+|---|---|---|
+| **Scope model** | **Hardcoded into columns** — `cohort`, `season_id`, `position_scope_parent`, `position_scope_fine`. Built for the pre-draft/combine cohort case; position scope is meaningless for a competition-relative pool | **Generic** `scope_key` / `scope_kind` — extends to any scope without schema change |
+| **Version stamps** | **One** integer `version` | **Three, explicitly "never conflate":** `version` (publication sequence), `registry_version` (metric-definition/formula version), `calculation_version` (pipeline/pooling logic version) |
+| **Run identity** | Free-text `run_key` (e.g. `'2024_pre_draft_v1'`) — a human-typed convention | Structured scope + version |
+| **Retention posture** | Carries `expires_at` — a TTL/cache smell, at odds with P2 retain-by-default | Versions retained; rollback path exists |
+
+**Why the version-stamp difference is decisive for P2.** With a single integer you cannot answer
+the fundamental longitudinal question: *did this number change because new games arrived, or
+because we changed the formula?* A time series whose points were produced by silently different
+formulas is not a time series — it is a trap. Separating publication / registry / calculation
+versions is what makes the series interpretable, and is the direct analogue of doc #1's watermark
+discipline applied to computation rather than freshness.
+
+**Therefore the SL metrics tables should carry:**
+
+- `scope_key` / `scope_kind` style generic scoping (not hardcoded cohort/position columns);
+- the **three separate version stamps** (`version`, `registry_version`, `calculation_version`);
+- `is_current` with a partial unique index for the atomic pointer;
+- **an as-of date for the underlying data** — distinct from `calculated_at`/computed-at. This is
+  the one field to verify against `environment_profiles` and **add if absent there too**: a
+  longitudinal point needs to know *as of what state of the source data* it was true, not merely
+  when the job ran. Without it we repeat the Desk's "a timestamp that records when a process ran,
+  not when the data became current" defect in the stats layer.
+- **no `expires_at`/TTL** semantics.
+
+`registry_version` should be sourced from the metric registry in §2, which makes the registry and
+the materialization mutually reinforcing: one declaration of each formula, and every stored row
+stamped with which declaration produced it.
 
 **Also (from the audit):** stop deleting `SummerLeagueMetricModel` on rebuild — it is already
 versioned/auditable by design (`metrics.py:1446` currently wipes it), so preserving its fit history
@@ -184,7 +217,9 @@ is part of this change.
 ## Decisions made
 
 - **Materialization primitive — SETTLED:** table-local dated version-flip on
-  `summer_league_player_seasons`, using `MetricSnapshot` conventions. Not `player_metric_values`. (§5)
+  `summer_league_player_seasons`. Not `player_metric_values`. (§5)
+- **Conventions — SETTLED:** copy `environment_profiles` (generic scope, three separate version
+  stamps, no TTL), **not** `MetricSnapshot`, which predates those lessons. (§5)
 
 ## Open questions
 
