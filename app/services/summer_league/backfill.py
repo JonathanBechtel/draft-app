@@ -202,7 +202,21 @@ async def _run_backfill_stages(
     if audit_report.runs_scanned == 0:
         raise ValueError(
             "No Summer League raw manifests found for "
-            f"{options.year}/{options.league_id} under {options.raw_root}"
+            f"{options.year}/{options.league_id} under {options.raw_root}.\n"
+            "\n"
+            "Backfill reads manifests that the raw fetch writes to disk; it cannot "
+            "produce them itself. Run the pipeline in order:\n"
+            "\n"
+            "  1. python scripts/fetch_summer_league_raw.py "
+            f"--year {options.year} --league-id {options.league_id}\n"
+            "  2. python scripts/audit_summer_league_raw.py "
+            f"--year {options.year} --league-id {options.league_id}\n"
+            "  3. this backfill\n"
+            "  4. python scripts/normalize_summer_league.py\n"
+            "  5. python scripts/rebuild_sl_metrics.py\n"
+            "\n"
+            f"If the fetch already ran, check --raw-root: expected manifests under "
+            f"{options.raw_root} for season {options.year}, league {options.league_id}."
         )
     if audit_report.parse_failures and not options.force:
         warnings.append(
