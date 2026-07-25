@@ -30,7 +30,11 @@ Every item is a **redundancy or self-conflict**, not a file. Each carries:
     and get its own verification, not be smuggled into a "cleanup" PR.
 - **Prereq / sequence** — what must land first.
 
-## Guiding principles (from doc #5)
+## Guiding principles
+
+> **Canonical home: `north-star-architecture.md`.** That doc is authoritative for P1/P2 and adds
+> P3 (sources are adapters) and P4 (freshness means source currency). Restated here only so this
+> backlog reads standalone — amend them there, not here.
 
 **P1 — One canonical record; projections are thin readers.**
 
