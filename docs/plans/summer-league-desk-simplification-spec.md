@@ -240,6 +240,34 @@ place to start if the timeouts are still live.
 
 **Also:** stop deleting `SummerLeagueMetricModel`, which is versioned and auditable by design.
 
+### 5a. Observed confirmation and a new amplifier — incident #669 (July 22–23)
+
+After this spec was first drafted, the failure class was observed live, with a corrected
+attribution. A production deploy 500ed DB-backed public routes for the duration of a blocking
+chain: a ~96-minute **full-ingestion** transaction held the writer lock; the Desk sat *waiting*
+on it (the "96-minute Desk transaction" reading was wrong — after acquiring the lock the Desk
+resolved dormant and exited normally); the deploy's **non-concurrent `CREATE INDEX`** migration
+queued behind the ingestion transaction; ordinary reads queued behind the migration's requested
+exclusive lock; the web pool exhausted. `/health` stayed green throughout because it exercises no
+database query.
+
+Three contributing details from the incident record are new obligations for this spec:
+
+1. **The writer lock is transaction-scoped**, so an overly broad transaction is *also* an overly
+   broad lock lifetime. The §5 version-flip shrinks both at once — this is now observed
+   motivation, not inferred.
+2. **Deploy migrations are an amplifier.** Release migrations must set a short `lock_timeout`,
+   and index builds on large tables must use `CREATE INDEX CONCURRENTLY`, so deploy-time lock
+   contention degrades the *deploy* instead of production reads (discipline §1.7).
+3. **A DB-exercising health signal is required.** A health check that never touches the database
+   cannot notice a database outage; §4's degraded states need an operational counterpart that
+   actually fails when reads fail.
+
+The incident also corroborates a scoping subtlety: the metrics rebuild's "scoped" mode limits
+which projection rows are **persisted**, but `compute()` still loads and recalculates the entire
+historical dataset — so scoping bounds neither compute cost nor transaction length. Only the
+version-flip does.
+
 ---
 
 ## 6. Decomposition
@@ -316,7 +344,12 @@ process lifecycle, provider lag, and cross-layer consistency. New tests must cov
 - **cross-layer consistency** — the same fixture asserting number == rank == prose == status all
   carry one watermark;
 - **deploy lifecycle** — scheduled machine stopped or on a stale image (both occurred in
-  production; both passed web-deploy health checks).
+  production; both passed web-deploy health checks);
+- **browser-executed frontend** — the test suite must *execute* page JS, not assert markup: the
+  heat-shading regression (an ES `export` in a classic `<script>` tag) painted zero cells while
+  49 unit tests, 121 integration tests, and a QA gate passed, because integration tests only
+  asserted the `data-*` attributes existed. A Playwright paint-level check (the repo's
+  `make visual` harness) is the floor for any UI-bearing change (discipline §3.5).
 
 ### Process rule
 

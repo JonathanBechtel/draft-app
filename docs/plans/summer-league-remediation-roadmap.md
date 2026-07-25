@@ -55,6 +55,7 @@ operational acceptance deferred past merge; a phase is not done because its code
 | Unscoped-`delete()` AST checker — the direct P2 guard | discipline §1.1 |
 | Diff-scoped file-size rule (pre-commit warns, CI enforces; net-change evaluation so it cannot block Phase 5's decomposition) — **here, not later, so no phase grows files unchecked** | discipline §1.4 |
 | Ruff complexity rules (`C901`, `PLR0915`, `PLR0913`) with `per-file-ignores` baseline | discipline §1.6 |
+| Merge-coverage reflective test — every table with an FK to `players_master` must be registered with `player_merge_service` (the manual list has silently drifted as SL tables were added) | discipline §3.4, backlog 4.4 |
 | Double-uPER compute fix (`metrics.py:728-732`) | backlog 1.4 |
 | Remove dead Explorer branches (`available=False` teams/games subjects) | backlog 5.1 |
 | Naming/layout normalization; document the backfill ordering precondition | backlog 5.4, 6.3 |
@@ -69,13 +70,19 @@ violation; no behavior change observable in the app.
 **Why second:** this is the live pain, and the most user-visible failure — updates that did not
 land while games were in progress.
 
-**Entry gate — diagnose before committing to this ordering.** The production timeout cause is
-still undiagnosed (mega-transaction vs. already-shipped fixes not being on the deployed image).
-A day of observability decides it: log lock hold times and transaction durations in production,
-and verify the deployed image contains the shipped fixes. If the cause turns out to be
-deployment, the operational urgency that puts this phase before Phase 2 evaporates — Phases 1
-and 2 may swap. The version-flip remains justified on P2 grounds either way, so no work is
-wasted; only the order is at stake.
+**Entry gate — close the remaining diagnosis before building.** Incident **#669** (July 22–23)
+supplies the observed evidence the first draft of this plan lacked, and corrects an attribution:
+a ~96-minute **full-ingestion** transaction held the writer lock (the "96-minute Desk
+transaction" was actually 96 minutes of the Desk *waiting*, after which it resolved dormant and
+exited); the deploy's non-concurrent `CREATE INDEX` migration queued behind that transaction;
+public reads queued behind the migration's requested lock; the web pool exhausted and public
+routes 500ed while `/health` stayed green. The long-transaction/lock class is therefore
+**confirmed live** — Phase 1's position is no longer provisional. What the entry gate still
+resolves is *which path* to convert first: whether the deployed image was missing the shipped
+chunking fixes, and whether the holder was the surviving mega-transaction — noting #669's
+finding that the "scoped" rebuild limits which rows are *persisted* while `compute()` still
+loads and recalculates the full historical dataset, so scoping does not bound transaction
+length.
 
 | Item | Spec |
 |---|---|
@@ -85,6 +92,8 @@ wasted; only the order is at stake.
 | Intra-day compaction policy for hourly rebuild versions (retain daily close + current) — lands with the version-flip so retention is bounded from the first event | stat-engine §5 |
 | Stop deleting `SummerLeagueMetricModel` (auditable fit history) | stat-engine §5 |
 | Latency-class partitioning: fast live poller / medium projection builder / slow backbone | desk §2 |
+| **Migration safety** (from #669): short `lock_timeout` in release migrations; `CREATE INDEX CONCURRENTLY` on large tables; a DB-exercising health signal so `/health` cannot stay green through a database outage | desk §5a, discipline §1.7 |
+| Ingestion-side identity guard: suffix/diacritic/variant-aware matching **before** a new `players_master` row is created — the Jr./II/accent dup class has been re-fixed downstream at least three times | backlog 4.3 |
 | Import contract 4 (`event_desk` ↛ SL) with its `ignore_imports` baseline — lands here so the list shrinks across Phases 1 and 5 rather than being written after the decoupling | discipline §3.1 |
 
 **Note:** the version-flip lands here, not in Phase 3, because it *is* the transaction fix. It
@@ -170,6 +179,19 @@ is a known, named coupling.
 
 ---
 
+## Open tickets mapped to this plan
+
+The live issue queue and this plan describe the same work; keep them pointing at each other.
+
+| Ticket(s) | Relationship |
+|---|---|
+| **#669** (incident record) | The observed evidence behind Phase 1's entry gate, and the source of the migration-safety items |
+| **#661** (scheduler success ≠ data refresh) | Implements the operational half of desk §1's watermark contract — scheduler / source / projection / snapshot signals kept distinct. Complements Phase 5's user-facing contract; ship whenever ready |
+| **#662–#667** (Desk decomposition) | Phase 5 material. **Sequencing guard:** execute after Phase 2's stat consolidation, or restrict each ticket to pure moves — otherwise duplicated math gets scattered into more files (sequencing rule 3) |
+| **#645, #646, #648** (Explorer/environment modularization) | Same Phase 5 guard applies |
+| **#655** (xdist vs. remote Neon test DB) | Test-infrastructure prerequisite for trustworthy phase exits; independent of any phase, worth doing early |
+| **#626–#630, #632** (shipped) | The "already fixed at HEAD — do not re-fight" record |
+
 ## Deferred by decision
 
 - **Event Desk framework generalization** — hold until a real second event forces the seams
@@ -181,8 +203,9 @@ is a known, named coupling.
 
 ## Standing caveats
 
-- **The production timeout is diagnosed from code, not observed behavior.** Phase 1's entry gate
-  confirms the cause before the ordering commits to it.
+- **The transaction diagnosis is now observed, not just read from code.** Incident #669 confirmed
+  the long-ingestion-transaction/writer-lock chain live in production; Phase 1's entry gate
+  narrows *which path* held it before converting.
 - **Nothing here has been proven by building it.** These specs are grounded in code verified at
   HEAD, but the phases are estimates of sequence, not of effort.
 - **Phase boundaries are for sequencing, not for merging.** Each phase contains multiple

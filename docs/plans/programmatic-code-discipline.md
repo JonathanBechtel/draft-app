@@ -164,6 +164,19 @@ Currently `[tool.ruff.lint]` only extends `D` (pydocstyle), so there is substant
 `per-file-ignores`, and require new code to pass. Also note `tests` and `alembic` are currently
 excluded from Ruff entirely — worth revisiting separately.
 
+### 1.7 Migration safety
+
+**Failure:** incident #669 — a release migration's non-concurrent `CREATE INDEX` queued behind a
+long ingestion transaction; public reads then queued behind the migration's requested exclusive
+lock, and DB-backed routes 500ed until the chain was broken by hand.
+
+**Rule:** flag Alembic migrations that (a) issue `CREATE INDEX` without `CONCURRENTLY` against a
+designated list of large tables, or (b) set no `lock_timeout`. Small/new tables allowlisted via
+the standard inline-comment escape hatch.
+
+Deploy-time lock contention should degrade the *deploy* — a fast, retryable failure — never
+production reads.
+
 ---
 
 ## Tier 2 — Runtime guards (the ones that catch the real bugs)
@@ -262,6 +275,32 @@ Query-count budgets exist for routes (`tests/integration/perf/budgets.py`) and t
 `test_desk_tick_query_growth.py`. Extend the habit to the remaining cron paths, where the
 starvation actually occurred.
 
+### 3.4 Merge-coverage reflective test — free, and it will bite again without it
+
+**Failure:** `player_merge_service`'s manually maintained child-table list silently drifted as
+`summer_league_*`, shot-event, and participation tables added FKs to `players_master` — merging a
+player who holds SL data hard-fails on a RESTRICT FK. Nothing enforces that a new FK-bearing
+table gets registered.
+
+**Mechanism:** a unit test that walks SQLModel metadata for FKs referencing `players_master` and
+asserts every referencing table is registered with the merge service (or better: derive the
+service's list reflectively from that same metadata, and the test becomes vacuous). A new table
+plus a missing registration is then a red build, not a production RESTRICT error during a
+time-sensitive merge.
+
+### 3.5 Browser-execution smoke — "passes every test, dead in the browser"
+
+**Failure:** heat shading shipped with an ES `export` statement in a classic `<script>` tag —
+zero cells painted — and sailed through 49 unit tests, 121 integration tests, and a QA gate,
+because integration tests only assert the `data-*` markup exists. Nothing in CI executes
+frontend JS; only a manual Playwright paint check caught it.
+
+**Mechanism:** for changes touching `app/static/` or templates, run a minimal Playwright check
+that loads the page headless and asserts a paint-level effect (a computed style, a rendered cell
+count) — the repo's `make visual` harness already does this locally; wire a headless subset into
+CI or the merge checklist. Markup-presence assertions are explicitly insufficient evidence for
+JS-driven UI.
+
 ---
 
 ## What should NOT be a lint rule
@@ -294,6 +333,8 @@ Sequenced by value-per-effort, and so nothing lands as a wall of violations.
 7. **1.6 Ruff complexity rules** — baseline via `per-file-ignores`, enforce on new code.
 8. **1.2 transaction body weight**, **2.3 duration budgets**, **3.2 parity tests** — as the
    corresponding refactors land.
+9. **3.4 merge coverage** — free; do it with Phase 0. **1.7 migration safety** — with the next
+   migration-bearing change. **3.5 browser smoke** — with the next UI-bearing change.
 
 **Stop after 4 if bandwidth is short.** Those four cover most of the drift, and two rules that are
 respected beat eight that get `# noqa`'d.

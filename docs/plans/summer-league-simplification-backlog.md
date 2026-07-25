@@ -228,8 +228,9 @@ it is behavior-changing and must not be done as casual cleanup.
 # Bucket 3 — Fast/slow entanglement → the remaining hotspot 🟡
 
 Graduates to **doc #3**. Most of this bucket is already fixed (see current-state note). One
-large critical section remains, and it is the leading suspect for the transaction timeouts
-still observed in production.
+large critical section remains, and the failure class was **confirmed live by incident #669**
+(July 22–23): a ~96-minute full-ingestion transaction holding the writer lock, the Desk starved
+behind it, and a deploy migration queueing public reads into a 500 outage (see desk §5a).
 
 - **Evidence — remaining mega-transaction.** `app/cli/summer_league_ingest_runner.py:1308-1348` wraps,
   inside **one** `db.begin()` under the writer lock:
@@ -265,6 +266,22 @@ still observed in production.
   makes the stored column and the recompute provably equal. The *decision* — store-and-read vs.
   always-recompute — is answered by **Issue B / 1.6**: materialize as dated snapshots and read
   the latest, which the longitudinal requirement makes the clear choice. 🟡 → doc #2.
+- **4.3 — Duplicate `players_master` rows (the recurring identity-dup class).** Suffix, diacritic,
+  and variant forms (Carter vs. Carter Jr., Salaün vs. Salaun) plus first-initial merge collisions
+  have created second canonical rows repeatedly: behind the #495 "missing star players"
+  investigation (dup rows fragmenting identity, not missing data), the lottery-filter pollution
+  (Gary Payton II inheriting his father's draft record), and flagged again in the Explorer
+  position-filter work. Every fix was downstream — an audit script, a fix script, a manual merge
+  pass — and **no ingestion-side guard stops the next variant from creating a second row.** Two
+  rows for one person is the identity-layer form of duplicated state, and identity is the moat.
+  **Collapse to:** variant-aware matching (suffix/diacritic normalization) in the resolution path
+  *before* row creation, plus a recurring dup audit. 🟡 → doc #4 (identity hub); roadmap Phase 1.
+- **4.4 — `player_merge_service` child-table list drifts from the FK graph.** The manually
+  maintained table list was never updated as `summer_league_*`, shot-event, and participation
+  tables added FKs to `players_master`, so merging a player who holds SL data hard-fails on a
+  RESTRICT FK. Nothing enforces that a new FK-bearing table gets registered — it will bite again
+  on the next table. **Collapse to:** derive the list reflectively from SQLModel metadata, or a
+  test asserting list == FK graph. 🟢 free test — discipline §3.4; roadmap Phase 0.
 
 ---
 
@@ -341,8 +358,11 @@ roster dual-write (with doc #4), 6.1/6.2 idempotency hardening.
 
 ## Open questions for the owner
 
-1. **Live timeouts:** is the mega-transaction (`app/cli/summer_league_ingest_runner.py:1308-1348`) the cause, or are
-   the shipped lock/transaction fixes simply not on the deployed image? (Bucket 3 action item.)
+1. **Live timeouts — partially answered by incident #669 (July 22–23):** a long full-ingestion
+   transaction holding the writer lock was observed live, Desk starved behind it, deploy
+   migration queued into a public outage. Remaining: was the deployed image missing the shipped
+   chunking fixes, or is the surviving mega-transaction
+   (`app/cli/summer_league_ingest_runner.py:1308-1348`) the holder? (Roadmap Phase 1 entry gate.)
 2. **Store vs. recompute → resolved as dated materialization.** Rather than a binary, Issue B /
    1.6 materializes as-of-dated snapshots (version-flip, like `environment_profiles`) and reads
    the latest — which also yields longitudinal history. Confirm appetite for the schema change
@@ -368,7 +388,7 @@ longitudinal-first.**
 | path:line | what it wipes | version/as-of dim today? | severity |
 |---|---|---|---|
 | `metrics.py:1444-1446` (`rebuild`, unscoped; via `scripts/rebuild_sl_metrics.py`) | **all** `SummerLeaguePlayerSeason` + `MetricContext` + `MetricModel` rows | No (Season/Context); **MetricModel *is* versioned but is also deleted** | **HIGH** — destroys the computed advanced-metric basket *and* the auditable model-fit history every run |
-| `metrics.py:1468-1475` (`rebuild`, scoped by competition; hourly desk tick) | same tables, scoped to touched competitions | No | **HIGH** — same destroy-and-repopulate; scope limits blast radius, not the missing time-axis |
+| `metrics.py:1468-1475` (`rebuild`, scoped by competition; hourly desk tick) | same tables, scoped to touched competitions | No | **HIGH** — same destroy-and-repopulate; scope limits blast radius, not the missing time-axis. Per incident #669, scoping limits which rows are *persisted* while `compute()` still loads and recalculates the full historical dataset — so it bounds neither compute cost nor transaction length |
 | `draft_order_service.py:96-100` (`bulk_replace_draft_order`) | all `DraftPickSlot` rows for a draft year (pick ownership, trades) | No (`created_at`/`updated_at` only) | **LOW** — admin-curated reference, not computed analytics; but trade/ownership history over a cycle is unrecoverable |
 
 **Note on the top offender:** because `SummerLeagueMetricModel` was *designed* versioned/auditable
