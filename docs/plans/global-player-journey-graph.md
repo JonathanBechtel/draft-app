@@ -95,6 +95,35 @@ PROVENANCE     source_system · source_document/snapshot · source_record · ass
 
 Lower layers block upper ones. The identity *hub* largely exists; **provenance,
 org/team split, participation, affiliation assertions, and all projections are new.**
+*(Superseded in part — see the §4 status update: participation and affiliation assertions have
+since shipped.)*
+
+### Where each layer lives in code (added 2026-07-25)
+
+Maintained so the model and the codebase stay legible to each other. When a row here goes stale,
+one of the two is drifting — that is the signal this table exists to give.
+
+| Layer | Concept | Today | Domain type |
+|---|---|---|---|
+| Identity | canonical player | `players_master`, `player_external_ids`, `player_aliases` | `PlayerRef` |
+| Identity | resolution + review | `summer_league_source_players`, `_player_resolution_reviews` *(SL-namespaced)* | `SourceIdentity`, `ResolutionOutcome` |
+| Provenance | source document / record | `summer_league_raw_runs`, `_raw_files` *(SL-namespaced)* | `SourceDocumentRef`, `SourceRecordRef`, `Evidence` |
+| Canon | organization → team/program | **not built — the live blocker (§7a)** | `OrganizationRef`, `TeamProgramRef` |
+| Canon | competition → edition | `summer_league_competitions` *(SL-namespaced; names the parent concept, models the child)* | `CompetitionRef`, `EditionRef` |
+| Canon | team_entry | `summer_league_team_entries` *(SL-namespaced)* | `TeamEntryRef` |
+| Canon | game | `summer_league_games` *(SL-namespaced)* | `GameRef` |
+| Assertions | affiliations | `player_affiliations` ✅ *generic, supersession-first* | `AffiliationAssertion` |
+| Assertions | transactions / measurements | not built (`combine_anthro` is combine-scoped) | `Transaction`, `Measurement` |
+| Spoke | participation | `summer_league_participation` ✅ *correct grain* | `ParticipationRef` |
+| Spoke | game logs | `summer_league_player_game_logs`, `_team_game_logs` | — *(fat spoke, correctly)* |
+| Spoke | derived aggregates | `summer_league_player_seasons` ⚠️ *destructively rebuilt — violates principle 7* | `VersionStamps` |
+| Analytical | scope baselines | `summer_league_environment_*`, `_cohort_baselines` *(SL-namespaced; already scope-generic)* | `Scope` |
+| Projections | lifecycle | `player_lifecycle` *(denormalized; reducer not built)* | — |
+| Presentation | event desk | `events`, `event_desk_state`, `event_desk_render_snapshots` *(generic names, SL-coupled code)* | `Watermark` |
+
+*SL-namespaced* = the structure exists and works but lives under a `summer_league_` prefix; see
+`summer-league-journey-graph-alignment.md` for the promotion plan. Domain types are specified in
+`journey-graph-domain-vocabulary.md`.
 
 ---
 
