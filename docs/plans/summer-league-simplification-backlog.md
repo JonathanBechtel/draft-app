@@ -81,10 +81,10 @@ The postmortem predates these. Confirmed present at HEAD; treat as **done**, bui
 - **Gemini/embedding calls no longer run inside the writer lock.** Identity resolution is
   split into a lock-free *preparation* pass (all Gemini calls) and small locked write batches
   (`RESOLUTION_BATCH_SIZE = 8`). See `player_resolution.py:719-723`,
-  `summer_league_ingest_runner.py:656-728`.
+  `app/cli/summer_league_ingest_runner.py:656-728`.
 - **The 87-minute whole-venue transaction is chunked.** Shot/PBP normalization runs
   `EVENT_BATCH_SIZE = 8` games per `db.begin()`, releasing the lock between batches
-  (`summer_league_ingest_runner.py:548-653`).
+  (`app/cli/summer_league_ingest_runner.py:548-653`).
 - **The Desk lock wait is bounded to 30s** (`sl_desk_tick.py:267,1005-1009`) — the Desk can
   no longer be starved for an hour; it times out and retries.
 - **The "no-op advances freshness" badge bug is cut.** The dormant/off-window path returns
@@ -231,13 +231,14 @@ Graduates to **doc #3**. Most of this bucket is already fixed (see current-state
 large critical section remains, and it is the leading suspect for the transaction timeouts
 still observed in production.
 
-- **Evidence — remaining mega-transaction.** `summer_league_ingest_runner.py:1308-1348` wraps,
+- **Evidence — remaining mega-transaction.** `app/cli/summer_league_ingest_runner.py:1308-1348` wraps,
   inside **one** `db.begin()` under the writer lock:
   `rebuild_sl_metrics(db)` (a *full unscoped table wipe* — `metrics.py:1443-1446` deletes all of
   `SummerLeaguePlayerSeason` / `MetricContext` / `MetricModel`) → `materialize_desk_render_snapshots`
   (72 variants) → `refresh_environment_profiles_for_year`. The lock is held for the entire
   rebuild + materialization + environment refresh.
-- **Why it's coupled by design.** `write_lock.py:1-7` states the coupling in a comment: *"Every
+- **Why it's coupled by design.** `app/services/event_desk/snapshot_materialization.py:1-7`
+  states the coupling in its module docstring: *"Every
   full metrics rebuild must therefore replace the render-snapshot matrix before its transaction
   commits, or direct stat surfaces and the homepage can disagree."* That is fast/slow coupling
   baked into an invariant.
@@ -310,7 +311,7 @@ is a trustworthy recovery tool rather than a gamble.
 - **6.2 — Batch-progress can silently skip corrected files.** Durable per-game markers
   (`_run_batched_phase:603-615`) mean a re-run will *not* reprocess a changed-but-already-marked
   game unless dirty-detection fires or an operator sets `SL_INGEST_FULL_RECONCILE`
-  (`summer_league_ingest_runner.py:731-822,759-762`). **Collapse to:** make dirty-detection the
+  (`app/cli/summer_league_ingest_runner.py:731-822,759-762`). **Collapse to:** make dirty-detection the
   default reliable path so re-running always reprocesses genuinely-changed inputs. 🟢/🟡.
 - **6.3 — `backfill_summer_league_backbone` ordering precondition.** Hard-fails without raw
   manifests (raw fetch → audit → backfill → normalize → metrics). Document the required order
@@ -340,7 +341,7 @@ roster dual-write (with doc #4), 6.1/6.2 idempotency hardening.
 
 ## Open questions for the owner
 
-1. **Live timeouts:** is the mega-transaction (`ingest_runner.py:1308-1348`) the cause, or are
+1. **Live timeouts:** is the mega-transaction (`app/cli/summer_league_ingest_runner.py:1308-1348`) the cause, or are
    the shipped lock/transaction fixes simply not on the deployed image? (Bucket 3 action item.)
 2. **Store vs. recompute → resolved as dated materialization.** Rather than a binary, Issue B /
    1.6 materializes as-of-dated snapshots (version-flip, like `environment_profiles`) and reads

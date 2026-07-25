@@ -185,6 +185,33 @@ discipline applied to computation rather than freshness.
 the materialization mutually reinforcing: one declaration of each formula, and every stored row
 stamped with which declaration produced it.
 
+### Retention granularity — compaction, not TTL
+
+P2 bans TTLs, but the rebuild runs on the **hourly** tick during events, and hourly versions are
+operational churn, not analytical history — the meaningful longitudinal grain is the **daily
+close**. Without a stated policy the table either grows unboundedly through a multi-week event or
+invites an ad-hoc wipe under deadline pressure — the exact failure P2 exists to prevent.
+
+**Policy: retain each as-of day's final version plus the current version; superseded *intra-day*
+versions may be compacted once a newer version from the same as-of day is current.** Compaction
+is a scoped, explainable delete of redundant intra-day versions — never the daily close, never
+the row the current pointer targets — and is therefore P2-compliant where a TTL or full wipe is
+not. (It will also need an allowlist entry in the unscoped-`delete()` checker, with the
+justifying comment discipline §1.1 requires.)
+
+Revisit only if a sub-daily product surface appears; nothing currently designed needs finer than
+daily history.
+
+### Read-switch scope — what the snapshot serves, and what it cannot
+
+The dated snapshot is **(player, competition)-grain**. It serves the Explorer's default
+full-competition view — the read-switch in phasing step 5 applies there. Sub-season and
+recombinable grains (per-game rows, last-N windows, date filters — e.g. `rollup_recombinable`
+and the game-grain SQL forms) **cannot** be served from a season-grain snapshot and continue to
+call the engine live. That split stays correct by construction: both paths share the one engine,
+and the golden-number harness pins them equal. The §4 invariant is unchanged; only the
+materialized-read optimization is scoped.
+
 **Also (from the audit):** stop deleting `SummerLeagueMetricModel` on rebuild — it is already
 versioned/auditable by design (`metrics.py:1446` currently wipes it), so preserving its fit history
 is part of this change.
@@ -199,8 +226,9 @@ is part of this change.
 4. **Registry + capability model** — declare metrics once; derive computable sets; retire the
    inline null-checks.
 5. **Dated materialization** (Issue B) — add versioning/as-of to the metrics tables; switch the
-   Explorer from live recompute to reading `is_current`; remove the full-wipe (coordinates with
-   doc #3's transaction work). Keep engine parity tests green throughout.
+   Explorer's default full-competition view from live recompute to reading `is_current` (§5
+   read-switch scope — sub-season grains stay on the live engine); remove the full-wipe
+   (coordinates with doc #3's transaction work). Keep engine parity tests green throughout.
 6. **Within-event daily-trend surface** — the first product payoff of the time series (a small
    player-page trend of GmSc/TS%/BPM across the event). Cross-stage career ledger remains the
    larger, separate initiative in the longitudinal-evidence pitch.
@@ -220,6 +248,10 @@ is part of this change.
   `summer_league_player_seasons`. Not `player_metric_values`. (§5)
 - **Conventions — SETTLED:** copy `environment_profiles` (generic scope, three separate version
   stamps, no TTL), **not** `MetricSnapshot`, which predates those lessons. (§5)
+- **Retention granularity — working default:** daily close + current; intra-day versions
+  compactable. Revisit only if a sub-daily product surface appears. (§5)
+- **Read-switch scope — SETTLED:** materialized reads serve the full-competition default grain;
+  sub-season/recombinable grains stay on the live engine, pinned equal by the parity harness. (§5)
 
 ## Open questions
 

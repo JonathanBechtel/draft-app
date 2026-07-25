@@ -73,7 +73,7 @@ day it was written.
 
 ### 1.2 Transaction body weight
 
-**Failure:** the mega-transaction (`summer_league_ingest_runner.py:1308-1348`) wraps a full table
+**Failure:** the mega-transaction (`app/cli/summer_league_ingest_runner.py:1308-1348`) wraps a full table
 wipe, 72-variant materialization, and an environment refresh in one `db.begin()` under the writer
 lock.
 

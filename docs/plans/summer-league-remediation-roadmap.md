@@ -26,13 +26,19 @@ placements.
    | Import contract 4 (`event_desk` ↛ SL), baselined | 1 | Desk decoupling; its ignore list is the progress meter |
    | Golden-number parity harness | 2 | the formula consolidation it gates |
    | Stat-constant confinement | 2 | keeps the consolidation from regrowing |
-   | `DatedVersionMixin` (type-level) | 4 | P2, by construction rather than by rule |
+   | `DatedVersionMixin` (type-level) | 1 | P2, by construction — defined *with* the version-flip tables it shapes, not retrofitted after them |
 2. **Plumbing and payoff separate.** Where one change both fixes an operational fault and unlocks
    a product capability, the change lands in the operational phase and the capability follows.
    This avoids fixing the same thing twice.
 3. **Unify computation before relocating it.** Deduplicating the stat math precedes both reading
    materialized values and splitting god files — otherwise duplication gets frozen into tables or
    scattered into more files.
+
+**Reliability-first ordering is an owner decision, not an oversight.** Phases 1–3 (operational +
+stat + longitudinal) deliberately precede the org/team-program model: stabilize the plumbing
+before expanding on it. The org model (Phase 4) is schema-additive and depends on nothing in
+Phases 1–3, so if a concrete second competition lands on the calendar it can be pulled forward
+without disturbing this sequence — but by default it waits.
 
 Every phase carries **exit criteria**. The failure record's decisive process defect was
 operational acceptance deferred past merge; a phase is not done because its code merged.
@@ -63,14 +69,23 @@ violation; no behavior change observable in the app.
 **Why second:** this is the live pain, and the most user-visible failure — updates that did not
 land while games were in progress.
 
+**Entry gate — diagnose before committing to this ordering.** The production timeout cause is
+still undiagnosed (mega-transaction vs. already-shipped fixes not being on the deployed image).
+A day of observability decides it: log lock hold times and transaction durations in production,
+and verify the deployed image contains the shipped fixes. If the cause turns out to be
+deployment, the operational urgency that puts this phase before Phase 2 evaporates — Phases 1
+and 2 may swap. The version-flip remains justified on P2 grounds either way, so no work is
+wasted; only the order is at stake.
+
 | Item | Spec |
 |---|---|
 | Runtime guards: no network I/O while a transaction is open or the writer lock is held (ContextVar + client checks; hard-fail dev/test, warn+stack in prod) | discipline §2.1–2.2 |
-| **Version-flip publish replacing the mega-transaction** — build the new metrics version outside any lock, materialize variants, flip the pointer in a tiny transaction (`ingest_runner.py:1308-1348`) | desk §5, stat-engine §5 |
+| `DatedVersionMixin` (`version` / `registry_version` / `calculation_version` / `is_current` / `as_of`) — defined **here** so the version-flip tables inherit it from day one | alignment §5b |
+| **Version-flip publish replacing the mega-transaction** — build the new metrics version outside any lock, materialize variants, flip the pointer in a tiny transaction (`app/cli/summer_league_ingest_runner.py:1308-1348`) | desk §5, stat-engine §5 |
+| Intra-day compaction policy for hourly rebuild versions (retain daily close + current) — lands with the version-flip so retention is bounded from the first event | stat-engine §5 |
 | Stop deleting `SummerLeagueMetricModel` (auditable fit history) | stat-engine §5 |
 | Latency-class partitioning: fast live poller / medium projection builder / slow backbone | desk §2 |
 | Import contract 4 (`event_desk` ↛ SL) with its `ignore_imports` baseline — lands here so the list shrinks across Phases 1 and 5 rather than being written after the decoupling | discipline §3.1 |
-| Confirm the production timeout cause — mega-transaction vs. undeployed fixes (**still undiagnosed**) | desk §5 |
 
 **Note:** the version-flip lands here, not in Phase 3, because it *is* the transaction fix. It
 simultaneously satisfies P2 and creates the time axis Phase 3 consumes.
@@ -107,12 +122,13 @@ is mostly a read-path switch plus a product surface.
 
 | Item | Spec |
 |---|---|
-| Switch the Explorer from live recompute to reading `is_current` dated snapshots — safe only now that formulas are unified | stat-engine §5 |
+| Switch the Explorer's **default full-competition view** from live recompute to reading `is_current` dated snapshots — safe only now that formulas are unified. Sub-season and recombinable grains (per-game, last-N, date filters) cannot be served from a season-grain snapshot and keep calling the shared engine live | stat-engine §5 |
 | Three version stamps + as-of date on the metrics tables (`environment_profiles` conventions, not `MetricSnapshot`) | stat-engine §5 |
 | Within-event daily trend surface (GmSc / TS% / BPM across an event) | stat-engine §6 |
 
-**Exit:** a player's advanced line is queryable as a time series; Explorer values match stored
-values by construction; the trend surface renders from retained history.
+**Exit:** a player's advanced line is queryable as a time series; the Explorer's default-grain
+values match stored values by construction, and sub-season grains match the engine via the parity
+harness; the trend surface renders from retained history.
 
 ---
 
@@ -125,7 +141,7 @@ informed by a stabilized stat/ops layer.
 |---|---|
 | Domain vocabulary — `temporal.py` first (`Watermark`, `VersionStamps`, `Scope`), then identity/spoke | vocabulary doc |
 | Light namespacing: class/module/docstring alignment, no `__tablename__` changes | alignment §5a |
-| `DatedVersionMixin` — P2 encoded as a type | alignment §5b |
+| Adopt `DatedVersionMixin` (defined in Phase 1) on the remaining versioned tables | alignment §5b |
 | **Organization → team/program model + affiliation retarget** — the single blocker for spoke #2 | alignment §3 |
 | Service reorganization into `stats/` `backbone/` `ingest/` `sources/<spoke>/` | alignment §4 |
 | Canon-entity promotion (edition / game / provenance) — best done *alongside* spoke #2 | alignment §5, Wave C |
@@ -165,8 +181,8 @@ is a known, named coupling.
 
 ## Standing caveats
 
-- **The production timeout is diagnosed from code, not observed behavior.** Phase 1 should confirm
-  the cause before assuming the mega-transaction is it.
+- **The production timeout is diagnosed from code, not observed behavior.** Phase 1's entry gate
+  confirms the cause before the ordering commits to it.
 - **Nothing here has been proven by building it.** These specs are grounded in code verified at
   HEAD, but the phases are estimates of sequence, not of effort.
 - **Phase boundaries are for sequencing, not for merging.** Each phase contains multiple
