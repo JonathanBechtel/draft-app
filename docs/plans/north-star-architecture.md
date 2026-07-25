@@ -120,6 +120,7 @@ section. A slow backbone job must never be able to starve a fast user-facing one
 | `summer-league-stat-engine-reuse-spec.md` | **the compute layer** — one source-agnostic engine, metric registry, capability model, dated materialization |
 | `summer-league-desk-simplification-spec.md` | **the operational layer** — freshness contract, latency partitioning, verification bar |
 | `summer-league-simplification-backlog.md` | **the work queue** — prioritized redundancy removal, sequencing, app-wide anti-pattern audit |
+| `programmatic-code-discipline.md` | **the enforcement layer** — AST checkers, runtime guards, and import contracts that make these principles automatic under deadline pressure |
 | `summer-league-desk-history.md` | **the failure record** — what happened and why. Required context before further Desk work |
 | `player-longitudinal-evidence-layer-pitch.md` | **the product payoff** — the Player Development Ledger the backbone makes possible |
 
