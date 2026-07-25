@@ -104,6 +104,19 @@ operational, deferring the operational proof *is* the defect. Large test counts 
 coverage are not evidence of correct behavior across real schedules, real provider lag, and real
 deploys.
 
+**Prove the schema supports the design before ticketing.** Scout's Desk reached ticket-writing
+with three implementability gaps — no `IN_PROGRESS` game status existed, no tip-time column,
+schema drift between two spec sections — caught only by an accidental late adversarial pass.
+Between spec and tickets, run that check deliberately: does the schema *as it exists* support
+what the mockup assumes? Name the missing columns and enum values in the spec, not as mid-sprint
+discoveries against a hard external deadline.
+
+**Declare, don't hand-code, repeated surfaces.** The Explorer's declarative column catalog was
+the frontend pattern that reused cleanly ("reuse styles, not views"); it is the default template
+for any new tabular stat page. Its data-layer twin is the metric registry (stat-engine doc §2):
+whenever the same classification is being re-derived as comments across files, it wants to be
+one declared table every surface reads.
+
 **Partition by latency class.** Work with different latency profiles must not share a critical
 section. A slow backbone job must never be able to starve a fast user-facing one.
 

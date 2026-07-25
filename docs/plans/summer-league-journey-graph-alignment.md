@@ -156,6 +156,14 @@ Two concrete consequences:
   That is what lets one fact carry multiple supporting *or conflicting* sources.
 - **The stat engine is fed by adapters, not tables.** Doc #2's `StatInputs` is the neutral shape;
   each spoke supplies a small adapter. A new spoke inherits every metric its data supports.
+- **Adapters own a source-quirk ledger.** The SL provider's pathologies were each discovered as
+  an incident rather than scoped as a known cost: TLS impersonation required for access at all,
+  minutes silently corrupted mid-event (+97:00 offsets reached dev *and* prod before a guard
+  existed), a legacy player-id crosswalk for pre-2017 data, a skeletal-pool pace floor. Under P3
+  the adapter is where that knowledge lives: a documented failure-mode inventory per source, and
+  ingress validation guards at the adapter boundary, so a lying feed is rejected or quarantined
+  before it becomes canonical — and the next spoke's vendor is scoped as "this feed will lie to
+  us in these ways" up front.
 
 ---
 

@@ -164,6 +164,32 @@ Currently `[tool.ruff.lint]` only extends `D` (pydocstyle), so there is substant
 `per-file-ignores`, and require new code to pass. Also note `tests` and `alembic` are currently
 excluded from Ruff entirely — worth revisiting separately.
 
+### 1.7 Migration safety
+
+**Failure:** incident #669 — a release migration's non-concurrent `CREATE INDEX` queued behind a
+long ingestion transaction while DB-backed routes 500ed on pool exhaustion, until the chain was
+broken by hand. (The record's claim that reads queued behind the migration's "exclusive lock" is
+imprecise — a bare `CREATE INDEX` requests a `SHARE` lock, which blocks writes, not reads; the
+exact read-blocking mechanism is part of the roadmap Phase 1 diagnosis. This rule stands on the
+blocked-deploy half of the incident, which is unambiguous.)
+
+**Rule:** flag Alembic migrations that (a) issue `CREATE INDEX` without `CONCURRENTLY` against a
+designated list of large tables, or (b) set no `lock_timeout`. Small/new tables allowlisted via
+the standard inline-comment escape hatch.
+
+**Repo-specific requirement — the rule must demand both halves.** `alembic/env.py` runs
+migrations inside `context.begin_transaction()`, and PostgreSQL rejects
+`CREATE INDEX CONCURRENTLY` inside a transaction block — so the fix is specifically
+`op.get_context().autocommit_block()` around the index build, the pattern existing migrations
+already use (e.g. `e7c75f3063ec_add_summer_league_games_tip_datetime.py`). A checker that demands
+`CONCURRENTLY` without demanding the autocommit block converts a lock hazard into a guaranteed
+failed release. Mind the boundary semantics: statements inside an autocommit block commit
+immediately, so a mid-migration failure leaves earlier statements applied — keep autocommit index
+builds in dedicated, idempotent migrations (`if_not_exists=True`, as `2c78f642217c` does).
+
+Deploy-time lock contention should degrade the *deploy* — a fast, retryable failure — never
+production reads.
+
 ---
 
 ## Tier 2 — Runtime guards (the ones that catch the real bugs)
@@ -262,6 +288,38 @@ Query-count budgets exist for routes (`tests/integration/perf/budgets.py`) and t
 `test_desk_tick_query_growth.py`. Extend the habit to the remaining cron paths, where the
 starvation actually occurred.
 
+### 3.4 Merge-coverage reflective test — free, and it will bite again without it
+
+**Failure:** `player_merge_service`'s manually maintained child-table list silently drifted as
+`summer_league_*`, shot-event, and participation tables added FKs to `players_master` — merging a
+player who holds SL data hard-fails on a RESTRICT FK. Nothing enforces that a new FK-bearing
+table gets registered.
+
+**Mechanism:** a unit test that walks SQLModel metadata for FKs referencing `players_master` and
+asserts every referencing column is **classified**: either registered with the merge service for
+reassignment, or declared `ondelete="CASCADE"` — rows that intentionally die with the discarded
+identity. (`player_merge_service.py` already exempts `player_embeddings` and
+`pending_image_previews` on exactly this basis, and cascade FKs to `players_master` exist
+elsewhere, e.g. `summer_league_metrics.py`.) An unclassified FK — RESTRICT/no-action and absent
+from the reassignment list — is a red build, not a production RESTRICT error during a
+time-sensitive merge. Do **not** auto-derive the reassignment list from metadata alone:
+reflective reassignment would resurrect rows the cascade semantics intend to delete. The FK graph
+supplies the *audit universe*; a human classifies each edge once, and the test enforces that the
+classification stays total.
+
+### 3.5 Browser-execution smoke — "passes every test, dead in the browser"
+
+**Failure:** heat shading shipped with an ES `export` statement in a classic `<script>` tag —
+zero cells painted — and sailed through 49 unit tests, 121 integration tests, and a QA gate,
+because integration tests only assert the `data-*` markup exists. Nothing in CI executes
+frontend JS; only a manual Playwright paint check caught it.
+
+**Mechanism:** for changes touching `app/static/` or templates, run a minimal Playwright check
+that loads the page headless and asserts a paint-level effect (a computed style, a rendered cell
+count) — the repo's `make visual` harness already does this locally; wire a headless subset into
+CI or the merge checklist. Markup-presence assertions are explicitly insufficient evidence for
+JS-driven UI.
+
 ---
 
 ## What should NOT be a lint rule
@@ -294,6 +352,8 @@ Sequenced by value-per-effort, and so nothing lands as a wall of violations.
 7. **1.6 Ruff complexity rules** — baseline via `per-file-ignores`, enforce on new code.
 8. **1.2 transaction body weight**, **2.3 duration budgets**, **3.2 parity tests** — as the
    corresponding refactors land.
+9. **3.4 merge coverage** — free; do it with Phase 0. **1.7 migration safety** — with the next
+   migration-bearing change. **3.5 browser smoke** — with the next UI-bearing change.
 
 **Stop after 4 if bandwidth is short.** Those four cover most of the drift, and two rules that are
 respected beat eight that get `# noqa`'d.
