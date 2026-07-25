@@ -98,12 +98,32 @@ Exactly **two watermarks are user-facing semantics**, and one bucket is explicit
 
 ## 2. Latency-class partitioning
 
-### The problem
+### The problem — stated correctly
 
-The hourly product's critical path is coupled to work with wildly different latency profiles. The
-failure record's clearest instance: an ~88-minute venue ingest starved a Desk tick that itself
-takes ~38 seconds. Bounded waits (already shipped) stop the Desk from *hanging*, but they do not
-stop it from *missing its cadence* — it simply times out and skips.
+**Hourly is the right cadence and is not in question.** The defect is that *the hourly update did
+not reliably happen* — and it failed most often **while games were live**.
+
+That correlation is the whole problem. Live games are when ingestion has the most new data to
+process, so contention peaks at exactly the moment the Desk is most valuable and its staleness
+most visible. The system was least reliable precisely when it mattered most.
+
+Mechanically: the hourly product's critical path is coupled to work with wildly different latency
+profiles. The failure record's clearest instance is an ~88-minute venue ingest starving a Desk
+tick that itself takes ~38 seconds. Bounded waits (already shipped) stop the Desk from *hanging*,
+but they do not make it *land* — it times out and skips the interval, which from the visitor's
+side is indistinguishable from being broken.
+
+**So the goal of this section is reliability, not speed.** Partitioning exists to guarantee the
+hourly tick completes under peak load. Going faster than hourly is explicitly a non-goal.
+
+### Success metric
+
+> The percentage of scheduled hourly ticks that complete with advanced source data, measured
+> **specifically within live-game windows** — not averaged across the day.
+
+A daily average hides the failure: off-peak ticks succeed easily and mask the live-window misses
+that are the entire user-visible problem. This metric must be reported for the live window
+separately, and it is the acceptance signal for this section.
 
 ### The partition
 
@@ -319,7 +339,10 @@ user-facing badge to show source currency, make "next update" honest. Ship with 
 vocabulary (§4), since an honest badge is only useful if staleness renders honestly.
 
 **Phase 3 — latency partition (§2).** Separate fast poller / medium projection builder / slow
-backbone. Prerequisite for Phase 4.
+backbone, so the hourly tick lands reliably during live games. Prerequisite for Phase 4. **This
+addresses the most user-visible failure** — missed updates while games were in progress — so it
+may warrant moving ahead of Phase 2 if reliability during the next event matters more than badge
+honesty.
 
 **Phase 4 — layer collapse (§3).** Remove request-time splicing; rebuild coherent projections
 instead. Only possible once Phase 3 makes rebuilds cheap.
@@ -329,14 +352,21 @@ instead. Only possible once Phase 3 makes rebuilds cheap.
 Phases 1–2 are the ones worth doing soon regardless of what else is scheduled. Phases 3–5 are the
 structural work that makes the next event's Desk cheap.
 
+## Product decisions (settled)
+
+1. **Off-window behavior — SETTLED.** Outside the competition window the Desk **disappears
+   entirely** and the homepage reverts to its normal news layout. This is the current default and
+   it is correct. Implications: when dormant there is **no freshness badge and no next-update
+   estimate** — nothing ticks, so nothing can lie. No final-Ledger card, no force-materialized
+   snapshot. This also removes any need for the dormant path to touch the controller at all.
+
+2. **Cadence — SETTLED: hourly.** Hourly is the intended promise and is sufficient. Sub-hourly
+   near-live updating is **explicitly out of scope**. The work in §2 is aimed entirely at making
+   the hourly promise *reliable under peak load*, not at increasing frequency.
+
 ## Open questions
 
-1. **Off-window behavior.** The postmortem flags that spec and observed behavior disagree: should
-   the Desk disappear entirely outside the competition window, show a final Ledger, or render a
-   force-materialized snapshot? This needs a product decision before Phase 2, since it determines
-   what the freshness badge should say when dormant.
-2. **Live cadence target.** With latency partitioning, the fast poller could run every few minutes
-   rather than hourly. Is a genuinely near-live Desk desirable, or is hourly the intended promise?
-   This affects how aggressive Phase 3 needs to be.
-3. **Staleness threshold.** At what age does content trigger explicit degraded state — and does it
-   differ by state (Live vs Morning vs Ledger)?
+1. **Staleness threshold** (deferred — not currently important). At what age does content trigger
+   explicit degraded state, and does the threshold differ by state (Live vs Morning vs Ledger)?
+   Worth settling when §4 is implemented; a reasonable starting assumption is a tighter threshold
+   during Live than during Morning, since nothing has happened yet in the morning.
