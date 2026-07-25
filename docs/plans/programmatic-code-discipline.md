@@ -103,14 +103,45 @@ someone needs a formula in a query.
 **Failure:** six central Desk files total ~7,677 lines; `explorer_service.py` is ~198KB. The
 failure record names complexity beyond a reviewable unit as a root cause.
 
-**Rule, with a ratchet — this part matters:**
+**Rule — diff-scoped, not absolute.** Measure the *change*, mirroring the repo's existing
+`make coverage.diff` habit (≥80% patch coverage on changed `app/` lines). Diff-scoping means no
+baseline file to maintain or merge-conflict: git already knows the before-size.
 
-- **New** files capped at a hard limit (~500 lines).
-- **Existing** oversized files are recorded in a baseline file and may only **shrink**. Growth
-  fails the hook.
+For each file touched by the change:
 
-A flat limit on a legacy codebase blocks all work and gets disabled within a week. A ratchet
-converts a wall into a gradient, and every touch of a god file becomes a small improvement.
+| Situation | Verdict |
+|---|---|
+| Ends **under** the threshold (~500 lines) | pass |
+| Already **over** and the change makes it **larger** | **fail** |
+| Already **over** and the change makes it **smaller or equal** | pass |
+| **New** file over the threshold | fail |
+
+This is the ratchet expressed as a delta, so it applies itself gradually and automatically: every
+touch of a god file must leave it no worse, and most touches will naturally leave it better.
+
+**Optional companion — a per-file delta cap** (no single change adds more than ~300 lines to one
+file), independent of absolute size. This targets a named failure directly: the initial Desk merge
+was 104 files and 35,018 insertions, which the failure record identifies as *"complexity grew
+beyond a reviewable unit."* A delta cap forces that shape into reviewable pieces.
+
+### Critical: do not block the decomposition this rule exists to encourage
+
+Splitting `explorer_service.py` (198KB) into modules creates new files full of *moved* lines. A
+naive delta check fails exactly the refactor we want. Design for it:
+
+- **Evaluate net change across the whole changeset**, not per-file in isolation — a pure split is
+  net-neutral and must pass.
+- **Enable git rename/copy detection** so moves are not counted as additions.
+- Provide an escape hatch (`# discipline: file-size <reason>`) requiring a justification visible
+  in review.
+
+Get this wrong and the rule becomes an argument *against* cleaning up god files.
+
+### Where it runs
+
+Both, with different strictness: **pre-commit warns** (fast feedback while context is fresh —
+which is the whole point of a guardrail), **CI enforces** against the merge base, alongside
+`coverage.diff` where the diff-scoped tooling already lives.
 
 ### 1.5 Watermark honesty *(lower confidence — evaluate before adopting)*
 
