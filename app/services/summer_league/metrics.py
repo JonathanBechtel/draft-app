@@ -1441,8 +1441,17 @@ async def rebuild(
 
     if scope is None:
         # Unscoped: full wipe-and-rebuild, unchanged from before #523.
+        #
+        # P2 debt, not an accepted pattern. This is the violation of "retain history by
+        # default" that scripts/check_unscoped_delete.py was written for: it destroys the
+        # metrics time axis and the auditable model-fit history on every run. Phase 1 of
+        # docs/plans/summer-league-remediation-roadmap.md replaces it with a dated
+        # version-flip publish, and the three waivers below are deleted with it.
+        # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
         await db.execute(delete(SummerLeaguePlayerSeason))
+        # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
         await db.execute(delete(SummerLeagueMetricContext))
+        # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
         await db.execute(delete(SummerLeagueMetricModel))
 
         version = model_version or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")

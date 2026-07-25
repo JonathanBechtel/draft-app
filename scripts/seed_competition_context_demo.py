@@ -52,8 +52,11 @@ async def _main() -> None:
                 SummerLeagueEnvironmentSeasonMembership,
             )
 
+            # discipline: unscoped-delete demo seeder, throwaway DB only
             await session.execute(delete(SummerLeagueEnvironmentFieldComposition))
+            # discipline: unscoped-delete demo seeder, throwaway DB only
             await session.execute(delete(SummerLeagueEnvironmentSeasonMembership))
+            # discipline: unscoped-delete demo seeder, throwaway DB only
             await session.execute(delete(SummerLeagueEnvironmentProfile))
             await session.commit()
         refs = await seed_competition_context_demo(session)

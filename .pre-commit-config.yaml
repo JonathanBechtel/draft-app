@@ -22,3 +22,8 @@ repos:
         entry: python scripts/check_route_conventions.py
         language: system
         files: ^app/routes/.*\.py$
+      - id: unscoped-delete
+        name: Ban unscoped delete(Model) (P2 - retain history by default)
+        entry: python scripts/check_unscoped_delete.py
+        language: system
+        files: ^(app|scripts)/.*\.py$
