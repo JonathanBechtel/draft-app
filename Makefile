@@ -135,7 +135,7 @@ bio.ingest:
 	$(PYTHON) scripts/ingest_player_bios.py --file $(BBIO) --cache-dir $(CACHE) $(if $(DRY),--dry-run,) $(if $(VERBOSE),--verbose,) $(if $(OVERWRITE_MASTER),--overwrite-master,) $(if $(CREATE_MISSING),--create-missing,) $(if $(FIX),--fix-ambiguities $(FIX),)
 
 # Lint & format
-.PHONY: fmt lint lint.imports fix precommit test coverage coverage.diff visual visual.headed
+.PHONY: fmt lint lint.imports lint.filesize fix precommit test coverage coverage.diff visual visual.headed
 fmt:
 	ruff format .
 
@@ -146,6 +146,11 @@ lint:
 # Config lives in .importlinter; CI runs the same command.
 lint.imports:
 	lint-imports
+
+# Diff-scoped file-size ratchet (docs/plans/programmatic-code-discipline.md §1.4).
+# Enforces against main the way CI does; pre-commit runs the same script in warn mode.
+lint.filesize:
+	python scripts/check_file_size_ratchet.py --against origin/main --enforce
 
 fix:
 	ruff check --fix .
