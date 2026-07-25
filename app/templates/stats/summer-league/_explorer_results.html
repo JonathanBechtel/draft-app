@@ -36,12 +36,6 @@
 {%- endmacro -%}
 
 <div class="slg-explorer-results" id="explorer-results">
-  {% if not result.available %}
-  <p class="slg-empty slg-explorer-soon">
-    The <strong>{{ result.subject }}</strong> subject is coming soon. Try the
-    <a href="/stats/summer-league/explorer?subject=players">Players</a> view.
-  </p>
-  {% else %}
 
   {# ── Competition Context strip (#609, contract §7) ──────────────────────
      Rendered only when the current query resolves to exactly one approved
@@ -186,7 +180,6 @@
     {% if result.page > 1 %}<a class="slg-pager-btn" href="{{ explorer_qs(result.query, page=result.page - 1) }}">&larr; Prev</a>{% endif %}
     {% if result.has_next %}<a class="slg-pager-btn" href="{{ explorer_qs(result.query, page=result.page + 1) }}">Next &rarr;</a>{% endif %}
   </div>
-  {% endif %}
   {% endif %}
 </div>
 {% endif %}

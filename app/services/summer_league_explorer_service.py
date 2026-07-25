@@ -4,10 +4,8 @@
 filters into a sortable, paginated table. State lives entirely in the query
 string so every view is shareable.
 
-Three subjects are planned (players, teams, games); this module dispatches by
-subject and currently implements **players** (Phase 1). Teams and games return an
-empty, ``available=False`` result until their phases land, so the UI can show the
-subject toggle without breaking.
+This module dispatches by subject across all four: players, teams, games and
+competitions.
 
 Players rows aggregate a player's box totals across every game inside the filter
 scope (year range, venue, draft class/round), then scale to the selected per-mode
@@ -2119,7 +2117,6 @@ class ExplorerResult:
     """A rendered Explorer query: columns, rows, pagination, and facets."""
 
     subject: str
-    available: bool
     columns: list[ExplorerColumn]
     rows: list[ExplorerRow]
     total: int
@@ -3037,7 +3034,6 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     elig_n, elig_m = await _fetch_adv_counts(db, q)
     return ExplorerResult(
         subject="players",
-        available=True,
         columns=_PLAYER_STAT_COLUMNS + _PLAYER_ADVANCED_COLUMNS,
         rows=rows,
         total=total,
@@ -3411,7 +3407,6 @@ async def _query_players_per_competition(
 
     return ExplorerResult(
         subject="players",
-        available=True,
         columns=columns,
         rows=rows,
         total=total,
@@ -3590,7 +3585,6 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
 
     return ExplorerResult(
         subject="players",
-        available=True,
         columns=_PLAYER_GAME_STAT_COLUMNS,
         rows=rows,
         total=total,
@@ -3879,7 +3873,6 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 
     return ExplorerResult(
         subject="games",
-        available=True,
         columns=_GAME_STAT_COLUMNS,
         rows=rows,
         total=total,
@@ -4616,7 +4609,6 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
         if detail_view is None:
             return ExplorerResult(
                 subject="competitions",
-                available=True,
                 columns=columns,
                 rows=[],
                 total=0,
@@ -4684,7 +4676,6 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
 
     result = ExplorerResult(
         subject="competitions",
-        available=True,
         columns=columns,
         rows=rows,
         total=total,
@@ -4844,7 +4835,6 @@ def _build_result(
         has_next = False
     return ExplorerResult(
         subject=subject,
-        available=True,
         columns=columns,
         rows=page_rows,
         total=total,

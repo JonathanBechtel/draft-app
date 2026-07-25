@@ -36,29 +36,29 @@
     </div>
 
     {% if desk_payload.hero.kind == 'live_duel' %}
-      {% include "summer_league/desk/hero_live.html" %}
+      {% include "summer-league/desk/hero_live.html" %}
     {% elif desk_payload.hero.kind != 'performance_of_night' %}
       {# Recap (performance_of_night) intentionally renders NO hero -- the
          top-performer cards below lead the section instead. Everything else
          (marquee Morning face-off / single-subject degrade / quiet_slate
          class-leader fallback) ships in hero_morning.html. #}
-      {% include "summer_league/desk/hero_morning.html" %}
+      {% include "summer-league/desk/hero_morning.html" %}
     {% endif %}
 
     {% if desk_payload.daily_state == 'preview' and desk_payload.slate %}
-      {% include "summer_league/desk/slate.html" %}
+      {% include "summer-league/desk/slate.html" %}
     {% endif %}
 
     {% if desk_payload.daily_state == 'live' and desk_payload.live_board %}
-      {% include "summer_league/desk/live_board.html" %}
+      {% include "summer-league/desk/live_board.html" %}
     {% endif %}
 
     {% if desk_payload.daily_state == 'recap' and desk_payload.ledger %}
-      {% include "summer_league/desk/ledger_cards.html" %}
+      {% include "summer-league/desk/ledger_cards.html" %}
     {% endif %}
 
     {% if desk_payload.tracker %}
-      {% include "summer_league/desk/class_tracker.html" %}
+      {% include "summer-league/desk/class_tracker.html" %}
     {% endif %}
   </section>
   {% endif %}

@@ -537,7 +537,7 @@ async def desk_tracker_partial(
             truncated=False,
         )
     return request.app.state.templates.TemplateResponse(
-        "summer_league/desk/class_tracker_table.html",
+        "summer-league/desk/class_tracker_table.html",
         {
             "request": request,
             "tracker": tracker,

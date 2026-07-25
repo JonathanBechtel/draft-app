@@ -728,9 +728,6 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     uper = compute_uper(b, tm, ctx)
     ps.aper = _d(ctx.pace, tm_pace) * uper
 
-    uper = compute_uper(b, tm, ctx)
-    ps.aper = _d(ctx.pace, tm_pace) * uper
-
     ortg, tot_poss, pprod = compute_ortg(b, tm, opp)
     drtg = compute_drtg(b, tm, opp, tm_poss)
     m["ortg"] = round(ortg, 1)
