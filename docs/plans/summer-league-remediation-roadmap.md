@@ -10,9 +10,23 @@ the spec that owns its detail — this doc is the order, not the design.
 Three rules produced this order. They are worth stating because they explain the non-obvious
 placements.
 
-1. **Guardrails are installed just-in-time, ahead of the work they protect — not as a phase.**
-   Import contracts for packages that do not yet exist are free and permanent; the same contracts
-   written *after* the package is built are retrofits against code that already drifted.
+1. **Guardrails are sprinkled through, never batched into a phase.** Each rule lands with — and
+   ideally *before* — the work it constrains. A file-size rule that arrives in the last phase let
+   every prior phase grow files freely. Import contracts for packages that do not yet exist are
+   free and permanent; the same contracts written *after* the package is built are retrofits
+   against code that already drifted.
+
+   | Guardrail | Lands in | Protects |
+   |---|---|---|
+   | Import contracts 2, 3, 5 | 0 | the packages Phases 2 and 4 create |
+   | Unscoped-`delete()` checker | 0 | P2, across every later phase |
+   | Diff-scoped file-size rule | 0 | every phase's file growth |
+   | Ruff complexity rules (ratcheted) | 0 | every phase's new code |
+   | Runtime network-in-transaction guards | 1 | the operational fixes themselves |
+   | Import contract 4 (`event_desk` ↛ SL), baselined | 1 | Desk decoupling; its ignore list is the progress meter |
+   | Golden-number parity harness | 2 | the formula consolidation it gates |
+   | Stat-constant confinement | 2 | keeps the consolidation from regrowing |
+   | `DatedVersionMixin` (type-level) | 4 | P2, by construction rather than by rule |
 2. **Plumbing and payoff separate.** Where one change both fixes an operational fault and unlocks
    a product capability, the change lands in the operational phase and the capability follows.
    This avoids fixing the same thing twice.
@@ -33,6 +47,8 @@ operational acceptance deferred past merge; a phase is not done because its code
 |---|---|
 | Import contracts 2, 3, 5 (`app.domain`, `app.services.stats`, spoke independence) — written *before* those packages exist, so they start green | discipline §3.1 |
 | Unscoped-`delete()` AST checker — the direct P2 guard | discipline §1.1 |
+| Diff-scoped file-size rule (pre-commit warns, CI enforces; net-change evaluation so it cannot block Phase 5's decomposition) — **here, not later, so no phase grows files unchecked** | discipline §1.4 |
+| Ruff complexity rules (`C901`, `PLR0915`, `PLR0913`) with `per-file-ignores` baseline | discipline §1.6 |
 | Double-uPER compute fix (`metrics.py:728-732`) | backlog 1.4 |
 | Remove dead Explorer branches (`available=False` teams/games subjects) | backlog 5.1 |
 | Naming/layout normalization; document the backfill ordering precondition | backlog 5.4, 6.3 |
@@ -53,6 +69,7 @@ land while games were in progress.
 | **Version-flip publish replacing the mega-transaction** — build the new metrics version outside any lock, materialize variants, flip the pointer in a tiny transaction (`ingest_runner.py:1308-1348`) | desk §5, stat-engine §5 |
 | Stop deleting `SummerLeagueMetricModel` (auditable fit history) | stat-engine §5 |
 | Latency-class partitioning: fast live poller / medium projection builder / slow backbone | desk §2 |
+| Import contract 4 (`event_desk` ↛ SL) with its `ignore_imports` baseline — lands here so the list shrinks across Phases 1 and 5 rather than being written after the decoupling | discipline §3.1 |
 | Confirm the production timeout cause — mega-transaction vs. undeployed fixes (**still undiagnosed**) | desk §5 |
 
 **Note:** the version-flip lands here, not in Phase 3, because it *is* the transaction fix. It
@@ -118,22 +135,22 @@ affiliation; the backbone doc's code-location table has no stale rows.
 
 ---
 
-## Phase 5 — Remaining guardrails + structural cleanup
+## Phase 5 — Structural cleanup
 
-**Why last:** these protect and tidy work that must exist first.
+**Why last:** this tidies work that must exist first, and the god-file seams are only unambiguous
+once the freshness layering and the stat math are settled. Its guardrails already landed in
+Phases 0–1 and have been constraining the work throughout.
 
 | Item | Spec |
 |---|---|
-| Diff-scoped file-size rule (pre-commit warns, CI enforces; net-change evaluation so it cannot block decomposition) | discipline §1.4 |
-| Ruff complexity rules (`C901`, `PLR0915`, `PLR0913`) with `per-file-ignores` baseline | discipline §1.6 |
-| Import contract 4 (`event_desk` ↛ SL) with `ignore_imports` baseline — the shrink list becomes the decoupling progress meter | discipline §3.1 |
-| God-file decomposition along now-unambiguous seams | backlog 5.2, desk §6 |
+| God-file decomposition along now-unambiguous seams — the file-size rule's net-change evaluation permits this by design | backlog 5.2, desk §6 |
 | DTO standardization into `app/models/` / `app/domain/` | backlog 5.3 |
 | Desk freshness contract + layer collapse (removes request-time splicing) | desk §1, §3 |
 | Resolve the `roster_status` dual-write | backlog 4.1 |
 
-**Exit:** no file over threshold grew; every user-visible Desk assertion carries one watermark;
-the contract-4 ignore list is strictly shorter than at Phase 5 start.
+**Exit:** every user-visible Desk assertion carries one watermark; no request-time field splicing
+remains; the contract-4 ignore list is strictly shorter than at Phase 1, and each remaining entry
+is a known, named coupling.
 
 ---
 
