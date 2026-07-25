@@ -1437,9 +1437,7 @@ async def rebuild(
     scope = frozenset(competition_ids) if competition_ids is not None else None
 
     if scope is None:
-        # Unscoped: full wipe-and-rebuild, unchanged from before #523. P2 debt, not an
-        # accepted pattern — Phase 1's version-flip publish replaces it and removes these
-        # waivers. See docs/plans/summer-league-remediation-roadmap.md.
+        # Unscoped: full wipe-and-rebuild, unchanged from before #523.
         # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
         await db.execute(delete(SummerLeaguePlayerSeason))
         # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip

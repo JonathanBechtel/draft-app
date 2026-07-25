@@ -149,12 +149,14 @@ valuable cleanup and the foundation of doc #2.
 - **Collapse to.** One scaling definition consumed by both display and sort paths.
 - **Class.** 🟢.
 
-### 1.4 — Micro-bug: uPER computed twice identically 🟢
+### 1.4 — Micro-bug: uPER computed twice identically 🟢 ✅ Done in Phase 0
 
 - **Evidence.** `metrics.py:728-732` calls `compute_uper(...)` and immediately recomputes the
   identical value on the next lines. Harmless but wasteful and confusing.
 - **Collapse to.** Compute once. Trivial.
 - **Class.** 🟢.
+- **Resolved.** Second compute+assign pair removed. `compute_uper` is pure, so the removal is
+  provably value-preserving.
 
 ### 1.5 — (Net-new, not a dedupe) capability map: `metric → required inputs`
 
@@ -273,9 +275,11 @@ still observed in production.
 All safe hygiene. **Do the god-file splits *after* Bucket 1**, or you'll just relocate
 duplicated math into smaller files.
 
-- **5.1 — Stubbed Explorer subjects.** Teams/games subjects return `available=False` ("Phase 1
-  = players only") — dead-ish branches carried inside the 198KB Explorer file. Remove or
-  feature-gate cleanly.
+- **5.1 — Stubbed Explorer subjects.** ✅ **Done in Phase 0.** The premise was stale by the
+  time it was actioned: teams and games had both shipped, and all seven `ExplorerResult`
+  constructions passed `available=True`. What actually remained was the always-true flag, an
+  unreachable "coming soon" template branch, its CSS rule, and a module docstring still
+  describing the subjects as unimplemented. All removed.
 - **5.2 — God-file decomposition seams.** Prime candidates by size:
   `summer_league_explorer_service.py` (198KB), `summer_league/desk_read.py` (109KB),
   `summer_league/normalization.py` (106KB), `summer_league_environment_service.py` (99KB),
@@ -286,10 +290,17 @@ duplicated math into smaller files.
   are dataclasses scattered inside services (`GamesPage`, `ExplorerResult`, `EnvironmentScope`,
   `DeskTrackerSection`), unlike the rest of the app. Consolidate into `app/models/` for one place
   to find SL shapes.
-- **5.4 — Naming/layout inconsistencies.** `stats/summer-league/` (hyphen) vs
-  `summer_league/desk/` (underscore) template dirs; `static/` root vs `static/js|css/` asset
-  placement; SL routes split across `routes/summer_league.py` and `routes/ui.py` with no shared
-  prefix; `/desk/tracker` is generically named but SL-only. Normalize conventions.
+- **5.4 — Naming/layout inconsistencies.** 🟡 **Partially done in Phase 0** — the internal
+  half only, because Phase 0's exit criterion is *no behavior change observable in the app*.
+  - ✅ Template dirs: `app/templates/summer_league/` renamed to `summer-league/`, so both SL
+    template roots agree and match the kebab-case convention CLAUDE.md documents.
+  - ⏸️ `static/` root vs `static/js|css/` placement (11 root assets): deferred. Moving them
+    changes the public `/static/...` URLs the browser requests. Behavior-neutral for users,
+    but out of scope for a phase that promises no observable change — and a missed reference
+    means an unstyled page.
+  - ⏸️ SL routes split across `routes/summer_league.py` and `routes/ui.py`, and the generically
+    named but SL-only `/desk/tracker`: deferred to **Phase 5**. These change public URLs, so
+    they need redirects and a deliberate decision, not a Phase 0 tidy-up.
 
 ---
 
@@ -313,9 +324,11 @@ is a trustworthy recovery tool rather than a gamble.
   game unless dirty-detection fires or an operator sets `SL_INGEST_FULL_RECONCILE`
   (`app/cli/summer_league_ingest_runner.py:731-822,759-762`). **Collapse to:** make dirty-detection the
   default reliable path so re-running always reprocesses genuinely-changed inputs. 🟢/🟡.
-- **6.3 — `backfill_summer_league_backbone` ordering precondition.** Hard-fails without raw
-  manifests (raw fetch → audit → backfill → normalize → metrics). Document the required order
-  explicitly and make the failure message actionable. 🟢.
+- **6.3 — `backfill_summer_league_backbone` ordering precondition.** ✅ **Done in Phase 0.**
+  The five-stage order (raw fetch → audit → backfill → normalize → metrics) is now in the
+  script docstring, and the "no raw manifests" error names the ordered commands plus
+  `--raw-root` as the other route to the same failure, so a wrong path is not misdiagnosed as
+  a missing fetch. 🟢.
 
 ---
 
