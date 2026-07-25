@@ -33,8 +33,8 @@ Verified against HEAD `c78af8d`. The postmortem predates all of these; build on 
 
 | Fixed | Evidence |
 |---|---|
-| Gemini/embedding calls no longer inside the writer lock — identity resolution split into a lock-free *prepare* pass and small locked write batches (`RESOLUTION_BATCH_SIZE = 8`) | `player_resolution.py:719-723`; `summer_league_ingest_runner.py:656-728` |
-| The 87-minute whole-venue transaction is chunked — shot/PBP normalization runs `EVENT_BATCH_SIZE = 8` games per `db.begin()`, releasing the lock between batches | `summer_league_ingest_runner.py:548-653` |
+| Gemini/embedding calls no longer inside the writer lock — identity resolution split into a lock-free *prepare* pass and small locked write batches (`RESOLUTION_BATCH_SIZE = 8`) | `player_resolution.py:719-723`; `app/cli/summer_league_ingest_runner.py:656-728` |
+| The 87-minute whole-venue transaction is chunked — shot/PBP normalization runs `EVENT_BATCH_SIZE = 8` games per `db.begin()`, releasing the lock between batches | `app/cli/summer_league_ingest_runner.py:548-653` |
 | Desk lock wait bounded to 30s — the Desk can no longer be starved for an hour; it times out and retries | `sl_desk_tick.py:267,1005-1009` |
 | Priority-intent signal — a waiting Desk tick makes the low-priority ingestor back off | `write_lock.py:146-179` |
 | Network I/O runs with no transaction open, lock reacquired before writes | `sl_desk_tick.py:1096-1102,1177-1178` |
@@ -211,14 +211,15 @@ visibly stale Desk is honest and survivable; a confidently wrong Desk is not.
 The largest surviving critical section, and the leading structural suspect for transaction
 timeouts still observed in production:
 
-`summer_league_ingest_runner.py:1308-1348` wraps in **one** `db.begin()` under the writer lock:
+`app/cli/summer_league_ingest_runner.py:1308-1348` wraps in **one** `db.begin()` under the writer lock:
 
 1. `rebuild_sl_metrics(db)` — a **full unscoped table wipe** (`metrics.py:1443-1446` deletes all
    of `SummerLeaguePlayerSeason` / `MetricContext` / `MetricModel`), then
 2. `materialize_desk_render_snapshots(db)` — 72 variants, then
 3. `refresh_environment_profiles_for_year(db, ...)`.
 
-The coupling is stated as an invariant in `write_lock.py:1-7`: *"Every full metrics rebuild must
+The coupling is stated as an invariant in
+`app/services/event_desk/snapshot_materialization.py:1-7`: *"Every full metrics rebuild must
 therefore replace the render-snapshot matrix before its transaction commits, or direct stat
 surfaces and the homepage can disagree."*
 
