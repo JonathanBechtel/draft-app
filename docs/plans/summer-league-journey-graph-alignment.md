@@ -166,8 +166,53 @@ extraction are cheap and internal. Sequence accordingly.
 
 **Wave A — free, no migration.** Reorganize the service layer into the §4 shape (module moves +
 imports). Extract the stat engine (doc #2 Issue A). Introduce generic *read interfaces* over
-existing SL tables — the adapter seams — without touching schemas. This delivers most of the
-reuse benefit at near-zero schema risk and makes the remaining coupling visible.
+existing SL tables — the adapter seams — without touching schemas. **Plus the vocabulary
+alignment pass in §5a.** This delivers most of the reuse benefit at near-zero schema risk and
+makes the remaining coupling visible.
+
+### 5a. Light namespacing — align vocabulary without touching the schema
+
+**The enabling fact:** these SQLModel classes set `__tablename__` explicitly, so **renaming the
+Python class produces no migration.** Alembic compares table names and columns, not class names.
+Class names, module paths, and docstrings are therefore free to align with journey-graph
+vocabulary today.
+
+**This is not tidiness — it is semantics, and the misalignment has already cost us.** §12 lists
+the "competition → edition → game model" as open while `summer_league_competitions` *is* an
+edition table. A reader moving between the backbone doc and the code cannot tell they are the
+same thing. Aligning the vocabulary converts *"we must build an edition model"* into *"we have
+one, it is misnamed"* — which is the entire finding of §1 of this doc.
+
+**Already aligned — leave alone:** `SummerLeagueTeamEntry` (team_entry), `SummerLeagueGame`
+(game), `SummerLeagueParticipation` (participation — and its docstring already cites
+*journey-graph §7b*, which is the pattern below), `SummerLeagueEnvironmentProfile` (scope profile).
+
+**Misaligned — rename the class, keep the table:**
+
+| Current class | Journey-graph term (§) | Note |
+|---|---|---|
+| `SummerLeagueCompetition` | **edition** (§7) | The *competition* is the recurring series; the 2026 Las Vegas instance is an **edition**. Current name claims the parent concept. |
+| `SummerLeagueRawFile` | **source_document** (§10) | An ingestion snapshot — exactly §10's definition |
+| `SummerLeagueRawRun` | **source_document batch / ingestion run** (§10) | The run that produced a set of source documents |
+| `SummerLeagueSourcePlayer` | **source_record** (§10) + resolution target (§6) | A row within a document, carrying the identity assertion |
+| `SummerLeaguePlayerSeason` | **derived_agg** (§3) | §3's spoke chain is `participation → game_log → derived_agg`; this is the third element |
+
+**Two conventions to adopt, both free:**
+
+1. **Docstring citation.** Every table implementing a journey-graph concept cites its section, as
+   `SummerLeagueParticipation` already does. This makes the hub↔spoke mapping self-documenting
+   and directly prevents a future reader concluding a layer is unbuilt when it exists.
+2. **Module namespacing.** Consolidate the incoherent split — ~40 modules under
+   `app/services/summer_league/` plus 10 top-level `app/services/summer_league_*.py` files — into
+   one package organized by §4's layers. The current split communicates nothing.
+
+**Do NOT rename in this pass:** `__tablename__` values, column names, public URLs
+(`/stats/summer-league/...` carries SEO value), or template directories. Those are Wave C, and
+only when a second consumer justifies the migration.
+
+**Why do this early:** it costs nothing, it makes the promotion targets in §2 obvious rather than
+archaeological, and when Wave C arrives the physical rename becomes mechanical — the conceptual
+work is already done and reviewed.
 
 **Wave B — the blocker.** Ship the org → team/program model and retarget affiliations +
 `team_entries` (§3). This is the one migration that genuinely gates spoke #2.
@@ -187,8 +232,11 @@ they are orthogonal to this reorganization and address the operational risk.
 
 ## 6. Anti-goals
 
-- **Do not rename tables purely for tidiness.** Every rename is a migration with real risk.
-  Promote a table when a second consumer needs it, not to satisfy a naming scheme.
+- **Do not rename *tables* purely for tidiness.** Every physical rename is a migration with real
+  risk. Promote a table when a second consumer needs it, not to satisfy a naming scheme.
+  **Distinguish this from §5a:** aligning *Python class names, modules, and docstrings* to
+  journey-graph vocabulary is free (no migration) and semantically valuable — do that early.
+  Changing `__tablename__`, columns, or public URLs is the expensive kind — defer to Wave C.
 - **Do not generalize the Event Desk framework yet** (doc #3 §7). One instance is not evidence.
 - **Do not make the spokes thin.** Journey-graph principle 1 wants fat spokes. SL-specific
   normalization and provider clients belong in SL and should stay there.
