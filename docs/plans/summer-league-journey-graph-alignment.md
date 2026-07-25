@@ -230,6 +230,77 @@ they are orthogonal to this reorganization and address the operational risk.
 
 ---
 
+## 5b. Domain types: where OOP actually pays (and where it repeats the trap)
+
+The journey graph is a genuine domain model, and expressing it in code — not only in tables and
+docs — is what would make the app coherent across competitions. But "shared base classes for
+competitions" is also exactly how the Event Desk became framework-shaped at N=1. The two are
+separated by one rule:
+
+> **An abstraction whose shape is dictated by a consumer that exists today is safe at N=1. An
+> abstraction generalized from a single producer is not.**
+
+Doc #2's engine *requires* a neutral `StatInputs` — a real requirement right now, with SL merely
+its first supplier. Safe. A `BaseCompetition` distilled from `SummerLeagueCompetition` is guessing
+what spoke #2 needs from a sample of one. Not safe. Same instinct, opposite risk.
+
+**Current state:** `app/schemas/base.py` contains exactly one mixin (`SoftDeleteMixin`);
+`Protocol`/ABC patterns are already used in ~5 services (including `event_desk/registry.py`,
+`raw_ingestion.py`, `player_resolution.py`). The pattern is familiar here — the domain-type layer
+is simply thin.
+
+### Three layers that pay off immediately
+
+**1. Value objects — the vocabulary made real.** Plain dataclasses, no ORM coupling:
+`EditionRef`, `TeamEntryRef`, `ParticipationRef`, `Scope` (scope_key/scope_kind), `Watermark`
+(`source_as_of` + `projection_version`, per doc #3 §1), `Assertion` with provenance (§10). These
+give every spoke one vocabulary and cost nothing structurally. They also make §5a's naming
+alignment enforceable in signatures rather than by convention.
+
+**2. Protocols — behavioral interfaces defined by their consumers.** Composition, not inheritance:
+
+- `SourceAdapter` — fetch raw → emit canonical assertions (the §4 rule as a type)
+- `StatInputsProvider` — spoke rows → neutral `StatInputs` (doc #2)
+- `CapabilityDeclaration` — which canonical inputs this source provides (doc #2's capability model)
+- `ScopeProvider` — which scopes exist for baselines
+
+Each is shaped by what the engine/backbone **needs**, so a second spoke implements a known
+contract instead of inheriting a guess.
+
+**3. Mixins for cross-cutting invariants — the highest-value item here.** A `DatedVersionMixin`
+carrying `version` / `registry_version` / `calculation_version` / `is_current` / `as_of`
+**encodes P2 as a type.** Longitudinal-first stops being a principle someone must remember and
+becomes something a table inherits. This matters concretely: the metrics rebuild violated P2 in
+part because nothing in the code made the rule visible. A mixin makes the correct shape the
+default and the violation conspicuous in review.
+
+Related candidates: a `ProvenanceMixin` (§10 source_document/record references) and a
+`CoverageMixin` (FULL / PARTIAL / BOX_ONLY / RAW_ONLY per §7c).
+
+### The trap: ORM polymorphic inheritance across spokes
+
+**Do not build `BaseCompetition` → `SummerLeagueEdition` → `FIBAEdition` as an ORM hierarchy.**
+
+- Joined/single-table inheritance imposes real query and migration complexity, against this
+  repo's stated "intentionally boring and conventional" backend ethos.
+- It is generalization from a single producer — the N=1 trap in a new costume.
+- **§7c already prescribes the composition answer at schema level:** *"a near-uniform box-score
+  core + thin spoke extension."* That is a shared core table plus a spoke extension table — not a
+  class hierarchy. Follow it.
+
+Shared *columns* via mixins: yes. Shared *behavior* via protocols: yes. Shared *identity* via ORM
+polymorphism: no.
+
+### Sequencing
+
+Value objects and the `DatedVersionMixin` belong in **Wave A** — they are free, they encode
+decisions already made (P2, doc #3's watermark contract), and they make later waves mechanical.
+Protocols land with their consumers: `StatInputsProvider` and `CapabilityDeclaration` with doc #2's
+engine; `SourceAdapter` when the service layer is reorganized (§4). Nothing here waits on spoke #2
+— but nothing here is *generalized from* SL either.
+
+---
+
 ## 6. Anti-goals
 
 - **Do not rename *tables* purely for tidiness.** Every physical rename is a migration with real
@@ -238,6 +309,9 @@ they are orthogonal to this reorganization and address the operational risk.
   journey-graph vocabulary is free (no migration) and semantically valuable — do that early.
   Changing `__tablename__`, columns, or public URLs is the expensive kind — defer to Wave C.
 - **Do not generalize the Event Desk framework yet** (doc #3 §7). One instance is not evidence.
+- **Do not build ORM inheritance hierarchies across spokes** (§5b). Shared columns via mixins and
+  shared behavior via protocols, yes; polymorphic `BaseCompetition` subclassing, no — §7c's
+  "uniform core + thin spoke extension" is the composition answer already on the books.
 - **Do not make the spokes thin.** Journey-graph principle 1 wants fat spokes. SL-specific
   normalization and provider clients belong in SL and should stay there.
 - **Do not build a generic canon layer speculatively ahead of spoke #2.** Wave C is deliberately
