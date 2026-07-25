@@ -177,18 +177,45 @@ transaction; fail on regression past a baseline. Extends the existing budget hab
 **Failure:** every module in `app/services/event_desk/` imports `app.schemas.summer_league`, while
 the package presents itself as a generic framework. Nothing made that contradiction visible.
 
-**Mechanism:** `import-linter` contracts (or Ruff's `flake8-tidy-imports` banned-api per-module):
+**Mechanism:** `import-linter` (not currently a dependency; contracts live in `pyproject.toml` or
+`.importlinter`, and the check belongs in `.github/workflows/run-tests-on-pr.yml`). Ruff's
+`flake8-tidy-imports` banned-api can express simple per-module bans but not layering or
+independence.
 
-| Contract | Enforces |
-|---|---|
-| `app/domain/` ↛ `app/schemas/` | domain vocabulary stays ORM-free (doc #4 §5b rule 3) |
-| `app/services/stats/` ↛ any spoke | the engine stays source-agnostic |
-| `app/services/event_desk/` ↛ `app.schemas.summer_league` | a "generic" framework must actually be generic |
-| `sources/<spoke>/` ↛ `sources/<other spoke>/` | spokes stay independent |
+**Two properties make this adoptable immediately rather than "after cleanup":**
 
-The third contract is the important one: it converts "this framework is secretly coupled" from an
-archaeological discovery into a failing build. **Add it as a warning first** — it currently fails
-everywhere — then fix toward it as doc #3's work proceeds.
+1. **`ignore_imports` is a built-in ratchet.** A contract can enumerate its current violations
+   explicitly. New violations fail; listed ones are documented debt; the list can only shrink.
+   This is what makes the `event_desk` contract usable *today* despite failing in every module —
+   each line removed is measurable progress, and no new coupling can be added meanwhile.
+2. **A contract written before its package exists starts green and never regresses.**
+   `app/domain/` and `app/services/stats/` do not exist yet. Writing their contracts now means
+   they are enforced from line one, with zero debt to pay down. **This is the cheapest
+   architectural guarantee available** — take it before writing the code, not after.
+
+### The contract set
+
+| # | Contract | Type | Baseline today |
+|---|---|---|---|
+| 1 | `app.routes` → `app.services` → `app.schemas` → `app.domain` | layers | **needs measuring** — likely near-passing; run before enabling |
+| 2 | `app.domain` ↛ `app.schemas`, `app.services`, `app.routes` | forbidden | **green** (package not yet created) — keeps the vocabulary ORM-free, doc #4 §5b rule 3 |
+| 3 | `app.services.stats` ↛ `app.services.summer_league*`, `app.schemas.summer_league*` | forbidden | **green** (package not yet created) — the engine stays source-agnostic |
+| 4 | `app.services.event_desk` ↛ `app.schemas.summer_league*`, `app.services.summer_league*` | forbidden | **fails broadly** — adopt with `ignore_imports` baseline; shrink as doc #3 decouples |
+| 5 | `app.services.sources.*` mutually independent | independence | **vacuous at one spoke** — pre-install so spoke #2 inherits it |
+
+Contract 4 is the one that matters most: it converts *"this framework is secretly coupled to one
+spoke"* from an archaeological discovery into a failing build. Contract 5 is vacuous today and
+that is precisely why to add it now — spoke #2 inherits the constraint instead of discovering it.
+
+### Honest scope — what import contracts do and don't prevent
+
+They prevent **coupling and layering drift**. They do **not** directly prevent *duplication*: the
+stat formulas were duplicated by hand-writing SQL and re-deriving arithmetic, which requires no
+import at all. That is what the constant-confinement rule (§1.3) is for.
+
+There is a partial duplication mechanism worth using, though: **put shared primitives behind a
+package boundary only the engine may cross.** A would-be duplicator then cannot reach the helper
+and must re-derive from scratch — which is conspicuous in review, where copying an import is not.
 
 ### 3.2 Golden-number parity tests
 
@@ -225,15 +252,20 @@ deadline pressure; it does not produce good design.
 
 Sequenced by value-per-effort, and so nothing lands as a wall of violations.
 
-1. **1.1 unscoped delete** — highest value, ~60 lines, few existing violations.
-2. **2.1 / 2.2 runtime network-in-transaction guards** — the direct fix for the failure that is
+1. **3.1 contracts 2, 3, 5** — write them *before* the packages exist. Near-zero effort, zero
+   debt, permanent guarantee. Do this first precisely because it costs nothing.
+2. **1.1 unscoped delete** — highest value per line, ~60 lines, few existing violations.
+3. **2.1 / 2.2 runtime network-in-transaction guards** — the direct fix for the failure that is
    still causing pain. Warning-only in production, hard failure in dev/test.
-3. **1.4 file-size ratchet** — cheap, immediately stops the god files growing.
-4. **1.3 stat constants** — land *with* doc #2's consolidation so it protects the cleanup.
-5. **3.1 import contracts** — warning-first, tighten as doc #3 decouples the Desk.
-6. **1.6 Ruff complexity rules** — baseline via `per-file-ignores`, enforce on new code.
-7. **1.2 transaction body weight**, **2.3 duration budgets**, **3.2 parity tests** — as the
+4. **1.4 file-size ratchet** — cheap, immediately stops the god files growing.
+5. **3.1 contract 4** — the `event_desk` decoupling ratchet, with its `ignore_imports` baseline.
+6. **1.3 stat constants** — land *with* doc #2's consolidation so it protects the cleanup.
+7. **1.6 Ruff complexity rules** — baseline via `per-file-ignores`, enforce on new code.
+8. **1.2 transaction body weight**, **2.3 duration budgets**, **3.2 parity tests** — as the
    corresponding refactors land.
+
+**Stop after 4 if bandwidth is short.** Those four cover most of the drift, and two rules that are
+respected beat eight that get `# noqa`'d.
 
 **Every rule ships with:** the failure it descends from (in its docstring), an escape hatch
 requiring a justifying comment, and a baseline so it never blocks unrelated work.
