@@ -37,6 +37,7 @@ dev = [
     "pytest-xdist==3.8.0",
     "diff-cover==9.2.0",
     "httpx==0.28.1",
+    "import-linter==2.1",
     "ruff==0.13.0",
     "mypy==1.18.1",
     "pre-commit==3.8.0",

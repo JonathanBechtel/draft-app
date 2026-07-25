@@ -68,6 +68,9 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      - name: Import contracts (import-linter)
+        run: lint-imports
+
       - name: Cache mypy incremental state
         uses: actions/cache@v4
         with:
@@ -176,6 +179,9 @@ jobs:
 
       - name: Lint (ruff)
         run: ruff check .
+
+      - name: Import contracts (import-linter)
+        run: lint-imports
 
       - name: Cache mypy incremental state
         uses: actions/cache@v4

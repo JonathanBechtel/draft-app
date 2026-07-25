@@ -135,12 +135,17 @@ bio.ingest:
 	$(PYTHON) scripts/ingest_player_bios.py --file $(BBIO) --cache-dir $(CACHE) $(if $(DRY),--dry-run,) $(if $(VERBOSE),--verbose,) $(if $(OVERWRITE_MASTER),--overwrite-master,) $(if $(CREATE_MISSING),--create-missing,) $(if $(FIX),--fix-ambiguities $(FIX),)
 
 # Lint & format
-.PHONY: fmt lint fix precommit test coverage coverage.diff visual visual.headed
+.PHONY: fmt lint lint.imports fix precommit test coverage coverage.diff visual visual.headed
 fmt:
 	ruff format .
 
 lint:
 	ruff check .
+
+# Structural import contracts (docs/plans/programmatic-code-discipline.md §3.1).
+# Config lives in .importlinter; CI runs the same command.
+lint.imports:
+	lint-imports
 
 fix:
 	ruff check --fix .
