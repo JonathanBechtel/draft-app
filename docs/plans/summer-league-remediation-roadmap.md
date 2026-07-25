@@ -55,7 +55,7 @@ operational acceptance deferred past merge; a phase is not done because its code
 | Unscoped-`delete()` AST checker — the direct P2 guard | discipline §1.1 |
 | Diff-scoped file-size rule (pre-commit warns, CI enforces; net-change evaluation so it cannot block Phase 5's decomposition) — **here, not later, so no phase grows files unchecked** | discipline §1.4 |
 | Ruff complexity rules (`C901`, `PLR0915`, `PLR0913`) with `per-file-ignores` baseline | discipline §1.6 |
-| Merge-coverage reflective test — every table with an FK to `players_master` must be registered with `player_merge_service` (the manual list has silently drifted as SL tables were added) | discipline §3.4, backlog 4.4 |
+| Merge-coverage test — every FK to `players_master` must be *classified*: registered for reassignment or intentionally cascade-delete (the manual list has silently drifted as SL tables were added) | discipline §3.4, backlog 4.4 |
 | Double-uPER compute fix (`metrics.py:728-732`) | backlog 1.4 |
 | Remove dead Explorer branches (`available=False` teams/games subjects) | backlog 5.1 |
 | Naming/layout normalization; document the backfill ordering precondition | backlog 5.4, 6.3 |
@@ -75,8 +75,10 @@ supplies the observed evidence the first draft of this plan lacked, and corrects
 a ~96-minute **full-ingestion** transaction held the writer lock (the "96-minute Desk
 transaction" was actually 96 minutes of the Desk *waiting*, after which it resolved dormant and
 exited); the deploy's non-concurrent `CREATE INDEX` migration queued behind that transaction;
-public reads queued behind the migration's requested lock; the web pool exhausted and public
-routes 500ed while `/health` stayed green. The long-transaction/lock class is therefore
+and public routes 500ed on web-pool exhaustion while `/health` stayed green. (The record's
+lock-chain reading for *reads* is imprecise — a bare `CREATE INDEX` requests a `SHARE` lock,
+which blocks writes, not reads — so the exact read-blocking mechanism is one more thing this
+gate confirms; see desk §5a.) The long-transaction/lock class is therefore
 **confirmed live** — Phase 1's position is no longer provisional. What the entry gate still
 resolves is *which path* to convert first: whether the deployed image was missing the shipped
 chunking fixes, and whether the holder was the surviving mega-transaction — noting #669's
@@ -92,7 +94,7 @@ length.
 | Intra-day compaction policy for hourly rebuild versions (retain daily close + current) — lands with the version-flip so retention is bounded from the first event | stat-engine §5 |
 | Stop deleting `SummerLeagueMetricModel` (auditable fit history) | stat-engine §5 |
 | Latency-class partitioning: fast live poller / medium projection builder / slow backbone | desk §2 |
-| **Migration safety** (from #669): short `lock_timeout` in release migrations; `CREATE INDEX CONCURRENTLY` on large tables; a DB-exercising health signal so `/health` cannot stay green through a database outage | desk §5a, discipline §1.7 |
+| **Migration safety** (from #669): short `lock_timeout` in release migrations; `CREATE INDEX CONCURRENTLY` (via `autocommit_block()` — required by this repo's Alembic setup) on large tables; a DB-exercising health signal so `/health` cannot stay green through a database outage | desk §5a, discipline §1.7 |
 | Ingestion-side identity guard: suffix/diacritic/variant-aware matching **before** a new `players_master` row is created — the Jr./II/accent dup class has been re-fixed downstream at least three times | backlog 4.3 |
 | Import contract 4 (`event_desk` ↛ SL) with its `ignore_imports` baseline — lands here so the list shrinks across Phases 1 and 5 rather than being written after the decoupling | discipline §3.1 |
 

@@ -280,8 +280,11 @@ behind it, and a deploy migration queueing public reads into a 500 outage (see d
   maintained table list was never updated as `summer_league_*`, shot-event, and participation
   tables added FKs to `players_master`, so merging a player who holds SL data hard-fails on a
   RESTRICT FK. Nothing enforces that a new FK-bearing table gets registered — it will bite again
-  on the next table. **Collapse to:** derive the list reflectively from SQLModel metadata, or a
-  test asserting list == FK graph. 🟢 free test — discipline §3.4; roadmap Phase 0.
+  on the next table. **Collapse to:** a test asserting every FK to `players_master` is
+  *classified* — registered for reassignment or intentionally `ondelete="CASCADE"` (naive
+  list == FK-graph equality would false-fail on the deliberate cascade exemptions, and
+  auto-deriving the reassignment list would resurrect rows meant to die; see discipline §3.4).
+  🟢 free test; roadmap Phase 0.
 
 ---
 

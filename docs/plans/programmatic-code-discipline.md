@@ -167,12 +167,25 @@ excluded from Ruff entirely — worth revisiting separately.
 ### 1.7 Migration safety
 
 **Failure:** incident #669 — a release migration's non-concurrent `CREATE INDEX` queued behind a
-long ingestion transaction; public reads then queued behind the migration's requested exclusive
-lock, and DB-backed routes 500ed until the chain was broken by hand.
+long ingestion transaction while DB-backed routes 500ed on pool exhaustion, until the chain was
+broken by hand. (The record's claim that reads queued behind the migration's "exclusive lock" is
+imprecise — a bare `CREATE INDEX` requests a `SHARE` lock, which blocks writes, not reads; the
+exact read-blocking mechanism is part of the roadmap Phase 1 diagnosis. This rule stands on the
+blocked-deploy half of the incident, which is unambiguous.)
 
 **Rule:** flag Alembic migrations that (a) issue `CREATE INDEX` without `CONCURRENTLY` against a
 designated list of large tables, or (b) set no `lock_timeout`. Small/new tables allowlisted via
 the standard inline-comment escape hatch.
+
+**Repo-specific requirement — the rule must demand both halves.** `alembic/env.py` runs
+migrations inside `context.begin_transaction()`, and PostgreSQL rejects
+`CREATE INDEX CONCURRENTLY` inside a transaction block — so the fix is specifically
+`op.get_context().autocommit_block()` around the index build, the pattern existing migrations
+already use (e.g. `e7c75f3063ec_add_summer_league_games_tip_datetime.py`). A checker that demands
+`CONCURRENTLY` without demanding the autocommit block converts a lock hazard into a guaranteed
+failed release. Mind the boundary semantics: statements inside an autocommit block commit
+immediately, so a mid-migration failure leaves earlier statements applied — keep autocommit index
+builds in dedicated, idempotent migrations (`if_not_exists=True`, as `2c78f642217c` does).
 
 Deploy-time lock contention should degrade the *deploy* — a fast, retryable failure — never
 production reads.
@@ -283,10 +296,16 @@ player who holds SL data hard-fails on a RESTRICT FK. Nothing enforces that a ne
 table gets registered.
 
 **Mechanism:** a unit test that walks SQLModel metadata for FKs referencing `players_master` and
-asserts every referencing table is registered with the merge service (or better: derive the
-service's list reflectively from that same metadata, and the test becomes vacuous). A new table
-plus a missing registration is then a red build, not a production RESTRICT error during a
-time-sensitive merge.
+asserts every referencing column is **classified**: either registered with the merge service for
+reassignment, or declared `ondelete="CASCADE"` — rows that intentionally die with the discarded
+identity. (`player_merge_service.py` already exempts `player_embeddings` and
+`pending_image_previews` on exactly this basis, and cascade FKs to `players_master` exist
+elsewhere, e.g. `summer_league_metrics.py`.) An unclassified FK — RESTRICT/no-action and absent
+from the reassignment list — is a red build, not a production RESTRICT error during a
+time-sensitive merge. Do **not** auto-derive the reassignment list from metadata alone:
+reflective reassignment would resurrect rows the cascade semantics intend to delete. The FK graph
+supplies the *audit universe*; a human classifies each edge once, and the test enforces that the
+classification stays total.
 
 ### 3.5 Browser-execution smoke — "passes every test, dead in the browser"
 

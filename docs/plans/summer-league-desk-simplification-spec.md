@@ -247,18 +247,29 @@ attribution. A production deploy 500ed DB-backed public routes for the duration 
 chain: a ~96-minute **full-ingestion** transaction held the writer lock; the Desk sat *waiting*
 on it (the "96-minute Desk transaction" reading was wrong — after acquiring the lock the Desk
 resolved dormant and exited normally); the deploy's **non-concurrent `CREATE INDEX`** migration
-queued behind the ingestion transaction; ordinary reads queued behind the migration's requested
-exclusive lock; the web pool exhausted. `/health` stayed green throughout because it exercises no
-database query.
+queued behind the ingestion transaction; and DB-backed public routes 500ed on web-pool
+exhaustion. `/health` stayed green throughout because it exercises no database query.
+
+**One mechanism claim needs correction before it hardens into lore.** The incident record
+attributes the read outage to reads queuing behind the migration's "requested exclusive lock,"
+but a bare `CREATE INDEX` requests a `SHARE` lock — it blocks *writes*, not ordinary reads
+(`ACCESS SHARE` is compatible) — and the migration in question (`2c78f642217c`) executes exactly
+one `op.create_index`. The observed facts stand (the blocked deploy, the pool exhaustion, the
+500s); the precise mechanism by which *reads* backed up is **not established**, and confirming
+it is part of the roadmap Phase 1 entry gate.
 
 Three contributing details from the incident record are new obligations for this spec:
 
 1. **The writer lock is transaction-scoped**, so an overly broad transaction is *also* an overly
    broad lock lifetime. The §5 version-flip shrinks both at once — this is now observed
    motivation, not inferred.
-2. **Deploy migrations are an amplifier.** Release migrations must set a short `lock_timeout`,
-   and index builds on large tables must use `CREATE INDEX CONCURRENTLY`, so deploy-time lock
-   contention degrades the *deploy* instead of production reads (discipline §1.7).
+2. **Deploy migrations are an amplifier.** Release migrations must set a short `lock_timeout` so
+   a blocked migration fails fast instead of camping in the lock queue, and index builds on large
+   tables must use `CREATE INDEX CONCURRENTLY` — which in this repo means an
+   `op.get_context().autocommit_block()`, since `alembic/env.py` runs migrations inside a
+   transaction and PostgreSQL rejects `CONCURRENTLY` there (existing precedent:
+   `e7c75f3063ec`). Both hold regardless of which exact lock interaction backed reads up
+   (discipline §1.7).
 3. **A DB-exercising health signal is required.** A health check that never touches the database
    cannot notice a database outage; §4's degraded states need an operational counterpart that
    actually fails when reads fail.
