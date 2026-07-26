@@ -52,8 +52,8 @@ class TestComparison:
         assert len(regressions) == 1
         assert "PLR0913" in regressions[0]
 
-    def test_fewer_findings_pass_and_are_reported_as_improvements(self):
-        """Simplifying code must never fail the build; it should invite a baseline update."""
+    def test_fewer_findings_are_reported_as_improvements(self):
+        """A dropped count is an improvement — surfaced so main() can demand a lock-in."""
         regressions, improvements = ratchet.compare(
             {"app/a.py": {"C901": 1}}, {"app/a.py": {"C901": 3}}
         )
@@ -76,6 +76,45 @@ class TestComparison:
         assert improvements == ["app/a.py [C901]: 3 -> 1"]
 
 
+class TestStaleEntriesFail:
+    """A stale baseline entry is silent regression headroom, not a free pass.
+
+    Mirrors the stale-entry tests on the FK-coverage and import-contract baselines
+    (docs/plans/programmatic-code-discipline.md §3.4b): an improvement must be locked
+    in via ``make lint.complexity.update`` in the same change that earned it.
+    """
+
+    def _run_main(self, monkeypatch, current, baseline):
+        monkeypatch.setattr(ratchet, "_current_counts", lambda: current)
+        monkeypatch.setattr(ratchet, "_load_baseline", lambda: baseline)
+        return ratchet.main([])
+
+    def test_stale_entry_fails(self, monkeypatch, capsys):
+        """A count below its baseline entry fails until the baseline is updated."""
+        exit_code = self._run_main(
+            monkeypatch, {"app/a.py": {"C901": 1}}, {"app/a.py": {"C901": 3}}
+        )
+        assert exit_code == 1
+        err = capsys.readouterr().err
+        assert "stale" in err
+        assert "lint.complexity.update" in err
+
+    def test_regressions_take_precedence_over_staleness(self, monkeypatch, capsys):
+        """When both exist, the regression message is the one that surfaces."""
+        exit_code = self._run_main(
+            monkeypatch,
+            {"app/a.py": {"C901": 1}, "app/b.py": {"C901": 5}},
+            {"app/a.py": {"C901": 3}, "app/b.py": {"C901": 4}},
+        )
+        assert exit_code == 1
+        assert "beyond the baseline" in capsys.readouterr().err
+
+    def test_exact_match_passes(self, monkeypatch):
+        """A tree exactly at its baseline exits clean."""
+        counts = {"app/a.py": {"C901": 3}}
+        assert self._run_main(monkeypatch, counts, dict(counts)) == 0
+
+
 class TestBaselineFile:
     """The committed baseline must describe the tree it ships with."""
 
@@ -93,9 +132,13 @@ class TestBaselineFile:
                 assert rule in ratchet.RULES, rule
                 assert isinstance(count, int) and count > 0
 
-    def test_current_tree_is_within_baseline(self):
-        """The repo must pass its own ratchet."""
-        regressions, _ = ratchet.compare(
+    def test_current_tree_matches_baseline_exactly(self):
+        """The repo must pass its own ratchet — no regressions, no stale entries."""
+        regressions, improvements = ratchet.compare(
             ratchet._current_counts(), ratchet._load_baseline()
         )
         assert regressions == [], "\n".join(regressions)
+        assert improvements == [], (
+            "stale baseline entries grant silent regression headroom — run "
+            "`make lint.complexity.update`:\n" + "\n".join(improvements)
+        )
