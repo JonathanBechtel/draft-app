@@ -17,6 +17,8 @@ from app.schemas.image_snapshots import (
 from app.schemas.players_master import PlayerMaster
 from app.services.image_generation import BatchUploadResult, image_generation_service
 
+pytestmark = pytest.mark.committed_db
+
 
 class _DummyError:
     def __init__(self, message: str) -> None:

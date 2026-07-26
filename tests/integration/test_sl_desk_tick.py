@@ -1203,6 +1203,7 @@ async def test_desk_tick_scoreboard_error_does_not_advance_source_freshness(
     assert result.source_refreshed is False
 
 
+@pytest.mark.committed_db
 async def test_desk_tick_bounded_lock_wait_times_out_when_writer_lock_is_held(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],

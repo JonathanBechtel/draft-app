@@ -64,6 +64,14 @@ history.
 
 **Rule:** flag `delete(Model)` calls with no `.where(...)` clause.
 
+**Match every import spelling.** As first shipped the checker matched the bare name `delete`
+only, so `sa_delete(Model)` and `sa.delete(Model)` were invisible — and
+`app/services/admin_player_service.py` already imports `delete as sa_delete` and uses it at
+sixteen sites, making the blind spot the established house style rather than a hypothetical.
+The checker resolves aliases from the file's imports, which is also how it tells
+`sa.delete(Model)` apart from the ORM instance delete `db.delete(obj)`. Raw
+`text("DELETE FROM ...")` stays out of reach — a known gap, covered by Tier 2, not a safe case.
+
 **Allowlist:** test fixtures, explicit `--replace-run` correction paths, seed/demo scripts — each
 requiring an inline `# discipline: unscoped-delete <reason>` comment so exceptions are visible in
 review rather than silent.
@@ -132,6 +140,16 @@ naive delta check fails exactly the refactor we want. Design for it:
 - **Evaluate net change across the whole changeset**, not per-file in isolation — a pure split is
   net-neutral and must pass.
 - **Enable git rename/copy detection** so moves are not counted as additions.
+- **Count deleted files in that net total.** Rename detection only fires above a similarity
+  threshold, so a ten-way split of a 5,000-line service reports a *deletion plus ten
+  additions*, not a rename. The first implementation skipped deletions, which made that
+  changeset read as +5,000 lines of pure growth and fail — the rule blocking the decomposition
+  it exists to encourage, via the one split shape rename detection cannot see.
+  **Cap that credit at the lines added in new files.** Uncapped, a deletion feeds the
+  net-change allowance with lines that went nowhere: deleting an obsolete 1,200-line module
+  while growing a 900-line service to 1,400 nets -700 and suppresses a real violation. A
+  deletion may offset *creation* — which is what a decomposition does — never the growth of a
+  file that already existed.
 - Provide an escape hatch (`# discipline: file-size <reason>`) requiring a justification visible
   in review.
 
@@ -326,19 +344,39 @@ reflective reassignment would resurrect rows the cascade semantics intend to del
 supplies the *audit universe*; a human classifies each edge once, and the test enforces that the
 classification stays total.
 
-**Shipped (Phase 0):** `tests/unit/test_player_merge_fk_coverage.py`. The first run confirmed the
-drift this rule predicted — of 36 FKs to `players_master`, 19 were registered, 3 were `CASCADE`,
-and **13 were unclassified**, every one of them a live merge failure today (`summer_league_*`,
-shot events, play-by-play, participation, `draft_results`, `player_affiliations`). Those are
-itemized in a `_PENDING_CLASSIFICATION` list that may only shrink: a *new* unclassified FK fails
-the build, and classifying one without removing its entry also fails, so the list cannot go stale
-in either direction. A third assertion catches the reverse drift — a registered spec whose FK no
-longer exists.
+**Shipped (Phase 0):** `tests/unit/test_player_merge_fk_coverage.py`, with one correction from
+contact with the code and one result worth recording.
 
-**All 13 are now classified and the pending list is empty.** The rule earned its keep twice over:
-it found the drift, and the constraint analysis it prompted showed the repair was far smaller than
-feared — only one of the 13 tables has a unique constraint containing the player column, so the
-rest cannot collide on reassignment, and no migration was required.
+**The correction — there is a third class: *null-out*.**
+`source_analytics.biggest_outlier_player_id` is a nullable back-reference the merge blanks
+rather than repoints, registered under a sentinel spec name (`source_analytics_outlier`) that
+`_merge_child_table` special-cases. Reading the FK graph against the reassignment list alone
+reports it as unclassified. A reflective test has to know the sentinel mapping or it produces a
+false finding on day one.
+
+**The result — the rule confirmed the drift it predicted.** Of 36 FKs to `players_master`, 19
+were registered, 3 were `CASCADE`, and **13 were unclassified** — every one a live merge failure
+(`summer_league_*`, shot events, play-by-play, participation, `draft_results`,
+`player_affiliations`). They were itemized in a shrink-only `_KNOWN_UNCLASSIFIED` baseline, in
+the same shape as this repo's other guardrail ratchets: a *new* unclassified FK fails the build,
+and classifying one without removing its entry also fails, so the list cannot go stale in either
+direction. A third assertion catches the reverse drift — a registered spec whose FK no longer
+exists.
+
+**All 13 are now classified (#675) and the baseline is empty.** The rule earned its keep twice
+over: it found the drift, and the constraint analysis it prompted showed the repair was far
+smaller than feared — only one of the 13 tables has a unique constraint containing the player
+column, so the rest cannot collide on reassignment, and no migration was required.
+
+### 3.4b Guard the hand-maintained lists the same way
+
+The same drift class applies to import contract 3, whose `forbidden_modules` is enumerated
+because import-linter module expressions match whole dotted segments (`app.services.summer_league*`
+is not expressible). As shipped it named 11 of 11 service modules but 2 of 5 schema modules —
+omitting `app.schemas.summer_league_metrics`, which holds the very tables a lifted stat engine
+would reach for. `tests/unit/test_import_contract_coverage.py` derives the universe from the
+filesystem and enforces that the contract covers it. **Any hand-maintained list mirroring a
+structure the code already knows gets a reflective test, or it silently rots.**
 
 ### 3.5 Browser-execution smoke — "passes every test, dead in the browser"
 

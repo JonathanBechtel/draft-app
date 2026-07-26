@@ -15,11 +15,28 @@ The rule
 A ``delete(Model)`` construct with no ``.where(...)`` narrowing it deletes every row in the
 table. Flag it.
 
+The construct is recognized under every spelling the repo uses, because an import alias is
+not a semantic difference::
+
+    delete(Model)                                  # from sqlalchemy import delete
+    sa_delete(Model)                               # ... import delete as sa_delete
+    sa.delete(Model)                               # import sqlalchemy as sa
+
+The aliased form is not hypothetical: ``app/services/admin_player_service.py`` imports
+``delete as sa_delete`` and uses it at sixteen sites, so an author copying the established
+house style would have written code this checker could not see.
+
 Deliberately *not* flagged:
 
-* ``db.delete(instance)`` — the ORM instance delete, inherently scoped to one row.
+* ``db.delete(instance)`` — the ORM instance delete, inherently scoped to one row. Told
+  apart from ``sa.delete(Model)`` by resolving which names are bound to SQLAlchemy modules,
+  rather than by guessing from the attribute name.
 * ``delete(Model).where(...)`` — including longer chains such as
   ``delete(Model).execution_options(...).where(...)``.
+* Raw SQL — ``text("DELETE FROM ...")`` and ``conn.exec_driver_sql(...)``. Out of reach for
+  an AST checker reading string contents, and a known gap rather than a safe case; the
+  runtime guards in ``docs/plans/programmatic-code-discipline.md`` Tier 2 are what cover
+  what Tier 1 cannot see.
 
 Deliberately **flagged**, and this is the interesting case: the two-statement builder form,
 where a bare ``delete(Model)`` is assigned to a name and narrowed later::
@@ -63,6 +80,21 @@ from _discipline import line_has_reasoned_waiver
 
 # Methods that narrow a delete construct to a subset of rows.
 _SCOPING_METHODS = frozenset({"where", "filter", "filter_by"})
+
+# Modules that export the `delete()` construct. Imports from these are what bind a name —
+# whatever it is spelled — to the thing this rule is about.
+_DELETE_MODULES = frozenset(
+    {
+        "sqlalchemy",
+        "sqlalchemy.sql",
+        "sqlalchemy.sql.expression",
+        "sqlmodel",
+    }
+)
+
+# `delete` under any of these names is the construct even without a visible import, so
+# coverage never depends on the checker resolving every import shape.
+_DEFAULT_DELETE_NAMES = frozenset({"delete"})
 
 # The escape-hatch slug; syntax and the mandatory-reason rule live in _discipline.py.
 _RULE = "unscoped-delete"
@@ -144,6 +176,49 @@ def _waived(lines: list[str], node: ast.Call, parents: dict[ast.AST, ast.AST]) -
     return False
 
 
+def _resolve_delete_names(tree: ast.AST) -> tuple[set[str], set[str]]:
+    """Return the names that mean ``delete``, as ``(bare_names, module_aliases)``.
+
+    ``bare_names`` are called directly (``sa_delete(Model)``); ``module_aliases`` are called
+    through an attribute (``sa.delete(Model)``). Resolving module aliases from the imports
+    is what lets ``sa.delete(Model)`` be flagged while ``db.delete(instance)`` — an ORM
+    instance delete on a session object, not a module — is left alone.
+    """
+    bare: set[str] = set(_DEFAULT_DELETE_NAMES)
+    modules: set[str] = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in _DELETE_MODULES:
+                    # `import sqlalchemy` binds "sqlalchemy"; `as sa` binds "sa".
+                    modules.add(alias.asname or alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            if node.module not in _DELETE_MODULES:
+                continue
+            for alias in node.names:
+                if alias.name == "delete":
+                    bare.add(alias.asname or alias.name)
+                elif f"{node.module}.{alias.name}" in _DELETE_MODULES:
+                    # `from sqlalchemy import sql` — the bound name is still a module
+                    # that exports `delete`.
+                    modules.add(alias.asname or alias.name)
+
+    return bare, modules
+
+
+def _is_delete_construct(
+    node: ast.Call, bare_names: set[str], module_aliases: set[str]
+) -> bool:
+    """Return True if ``node`` calls the SQLAlchemy ``delete()`` construct."""
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id in bare_names
+    if isinstance(func, ast.Attribute) and func.attr == "delete":
+        return isinstance(func.value, ast.Name) and func.value.id in module_aliases
+    return False
+
+
 def find_violations(path: Path, source: str) -> list[str]:
     """Return formatted violation strings for one file's source text."""
     try:
@@ -153,14 +228,15 @@ def find_violations(path: Path, source: str) -> list[str]:
 
     parents = _parent_map(tree)
     lines = source.splitlines()
+    bare_names, module_aliases = _resolve_delete_names(tree)
     violations: list[str] = []
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        # Only the SQLAlchemy `delete(Model)` construct. `db.delete(obj)` is an
-        # instance delete and is inherently scoped.
-        if not (isinstance(node.func, ast.Name) and node.func.id == "delete"):
+        # Only the SQLAlchemy `delete(Model)` construct, under any of its import
+        # spellings. `db.delete(obj)` is an instance delete and is inherently scoped.
+        if not _is_delete_construct(node, bare_names, module_aliases):
             continue
         if not node.args:
             continue

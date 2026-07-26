@@ -1407,6 +1407,7 @@ async def test_full_backfill_idempotent_and_preserves_raw_facts(
 # --------------------------------------------------------------------------- #
 # Two-session concurrency (barrier-synchronized)
 # --------------------------------------------------------------------------- #
+@pytest.mark.committed_db
 async def test_concurrent_writer_cannot_change_inputs_mid_rebuild(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],

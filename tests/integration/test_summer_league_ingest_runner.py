@@ -371,6 +371,7 @@ async def _probe_writer_lock_is_free(
             return await try_acquire_summer_league_writer_lock(probe)
 
 
+@pytest.mark.committed_db
 async def test_run_venue_releases_writer_lock_between_phases(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
@@ -539,6 +540,7 @@ async def _seed_pending_source_player(
     return source_player
 
 
+@pytest.mark.committed_db
 async def test_run_venue_resolution_search_runs_without_lock_writes_hold_it(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],

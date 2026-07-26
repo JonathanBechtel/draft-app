@@ -18,6 +18,8 @@ from app.services.summer_league.write_lock import (
     try_acquire_summer_league_writer_lock,
 )
 
+pytestmark = pytest.mark.committed_db
+
 
 async def _set_schema(session: AsyncSession, test_schema: str) -> None:
     await session.execute(text(f'SET search_path TO "{test_schema}"'))

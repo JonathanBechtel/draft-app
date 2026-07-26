@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.committed_db]
 
 
 async def test_idle_in_transaction_timeout_reaps_abandoned_session(
