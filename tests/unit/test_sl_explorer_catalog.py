@@ -395,7 +395,7 @@ def test_competition_columns_sortable_filterable_mirror_registry_flags() -> None
 # Column-density curated default set (ticket #644) — every column still
 # appears in the full catalog (CSV/definitions never lose a metric); density
 # only controls what the results table shows by default vs. behind the
-# "Show all metrics" progressive-disclosure control.
+# condensed/full metric-view control.
 # --------------------------------------------------------------------------- #
 
 VALID_DENSITIES = {"core", "full"}

@@ -47,9 +47,8 @@ admin action is required.
 - Year ranges work in both views.
   - Verify: select 2020–2025 in season view, then the same range in individual-
     competition view.
-  - Expected: all and only in-range rows render; the selected trend metric has one point
-    per eligible year in season view and no out-of-range points.
-  - Evidence: row/year assertions, chart data assertion, and URL.
+  - Expected: all and only in-range rows render.
+  - Evidence: row/year assertions and URL.
 
 - Venue/competition filtering is available only where meaningful.
   - Verify: inspect controls in both views; set Las Vegas in individual-competition
@@ -161,19 +160,7 @@ admin action is required.
     raw game, player, team, and shot records remain unchanged.
   - Evidence: before/after projection assertion and raw-fact checksum/row check.
 
-## Trend, sharing, and cross-surface behavior
-
-- The trend chart uses the exact filtered season scope.
-  - Verify: choose a metric and years 2020–2025; apply minimum-game/coverage filters.
-  - Expected: chart points equal table values for the same surviving years, use a visible
-    unit, and show gaps rather than interpolating unsupported years.
-  - Evidence: chart-data vs. table assertion and visual capture.
-
-- Competition trends never combine unrelated venues.
-  - Verify: open individual-competition view with and without one venue selected.
-  - Expected: the unfiltered table prompts for a venue before rendering a trend; a
-    selected venue renders one supported point per year with visible gaps.
-  - Evidence: chart/table scope assertion and URL.
+## Sharing and cross-surface behavior
 
 - Selected scope carries into existing Explorer subjects.
   - Verify: open a season profile and navigate to Players, Teams, and Matchups; repeat
@@ -205,18 +192,18 @@ admin action is required.
 
 ## Accessibility, visual quality, and resilience
 
-- The tab, controls, table, and trend are keyboard and screen-reader usable.
+- The tab, controls, and table are keyboard and screen-reader usable.
   - Verify: tab through controls, change native selects, submit filters, and inspect
     focus/accessible names.
-  - Expected: no keyboard trap; active tab/state and chart metric are announced; visual
-    encoding is not the only carrier of coverage or trend meaning.
+  - Expected: no keyboard trap; active tab/state and controls are announced; visual
+    encoding is not the only carrier of coverage meaning.
   - Evidence: browser accessibility/keyboard pass and screenshot.
 
 - Mobile layout remains usable.
   - Verify: inspect both grains, active filters, a detail profile, an unavailable metric,
-    and a 2020–2025 trend at the mobile harness viewport.
+    and a 2020–2025 filtered table at the mobile harness viewport.
   - Expected: tabs and filters remain reachable, table has a clear responsive treatment,
-    metric definitions/coverage notes are readable, and chart/table content is not clipped.
+    metric definitions/coverage notes are readable, and table content is not clipped.
   - Evidence: saved visual captures.
 
 - Empty, sparse, and invalid states are safe and explanatory.
@@ -230,8 +217,8 @@ admin action is required.
 
 - The new tab meets the Explorer query budget.
   - Verify: run `conda run -n draftguru make perf` for the default season list, filtered
-    season trend, individual-competition list, and one detail/profile route.
-  - Expected: list/trend/detail stays at or below 10 queries, `partial=1` costs no more
+    season list, individual-competition list, and one detail/profile route.
+  - Expected: list/detail stays at or below 10 queries, `partial=1` costs no more
     than full render, subject-specific facets avoid irrelevant player facet reads, and no
     N+1 pattern exists. Season/venue reuse adds at most one indexed read for an expected
     route ceiling of 9. Budgets are documented in `tests/integration/perf/budgets.py`.
@@ -288,7 +275,7 @@ The first release is complete when QA can demonstrate that:
    isolated, and player field composition uses defensible distinct-identity rules.
 3. Reader-requested shooting, turnover, and assist context is present with accurate
    definitions, denominators, coverage, and no misleading NBA/player-translation claim.
-4. Filters, trend charts, details, and links preserve the selected scope across Explorer
+4. Filters, details, and links preserve the selected scope across Explorer
    and degrade honestly for sparse/partial data.
 5. The projection is provenance-bearing, rebuildable, indexed, accessible, responsive,
    and verified through the repository’s required automated and visual checks.

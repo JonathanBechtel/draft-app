@@ -4939,7 +4939,7 @@ async def test_appearance_preserved_in_result_links(
 # Seeds real current profiles via the #617 aggregation pipeline
 # (`rebuild_environment_profiles`) rather than hand-inserting profile rows, so
 # these tests exercise the actual read contract end to end: raw facts ->
-# published current profile -> Explorer list/detail/trend/CSV.
+# published current profile -> Explorer list/detail/CSV.
 # --------------------------------------------------------------------------- #
 
 from datetime import date as _date
@@ -5114,8 +5114,8 @@ async def _seed_competition_context(db: AsyncSession) -> dict[str, int]:
     * 2024 Salt Lake City: 1 final game, box-INCOMPLETE (only one team-box row),
       so the 2024 *season* profile is box-partial while the Vegas *competition*
       profile stays box-complete.
-    * 2023 Las Vegas: 1 final game with no team-box rows at all (box-unavailable),
-      and no shot events (shot-unavailable) — proves the visible-gap trend case.
+    * 2023 Las Vegas: 1 final game with no team-box rows at all (box-unavailable)
+      and no shot events (shot-unavailable).
 
     Returns the competition ids keyed by a short label for use in assertions.
     """
@@ -5448,104 +5448,6 @@ async def test_competitions_unknown_competition_id_yields_no_detail(
 
 
 @pytest.mark.asyncio
-async def test_competitions_season_trend_has_gap_for_unavailable_year(
-    db_session: AsyncSession,
-) -> None:
-    """Season trend has one point per surviving year, never coerced to zero.
-
-    2023 pools zero box-complete final games (unavailable) and 2024 pools a
-    box-complete Vegas edition alongside a box-incomplete Salt Lake City
-    edition, so the pooled *season* coverage is only partial — both years
-    render as a visible ``None`` gap for a box-gated metric rather than a
-    fabricated 0, which is exactly the honesty invariant this trend exists to
-    prove (contract §3/§6). The venue-scoped competition trend (see
-    ``test_competitions_trend_present_once_venue_selected``) shows the same
-    metric *does* carry a real Vegas-only value once the pool excludes the
-    box-incomplete competition.
-    """
-    await _seed_competition_context(db_session)
-    result = await run_explorer_query(
-        db_session,
-        parse_query(
-            {
-                "subject": "competitions",
-                "profile_scope": "season",
-                "trend_metric": "pace_per_48",
-            }
-        ),
-    )
-    trend = result.competition_trend
-    assert trend is not None
-    assert [p.year for p in trend.points] == [2023, 2024]
-    point_2023 = trend.points[0]
-    point_2024 = trend.points[1]
-    assert point_2023.value is None
-    assert point_2023.coverage == "unavailable"
-    assert point_2024.value is None
-    assert point_2024.coverage == "partial"
-
-
-@pytest.mark.asyncio
-async def test_competitions_trend_absent_for_unfiltered_competition_scope(
-    db_session: AsyncSession,
-) -> None:
-    """Unfiltered competition table prompts for a venue rather than blending series."""
-    await _seed_competition_context(db_session)
-    result = await run_explorer_query(
-        db_session,
-        parse_query({"subject": "competitions", "profile_scope": "competition"}),
-    )
-    assert result.competition_trend is None
-
-
-@pytest.mark.asyncio
-async def test_competitions_trend_present_once_venue_selected(
-    db_session: AsyncSession,
-) -> None:
-    await _seed_competition_context(db_session)
-    result = await run_explorer_query(
-        db_session,
-        parse_query(
-            {
-                "subject": "competitions",
-                "profile_scope": "competition",
-                "venue": "las_vegas",
-                "trend_metric": "pace_per_48",
-            }
-        ),
-    )
-    trend = result.competition_trend
-    assert trend is not None
-    assert trend.venue_slug == "las_vegas"
-    assert [p.year for p in trend.points] == [2023, 2024]
-
-
-@pytest.mark.asyncio
-async def test_competitions_trend_resolves_venue_from_authoritative_competition_id(
-    db_session: AsyncSession,
-) -> None:
-    """A competition_id detail with no explicit venue= still charts that venue's
-    full history (venue resolved from the authoritative detail, contract §6).
-    """
-    ids = await _seed_competition_context(db_session)
-    result = await run_explorer_query(
-        db_session,
-        parse_query(
-            {
-                "subject": "competitions",
-                "profile_scope": "competition",
-                "competition_id": str(ids["vegas_2024"]),
-                "trend_metric": "pace_per_48",
-            }
-        ),
-    )
-    trend = result.competition_trend
-    assert trend is not None
-    assert trend.venue_slug == "las_vegas"
-    assert [p.year for p in trend.points] == [2023, 2024]
-
-
-@pytest.mark.asyncio
 async def test_competitions_facets_are_year_and_venue_only(db_session: AsyncSession) -> None:
     """Competitions facets never load draft/country/position/team/round-type
     values — those are player/team-only (contract §9).
@@ -5632,7 +5534,7 @@ async def test_competitions_csv_and_table_values_agree(
 async def test_competitions_route_query_budget(
     db_session: AsyncSession, app_client: AsyncClient, async_engine: AsyncEngine
 ) -> None:
-    """List + filtered trend + selected detail stays well under the existing
+    """List + selected detail stays well under the existing
     10-query route budget (contract §9) — no per-member/per-metric query loop,
     no player/team facet reads.
 
@@ -5640,14 +5542,13 @@ async def test_competitions_route_query_budget(
     table partial (players/teams/games) assumes every column is numeric and
     is not yet updated for the Competitions tab's text meta columns (that
     template/UI work belongs to a later ticket, #608). ``_query_competitions``
-    computes list+trend+detail identically regardless of output format, so the
+    computes list+detail identically regardless of output format, so the
     CSV path measures the same real query cost the eventual HTML render will.
     """
     await _seed_competition_context(db_session)
     url = (
         "/stats/summer-league/explorer"
-        "?subject=competitions&profile_scope=season&detail_year=2024"
-        "&trend_metric=pace_per_48&format=csv"
+        "?subject=competitions&profile_scope=season&detail_year=2024&format=csv"
     )
     warmup = await app_client.get(url)
     assert warmup.status_code == 200

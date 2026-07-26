@@ -358,9 +358,6 @@ async def test_audit_reports_unequal_coverage_and_dedups_season_players(
     assert season.attributes["position"].known == 1
     assert season.attributes["origin"].known == 1
 
-    assert report.honest_trend_range() == (2025, 2025)
-
-
 @pytest.mark.asyncio
 async def test_audit_is_read_only(db_session: AsyncSession) -> None:
     """The audit issues no writes: row counts are unchanged after collection."""

@@ -64,7 +64,6 @@ from app.schemas.summer_league import (
 )
 from app.schemas.summer_league_environment import (
     COVERAGE_COMPLETE,
-    COVERAGE_UNAVAILABLE,
     SCOPE_KIND_COMPETITION,
     SCOPE_KIND_SEASON,
     SummerLeagueEnvironmentFieldComposition,
@@ -78,7 +77,6 @@ from app.schemas.summer_league_metrics import (
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_environment_registry import (
-    METRIC_DEFINITIONS,
     PROFILE_STALE_AFTER_HOURS,
     CoverageSource,
     MetricDefinition,
@@ -90,7 +88,6 @@ from app.services.summer_league_environment_registry import (
     is_profile_stale,
     metrics_for_scope,
     sortable_metric_keys,
-    unit_label,
 )
 from app.services.summer_league_environment_service import (
     coverage_for_source,
@@ -115,16 +112,13 @@ DEFAULT_SUBJECT = "players"
 # implementation-contract.md §6/§8/§9).
 PROFILE_SCOPES = ("season", "competition")
 DEFAULT_PROFILE_SCOPE = "season"
-COVERAGE_STATES = ("all", "box_complete", "shot_complete", "pbp_complete")
-DEFAULT_COVERAGE_STATE = "all"
-DEFAULT_TREND_METRIC = "pace_per_48"
+COVERAGE_REQUIREMENTS = ("box_complete", "shot_complete", "pbp_complete")
 # Re-exported for backward compatibility with existing call sites/tests;
 # the shared value now lives on the registry (`PROFILE_STALE_AFTER_HOURS`)
 # so every public v1 surface (Explorer, context strips, season/venue reuse)
 # agrees on one staleness threshold instead of three independently-hardcoded
 # copies.
 STALE_AFTER_HOURS = PROFILE_STALE_AFTER_HOURS
-_ALL_METRIC_KEYS: frozenset[str] = frozenset(d.key for d in METRIC_DEFINITIONS)
 
 # Subjects that accept a competition-scope handoff (#609, contract §6/§7):
 # Players/Teams/Matchups may carry a validated competition_id and render a
@@ -257,7 +251,7 @@ def _apply_appearance_filter(
 # Lower bound for year_min/year_max Competition Explorer filter values — well
 # before any Summer League data exists. Paired with _max_plausible_draft_class()
 # to reject implausible ranges (see the year_min/year_max clamp in parse_query).
-_MIN_PLAUSIBLE_TREND_YEAR = 2000
+_MIN_PLAUSIBLE_COMPETITION_YEAR = 2000
 
 
 def _max_plausible_draft_class() -> int:
@@ -955,7 +949,7 @@ def _competition_metric_fmt(definition: MetricDefinition) -> str:
 # Curated default column set for the Competition Explorer results table (#644).
 # The full ~30-column matrix (every identity field plus all 27 registry
 # metrics) never disappears from CSV, the detail panel, or the DOM — it stays
-# reachable through the "Show all metrics" progressive-disclosure control
+# reachable through the condensed/full metric-view control
 # (contract-preserving: no metric is removed from the registry or the export
 # contract, contract §6). This set only narrows what renders by *default* in
 # the scannable list, chosen for decision-usefulness: how the games played
@@ -1803,11 +1797,9 @@ class ExplorerQuery:
     # per named competition edition). Canonicalized during parsing: a season
     # scope always clears venue/competition_id.
     profile_scope: str = DEFAULT_PROFILE_SCOPE
-    # "all" | "box_complete" | "shot_complete" | "pbp_complete" — filters rows
-    # to those whose overall input coverage for that source is complete.
-    coverage: str = DEFAULT_COVERAGE_STATE
-    # Registered metric key charted by the trend panel.
-    trend_metric: Optional[str] = None
+    # Any combination of box/shot/PBP completeness requirements. Multiple
+    # values compose with AND semantics; an empty tuple applies no requirement.
+    coverage: tuple[str, ...] = ()
     # Stable SummerLeagueCompetition.id — authoritative for competition detail
     # (never a projection row id). Set together with profile_scope="competition".
     competition_id: Optional[int] = None
@@ -2058,39 +2050,6 @@ class CompetitionDetail:
 
 
 @dataclass(frozen=True)
-class TrendPoint:
-    """One trend-chart point; ``value is None`` renders as a visible gap.
-
-    ``has_profile`` is ``False`` for a calendar year with no current profile
-    at all (the year is still emitted as an explicit point so the chart
-    line breaks and the point is positioned on the real year axis — contract
-    §6) as opposed to a year whose profile exists but the specific metric is
-    null/partial, where ``has_profile`` is ``True`` and ``coverage`` carries
-    the metric-level reason instead.
-    """
-
-    year: int
-    value: Optional[float]
-    coverage: str
-    has_profile: bool = True
-
-
-@dataclass
-class CompetitionTrend:
-    """A chart-ready metric series for the Competition Context trend panel."""
-
-    metric_key: str
-    label: str
-    scope_kind: str  # "season_all_competitions" | "competition"
-    venue_slug: Optional[str]
-    # Short display unit (e.g. "%", "pts", "pace/48") shared by the chart
-    # heading, accessible description, and text/table fallback so the unit
-    # is never carried by color/shape alone (contract §6 / QA accessibility).
-    unit: str = ""
-    points: list[TrendPoint] = field(default_factory=list)
-
-
-@dataclass(frozen=True)
 class ContextStripView:
     """Compact Competition Context handoff for Players/Teams/Matchups (contract §7).
 
@@ -2134,10 +2093,8 @@ class ExplorerResult:
     adv_eligible_n: int = 0  # competitions in scope with adv_eligible=True
     adv_eligible_m: int = 0  # total competitions in scope with a metric context row
     # Competition Context (subject="competitions"): the selected detail row
-    # (by detail_year or competition_id) and the chart-ready trend series.
-    # None when no detail/trend is selected or resolvable (contract §6).
+    # (by detail_year or competition_id).
     competition_detail: Optional[CompetitionDetail] = None
-    competition_trend: Optional[CompetitionTrend] = None
     # Players/Teams/Matchups only (#609, contract §7): the compact linked
     # environment strip for the resolved profile, or None when the query is
     # unscoped/ambiguous/multi-year (no context rendered) or when a candidate
@@ -2237,28 +2194,29 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
 
     year_min = _to_int_tracked("year_min", "year")
     year_max = _to_int_tracked("year_max", "year")
-    # Clamp (never drop) implausible year bounds (e.g. a hand-typed
-    # year_min=-100000000): _build_trend materializes one TrendPoint per
-    # integer year in [year_min, year_max], so an unbounded extreme value
-    # could allocate/iterate millions of points before rendering. Clamping
-    # rather than dropping to None keeps the bound restrictive rather than
-    # unbounding the query on that side — dropping would silently broaden
-    # results, the exact anti-pattern #636 forbids (e.g. a future year_min
-    # used deliberately to select an empty result must stay empty, not fall
-    # through to an unfiltered scan).
-    _max_trend_year = _max_plausible_draft_class()
+    # Clamp (never drop) implausible year bounds. Dropping an invalid bound to
+    # None would silently broaden the query, the exact anti-pattern #636
+    # forbids (for example, a future year_min meant to select an empty result
+    # must stay restrictive rather than falling through to an unfiltered scan).
+    _max_competition_year = _max_plausible_draft_class()
     if year_min is not None and not (
-        _MIN_PLAUSIBLE_TREND_YEAR <= year_min <= _max_trend_year
+        _MIN_PLAUSIBLE_COMPETITION_YEAR <= year_min <= _max_competition_year
     ):
-        clamped = min(max(year_min, _MIN_PLAUSIBLE_TREND_YEAR), _max_trend_year)
+        clamped = min(
+            max(year_min, _MIN_PLAUSIBLE_COMPETITION_YEAR),
+            _max_competition_year,
+        )
         validation_errors.append(
             f"'{year_min}' is outside the plausible year range and was clamped to {clamped}."
         )
         year_min = clamped
     if year_max is not None and not (
-        _MIN_PLAUSIBLE_TREND_YEAR <= year_max <= _max_trend_year
+        _MIN_PLAUSIBLE_COMPETITION_YEAR <= year_max <= _max_competition_year
     ):
-        clamped = min(max(year_max, _MIN_PLAUSIBLE_TREND_YEAR), _max_trend_year)
+        clamped = min(
+            max(year_max, _MIN_PLAUSIBLE_COMPETITION_YEAR),
+            _max_competition_year,
+        )
         validation_errors.append(
             f"'{year_max}' is outside the plausible year range and was clamped to {clamped}."
         )
@@ -2305,16 +2263,12 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         if profile_scope_raw in PROFILE_SCOPES
         else DEFAULT_PROFILE_SCOPE
     )
-    coverage_raw = params.get("coverage", DEFAULT_COVERAGE_STATE)
-    coverage = (
-        coverage_raw if coverage_raw in COVERAGE_STATES else DEFAULT_COVERAGE_STATE
+    coverage_raw = params.get("coverage", "")
+    coverage = tuple(
+        requirement
+        for requirement in COVERAGE_REQUIREMENTS
+        if requirement in coverage_raw.split(",")
     )
-    trend_metric_raw = params.get("trend_metric") or None
-    trend_metric = trend_metric_raw if trend_metric_raw in _ALL_METRIC_KEYS else None
-    if is_competitions and trend_metric_raw and trend_metric is None:
-        validation_errors.append(
-            f"'{trend_metric_raw}' is not a registered metric and was ignored."
-        )
     competition_id = _to_int_tracked("competition_id", "competition identifier")
     detail_year = _to_int_tracked("detail_year", "year")
     if is_competitions:
@@ -2370,7 +2324,6 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
         metric_filters=metric_filters,
         profile_scope=profile_scope,
         coverage=coverage,
-        trend_metric=trend_metric,
         competition_id=competition_id,
         detail_year=detail_year,
         validation_errors=validation_errors,
@@ -3890,11 +3843,11 @@ async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 # One row is an already-pooled *current* profile (season or competition) read
 # from `summer_league_environment_profiles`/`_season_memberships` — never raw
 # game/shot/PBP facts (contract §9: "no raw fact aggregation on request").
-# Filtering, sorting, coverage-state, threshold predicates, and trend/detail
+# Filtering, sorting, coverage-state, threshold predicates, and detail
 # selection all run in Python over an already-fetched, small (<=~60 row)
 # candidate set — the same "fetch once, sort+slice in Python" shape
 # `_query_teams`/`_build_result` already use for another small-cardinality
-# subject, and it keeps the whole dispatch (list + trend + detail) inside a
+# subject, and it keeps the whole dispatch (list + detail) inside a
 # handful of indexed reads well under the 10-query route budget.
 # --------------------------------------------------------------------------- #
 
@@ -4022,15 +3975,16 @@ _COVERAGE_FILTER_SOURCE: dict[str, CoverageSource] = {
 }
 
 
-def _passes_coverage_filter(view: _CompetitionProfileView, coverage_state: str) -> bool:
-    """Whether a profile's overall input coverage satisfies ``coverage=``."""
-    if coverage_state == "all":
-        return True
-    source = _COVERAGE_FILTER_SOURCE.get(coverage_state)
-    if source is None:
-        return True
-    verdict, _covered, _eligible = view.source_coverage[source]
-    return verdict == COVERAGE_COMPLETE
+def _passes_coverage_filter(
+    view: _CompetitionProfileView, coverage_requirements: Sequence[str]
+) -> bool:
+    """Whether a profile completely satisfies every requested source."""
+    for requirement in coverage_requirements:
+        source = _COVERAGE_FILTER_SOURCE[requirement]
+        verdict, _covered, _eligible = view.source_coverage[source]
+        if verdict != COVERAGE_COMPLETE:
+            return False
+    return True
 
 
 def _passes_metric_filter(
@@ -4326,94 +4280,6 @@ def _view_to_detail(
     )
 
 
-def _build_trend(
-    metric_key: str,
-    definition: MetricDefinition,
-    views: Sequence[_CompetitionProfileView],
-    *,
-    scope_kind: str,
-    venue_slug: Optional[str],
-    year_min: Optional[int] = None,
-    year_max: Optional[int] = None,
-) -> CompetitionTrend:
-    """One chart point per year in the filtered domain (contract §6).
-
-    The year domain is the complete run of calendar years between
-    ``year_min``/``year_max`` (the caller's active year-range filter, when
-    set) and, absent an explicit bound, the min/max year among the
-    surviving ``views``. Every year in that domain gets an explicit point —
-    including a year with **no current profile at all** — before any metric
-    value is attached, so a year that was never omitted from the query is
-    never silently omitted from the chart either:
-
-    * no profile for that year at all -> ``value=None``,
-      ``has_profile=False``, ``coverage="unavailable"`` (a distinct case
-      from a year whose profile exists but the metric itself is null);
-    * a profile exists but the metric is not ``complete`` -> ``value=None``,
-      ``has_profile=True``, ``coverage`` carries the metric-level reason.
-
-    Building the full domain (rather than only the years present in
-    ``views``) is what prevents two adjacent *available* years from being
-    visually connected across an intervening missing year, and lets the
-    template position each point by its actual year offset instead of by
-    array index — so uneven year intervals render truthfully.
-    """
-    by_year = {v.year: v for v in views}
-    years_present = sorted(by_year)
-    lo = (
-        year_min
-        if year_min is not None
-        else (years_present[0] if years_present else None)
-    )
-    hi = (
-        year_max
-        if year_max is not None
-        else (years_present[-1] if years_present else None)
-    )
-    points: list[TrendPoint] = []
-    if lo is not None and hi is not None:
-        for year in range(lo, hi + 1):
-            v = by_year.get(year)
-            if v is None:
-                points.append(
-                    TrendPoint(
-                        year=year,
-                        value=None,
-                        coverage=COVERAGE_UNAVAILABLE,
-                        has_profile=False,
-                    )
-                )
-            else:
-                metric_coverage = v.coverage[metric_key].coverage
-                points.append(
-                    TrendPoint(
-                        year=year,
-                        # Some stored columns (e.g. distinct_teams) are always
-                        # non-null even when the profile's coverage for this
-                        # metric is only partial/unavailable — never scale a
-                        # raw value into a displayed point unless coverage is
-                        # complete (contract §6: partial is a gap, not a value).
-                        value=(
-                            _scaled_registry_value(
-                                definition, v.raw_values.get(metric_key)
-                            )
-                            if metric_coverage == COVERAGE_COMPLETE
-                            else None
-                        ),
-                        coverage=metric_coverage,
-                        has_profile=True,
-                    )
-                )
-    return CompetitionTrend(
-        metric_key=metric_key,
-        label=definition.label,
-        scope_kind=scope_kind,
-        venue_slug=venue_slug,
-        unit=unit_label(definition.unit),
-        points=points,
-    )
-
-
 async def _get_competition_facets(db: AsyncSession) -> ExplorerFacets:
     """Year/venue choices sourced from current profiles only (contract §9).
 
@@ -4580,7 +4446,7 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
     """Read-only Competition Context query for subject="competitions".
 
     List, coverage/threshold filters, sort, pagination, selected detail,
-    membership, and trend — all sourced from current versioned profiles
+    and membership — all sourced from current versioned profiles
     (contract §2/§6/§9).
     """
     scope_kind = (
@@ -4599,8 +4465,8 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
     #     because the detail panel came up empty.
     #   * resolved id -> any inconsistent venue/year the caller also supplied
     #     is stale relative to the authoritative identity and is *cleared*,
-    #     never left in place to silently narrow the list away from (or the
-    #     trend series away from) the very competition the link named.
+    #     never left in place to silently narrow the list away from the very
+    #     competition the link named.
     detail_view: Optional[_CompetitionProfileView] = None
     if scope_kind == SCOPE_KIND_COMPETITION and q.competition_id is not None:
         detail_view = await _resolve_competition_detail(
@@ -4743,59 +4609,6 @@ async def _query_competitions(db: AsyncSession, q: ExplorerQuery) -> ExplorerRes
             result.competition_detail.leaders_unavailable_reason = (
                 _LEADER_UNAVAILABLE_REASON
             )
-
-    # ---- Trend (contract §6: season = one line across years; competition =
-    # only after a venue/series is resolved, never blending unrelated
-    # competitions into one line) ----
-    trend_key = q.trend_metric or DEFAULT_TREND_METRIC
-    trend_definition = metric_by_key.get(trend_key)
-    if trend_definition is not None:
-        if scope_kind == SCOPE_KIND_SEASON:
-            result.competition_trend = _build_trend(
-                trend_key,
-                trend_definition,
-                filtered_views,
-                scope_kind=SCOPE_KIND_SEASON,
-                venue_slug=None,
-                year_min=q.year_min,
-                year_max=q.year_max,
-            )
-        else:
-            resolved_venue = q.venue or (
-                detail_view.venue_slug if detail_view is not None else None
-            )
-            if resolved_venue is not None:
-                if q.venue is not None:
-                    # The list query already scoped to this venue; reuse it
-                    # rather than re-querying.
-                    series_views = filtered_views
-                else:
-                    # competition_id resolved a venue the list wasn't scoped
-                    # to (authoritative detail, contract §6) — fetch that
-                    # venue's full series directly.
-                    series_profiles = await list_current_profiles(
-                        db,
-                        scope_kind="competition",
-                        venue_slug=resolved_venue,  # type: ignore[arg-type]
-                    )
-                    series_views = [
-                        v
-                        for v in (
-                            _build_profile_view(p, metric_defs) for p in series_profiles
-                        )
-                        if _passes_coverage_filter(v, q.coverage)
-                    ]
-                result.competition_trend = _build_trend(
-                    trend_key,
-                    trend_definition,
-                    series_views,
-                    scope_kind=SCOPE_KIND_COMPETITION,
-                    venue_slug=resolved_venue,
-                    year_min=q.year_min,
-                    year_max=q.year_max,
-                )
-            # else: unfiltered competition table — prompt for a venue rather
-            # than blending unrelated competitions into one line (no trend).
 
     return result
 
