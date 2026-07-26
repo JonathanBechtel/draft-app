@@ -19,9 +19,22 @@ Deliberately *not* flagged:
 
 * ``db.delete(instance)`` — the ORM instance delete, inherently scoped to one row.
 * ``delete(Model).where(...)`` — including longer chains such as
-  ``delete(Model).execution_options(...).where(...)``, and the two-statement form where a bare
-  ``delete(Model)`` is assigned to a name that is later narrowed with ``.where(...)`` inside the
-  same function.
+  ``delete(Model).execution_options(...).where(...)``.
+
+Deliberately **flagged**, and this is the interesting case: the two-statement builder form,
+where a bare ``delete(Model)`` is assigned to a name and narrowed later::
+
+    stmt = delete(A)
+    if scope:
+        stmt = stmt.where(A.id.in_(scope))
+    await db.execute(stmt)
+
+An earlier version of this checker accepted that, reasoning that a ``.where()`` on the same
+name proved the delete was narrowed. It does not: the narrowing here is *conditional*, so
+``scope=False`` executes a full-table delete — exactly the destruction this rule exists to
+prevent. Proving otherwise needs control-flow analysis, which is beyond an AST checker, so
+the rule fails closed. Genuinely-safe builder code takes the escape hatch below, where the
+argument is visible in review.
 
 Escape hatch
 ------------
@@ -106,41 +119,6 @@ def _find_ancestor(
     return None
 
 
-def _is_scope(node: ast.AST) -> bool:
-    """True for nodes that delimit a function/class/module scope."""
-    return isinstance(
-        node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
-    )
-
-
-def _scoped_later_in_scope(node: ast.Call, parents: dict[ast.AST, ast.AST]) -> bool:
-    """Handle ``stmt = delete(Model)`` narrowed by ``stmt = stmt.where(...)`` later.
-
-    Only considers the function (or module) the assignment lives in, so an unrelated
-    same-named variable elsewhere cannot launder a real full-table delete.
-    """
-    assignment = parents.get(node)
-    if not isinstance(assignment, ast.Assign) or len(assignment.targets) != 1:
-        return False
-    target = assignment.targets[0]
-    if not isinstance(target, ast.Name):
-        return False
-
-    scope = _find_ancestor(assignment, parents, _is_scope, include_self=False)
-    if scope is None:
-        return False
-
-    for candidate in ast.walk(scope):
-        if (
-            isinstance(candidate, ast.Attribute)
-            and candidate.attr in _SCOPING_METHODS
-            and isinstance(candidate.value, ast.Name)
-            and candidate.value.id == target.id
-        ):
-            return True
-    return False
-
-
 def _waived(lines: list[str], node: ast.Call, parents: dict[ast.AST, ast.AST]) -> bool:
     """Return True if a justified waiver comment covers ``node``.
 
@@ -187,8 +165,6 @@ def find_violations(path: Path, source: str) -> list[str]:
         if not node.args:
             continue
         if _is_scoped_by_chain(node, parents):
-            continue
-        if _scoped_later_in_scope(node, parents):
             continue
         if _waived(lines, node, parents):
             continue

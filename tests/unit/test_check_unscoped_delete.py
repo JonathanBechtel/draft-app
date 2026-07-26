@@ -61,6 +61,26 @@ class TestFlagsUnscopedDeletes:
         )
         assert len(found) == 1
 
+    def test_conditionally_narrowed_delete_is_flagged(self):
+        """A `.where()` reached only on some paths does not make the delete scoped.
+
+        Caught in review of this checker. The builder form below was originally accepted,
+        on the reasoning that a `.where()` against the same name proved narrowing. It
+        proves no such thing — with `scope` falsy, `execute(stmt)` wipes the table. AST
+        cannot establish that every path narrows, so the rule fails closed and legitimate
+        builder code takes the documented escape hatch instead.
+        """
+        found = _violations(
+            """
+            async def rebuild(db, scope):
+                stmt = delete(A)
+                if scope:
+                    stmt = stmt.where(A.id.in_(scope))
+                await db.execute(stmt)
+            """
+        )
+        assert len(found) == 1
+
     def test_unrelated_variable_where_does_not_launder_a_wipe(self):
         """A `.where()` on a different name must not be credited to this delete."""
         found = _violations(
@@ -99,19 +119,6 @@ class TestAllowsScopedAndWaivedDeletes:
             async def rebuild(db):
                 # discipline: unscoped-delete test fixture reset
                 await db.execute(delete(A))
-            """
-        )
-        assert found == []
-
-    def test_delete_narrowed_by_a_later_statement_passes(self):
-        """`stmt = delete(A)` then `stmt = stmt.where(...)` is scoped, just not inline."""
-        found = _violations(
-            """
-            async def rebuild(db, scope):
-                stmt = delete(A)
-                if scope:
-                    stmt = stmt.where(A.id.in_(scope))
-                await db.execute(stmt)
             """
         )
         assert found == []

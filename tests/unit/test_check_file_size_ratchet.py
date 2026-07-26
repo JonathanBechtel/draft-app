@@ -237,3 +237,49 @@ class TestCollectChangesAgainstGit:
 
         violations, _ = ratchet.evaluate(changes)
         assert violations == []
+
+    def test_measures_from_the_merge_base_not_the_base_branch_tip(self, git_repo):
+        """Growth on the base branch after divergence must not be attributed here.
+
+        Caught in review. Two-dot `git diff main` compares main's *tip* with the working
+        tree, so once main advances the comparison mixes in commits this branch never made.
+        Here main grows a file 600 -> 900 while the branch adds 10 lines to its own 600-line
+        copy: measured from the tip that reads as a 290-line *shrink*, which would happily
+        mask real growth. Measured from the merge base it is the true +10.
+        """
+        tmp_path = git_repo
+        target = tmp_path / "app" / "svc.py"
+        target.parent.mkdir(parents=True)
+
+        def write(n: int) -> None:
+            target.write_text("\n".join(f"x = {i}" for i in range(n)) + "\n")
+
+        write(600)
+        subprocess.run(["git", "add", "-A"], check=True)
+        subprocess.run(["git", "commit", "-qm", "base"], check=True)
+        subprocess.run(["git", "branch", "-M", "main"], check=True)
+        subprocess.run(["git", "checkout", "-qb", "feature"], check=True)
+
+        # main advances independently, well past the threshold.
+        subprocess.run(["git", "checkout", "-q", "main"], check=True)
+        write(900)
+        subprocess.run(["git", "add", "-A"], check=True)
+        subprocess.run(["git", "commit", "-qm", "main grows"], check=True)
+
+        # The branch makes its own small change from the 600-line ancestor.
+        subprocess.run(["git", "checkout", "-q", "feature"], check=True)
+        write(610)
+
+        changes = ratchet.collect_changes("main")
+        assert len(changes) == 1
+        assert changes[0].old_lines == 600, (
+            "should measure from the merge base, not main's tip"
+        )
+        assert changes[0].new_lines == 610
+        assert changes[0].delta == 10
+
+        violations, _ = ratchet.evaluate(changes)
+        assert len(violations) == 1, (
+            "a 600->610 growth past the threshold is a real finding"
+        )
+        assert "must not grow" in violations[0]

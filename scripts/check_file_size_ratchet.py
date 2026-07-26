@@ -93,6 +93,21 @@ def _git(*args: str) -> str:
     ).stdout
 
 
+def _merge_base(ref: str) -> str:
+    """Resolve the merge base of ``ref`` and HEAD, falling back to ``ref`` itself.
+
+    Two-dot ``git diff <ref>`` compares the *tip* of ``ref`` with the working tree, so once
+    the base branch advances past the point this branch diverged, commits made only on the
+    base show up in the comparison — inflating or masking this branch's real growth. The
+    repo's sibling gate (``diff-cover --compare-branch``) resolves the merge base for the
+    same reason.
+    """
+    try:
+        return _git("merge-base", ref, "HEAD").strip() or ref
+    except subprocess.CalledProcessError:
+        return ref
+
+
 def _line_deltas(against: str) -> dict[str, tuple[int, int]]:
     """Map each changed path to its ``(added, deleted)`` line counts.
 
@@ -154,11 +169,14 @@ def collect_changes(against: str) -> list[FileChange]:
     Rename and copy detection is on so a moved file reads as a move, not as a wholesale
     deletion plus a brand-new oversized file.
     """
+    # Always measure from where this branch diverged, never from the base branch's tip.
+    base = _merge_base(against)
+
     # Scope with a plain directory pathspec and filter extensions in Python: git's
     # default pathspec globbing does not treat `/` specially, so `app/*.py` would
     # silently match nested paths too.
-    raw = _git("diff", "-M", "-C", "--name-status", against, "--", "app")
-    deltas = _line_deltas(against)
+    raw = _git("diff", "-M", "-C", "--name-status", base, "--", "app")
+    deltas = _line_deltas(base)
 
     changes: list[FileChange] = []
     for line in raw.splitlines():
