@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
@@ -219,18 +220,27 @@ async def async_engine(
         # Restore the isolated search_path (SET LOCAL is transaction-local,
         # so it will revert on commit anyway, but be explicit for clarity).
         await asyncpg_conn.execute(f'SET LOCAL search_path TO "{test_schema}"')
+
+    # Sessions release connections back to the pool after commit. Configure
+    # the schema at connection startup so a later checkout cannot silently
+    # fall back to public or another worker's schema.
+    await engine.dispose()
+    test_connect_args = {
+        **connect_args,
+        "server_settings": {"search_path": f'"{test_schema}"'},
+    }
+    engine = create_async_engine(
+        database_url,
+        echo=False,
+        pool_pre_ping=True,
+        connect_args=test_connect_args,
+    )
     try:
         yield engine
     finally:
         async with engine.begin() as conn:
             await conn.execute(text(f'DROP SCHEMA IF EXISTS "{test_schema}" CASCADE'))
         await engine.dispose()
-
-
-@pytest_asyncio.fixture(scope="session")
-def session_factory(async_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
-    """Return a sessionmaker bound to the integration test engine."""
-    return async_sessionmaker(bind=async_engine, expire_on_commit=False, class_=AsyncSession)
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -260,23 +270,98 @@ async def truncate_statement(async_engine: AsyncEngine, test_schema: str) -> str
     return f"TRUNCATE TABLE {table_refs} RESTART IDENTITY CASCADE"
 
 
-@pytest_asyncio.fixture(autouse=True)
-async def truncate_tables(async_engine: AsyncEngine, truncate_statement: str) -> None:
-    """Reset all data between integration tests (prod-like isolation)."""
-    if not truncate_statement:
+def _requires_committed_db(request: pytest.FixtureRequest) -> bool:
+    """Return whether a test needs production-like independent connections."""
+    return (
+        request.node.get_closest_marker("committed_db") is not None
+        or "app_client" in request.fixturenames
+    )
+
+
+@pytest_asyncio.fixture()
+async def test_connection(
+    request: pytest.FixtureRequest,
+    async_engine: AsyncEngine,
+    test_schema: str,
+) -> AsyncGenerator[AsyncConnection | None, None]:
+    """Own the rollback boundary for a normal integration test.
+
+    The transaction belongs to the connection rather than any ``AsyncSession``.
+    Fresh sessions can therefore open their normal ``db.begin()`` scopes and
+    join the outer transaction through savepoints. ``committed_db`` tests and
+    HTTP client tests opt out because they need independent connections and
+    real commits for request, lock, concurrency, or durability behavior.
+    """
+    if _requires_committed_db(request):
+        yield None
         return
-    async with async_engine.begin() as conn:
-        await conn.execute(text(truncate_statement))
+
+    async with async_engine.connect() as connection:
+        transaction = await connection.begin()
+        await connection.execute(text(f'SET LOCAL search_path TO "{test_schema}"'))
+        try:
+            yield connection
+        finally:
+            if transaction.is_active:
+                await transaction.rollback()
+
+
+@pytest_asyncio.fixture()
+def session_factory(
+    async_engine: AsyncEngine,
+    test_connection: AsyncConnection | None,
+) -> async_sessionmaker[AsyncSession]:
+    """Return sessions using rollback isolation or committed connections."""
+    if test_connection is None:
+        return async_sessionmaker(
+            bind=async_engine,
+            expire_on_commit=False,
+            class_=AsyncSession,
+        )
+    return async_sessionmaker(
+        bind=test_connection,
+        expire_on_commit=False,
+        class_=AsyncSession,
+        join_transaction_mode="create_savepoint",
+    )
+
+
+async def _truncate_schema(async_engine: AsyncEngine, statement: str) -> None:
+    """Reset committed state for an independent-connection test."""
+    async with async_engine.begin() as connection:
+        await connection.execute(text(statement))
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def database_isolation(
+    request: pytest.FixtureRequest,
+    async_engine: AsyncEngine,
+    truncate_statement: str,
+    test_connection: AsyncConnection | None,
+) -> AsyncGenerator[None, None]:
+    """Roll back normal tests and truncate only committed/concurrency tests."""
+    _ = test_connection
+    if not _requires_committed_db(request):
+        yield
+        return
+
+    try:
+        yield
+    finally:
+        # The schema starts empty, rollback-isolated tests cannot leak data,
+        # and every prior committed test cleans up here. One post-test reset is
+        # therefore sufficient and avoids doing the expensive TRUNCATE twice.
+        await _truncate_schema(async_engine, truncate_statement)
 
 
 @pytest_asyncio.fixture()
 async def db_session(
     session_factory: async_sessionmaker[AsyncSession],
-    truncate_tables: None,
+    database_isolation: None,
     test_schema: str,
 ) -> AsyncGenerator[AsyncSession, None]:
     """Provide a DB session for test setup/verification."""
-    _ = truncate_tables
+    _ = database_isolation
     async with session_factory() as session:
         await session.execute(text(f'SET search_path TO "{test_schema}"'))
         await session.commit()
@@ -286,11 +371,11 @@ async def db_session(
 @pytest_asyncio.fixture()
 async def app_client(
     session_factory: async_sessionmaker[AsyncSession],
-    truncate_tables: None,
+    database_isolation: None,
     test_schema: str,
 ) -> AsyncGenerator[AsyncClient, None]:
     """Provide an HTTP client with the app wired to fresh per-request sessions."""
-    _ = truncate_tables
+    _ = database_isolation
     try:
         from app.main import app
     except ValidationError as exc:  # pragma: no cover - guard for misconfigured env
@@ -307,7 +392,7 @@ async def app_client(
     app.dependency_overrides[get_session] = _get_session_override
     transport = ASGITransport(app=app)
     try:
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
+        async with AsyncClient(transport=transport, base_url="https://test") as client:
             yield client
     finally:
         app.dependency_overrides.pop(get_session, None)
