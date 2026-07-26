@@ -45,8 +45,8 @@ from app.schemas.players_master import PlayerMaster
 from app.schemas.podcast_episodes import PodcastEpisode, PodcastEpisodeTag
 from app.schemas.podcast_shows import PodcastShow
 from app.schemas.seasons import Season
+from app.services.player_merge_references import count_inbound_references
 from app.services.player_merge_service import (
-    count_inbound_references,
     find_duplicate_candidates,
     merge_players,
     preview_merge,

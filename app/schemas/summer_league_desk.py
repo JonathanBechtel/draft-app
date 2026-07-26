@@ -33,6 +33,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     Index,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -211,6 +212,14 @@ class SummerLeagueDeskStoryline(SQLModel, table=True):  # type: ignore[call-arg]
         Index(
             "ix_summer_league_desk_storylines_subject_player_id",
             "subject_player_id",
+        ),
+        # The duel trigger's second subject is a reassignable player FK too, so
+        # the merge and safe-delete paths look it up by player id exactly like
+        # the first subject (#681). Partial: only `duel` rows populate it.
+        Index(
+            "ix_summer_league_desk_storylines_subject_player_id_2",
+            "subject_player_id_2",
+            postgresql_where=text("subject_player_id_2 IS NOT NULL"),
         ),
     )
 
