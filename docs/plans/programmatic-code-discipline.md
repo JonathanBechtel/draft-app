@@ -164,6 +164,25 @@ Currently `[tool.ruff.lint]` only extends `D` (pydocstyle), so there is substant
 `per-file-ignores`, and require new code to pass. Also note `tests` and `alembic` are currently
 excluded from Ruff entirely — worth revisiting separately.
 
+**Amendment (shipped, Phase 0): `per-file-ignores` alone is not the ratchet.** Raised in review
+of PR #673 — a `per-file-ignores` entry silences a rule for the *whole file*, so once
+`desk_read.py` is baselined for `C901`, a brand-new complexity-15 function in that same file
+passes `ruff check` untouched. The baseline forgives exactly what it was meant to forgive and
+nothing stops the file getting worse.
+
+The shipped design keeps both mechanisms, because they cover different ground:
+
+| Mechanism | Covers | Blind to |
+|---|---|---|
+| `per-file-ignores` (pyproject) | quiet `ruff check` + editor diagnostics on known debt; a brand-new *file* still fails immediately | growth inside a baselined file |
+| `scripts/check_complexity_ratchet.py` + `complexity-baseline.json` | per-`(file, rule)` counts that may fall but never rise | swapping one violation for another at equal count |
+
+The script runs Ruff with `--isolated` so `per-file-ignores` cannot hide the findings from it.
+Counts, rather than the inline `# noqa` annotations the review suggested, because annotating
+all 265 findings would add a line per offending function across 94 files — many already over
+the file-size threshold, so the annotations would trip §1.4 and need their own waivers. A
+counts file keeps the debt out of the source entirely.
+
 ### 1.7 Migration safety
 
 **Failure:** incident #669 — a release migration's non-concurrent `CREATE INDEX` queued behind a
@@ -306,6 +325,16 @@ time-sensitive merge. Do **not** auto-derive the reassignment list from metadata
 reflective reassignment would resurrect rows the cascade semantics intend to delete. The FK graph
 supplies the *audit universe*; a human classifies each edge once, and the test enforces that the
 classification stays total.
+
+**Shipped (Phase 0):** `tests/unit/test_player_merge_fk_coverage.py`. The first run confirmed the
+drift this rule predicted — of 36 FKs to `players_master`, 19 were registered, 3 were `CASCADE`,
+and **13 were unclassified**, every one of them a live merge failure today (`summer_league_*`,
+shot events, play-by-play, participation, `draft_results`, `player_affiliations`). Those are
+itemized in a `_PENDING_CLASSIFICATION` list that may only shrink: a *new* unclassified FK fails
+the build, and classifying one without removing its entry also fails, so the list cannot go stale
+in either direction. A third assertion catches the reverse drift — a registered spec whose FK no
+longer exists. Actually classifying the 13 is merge-behavior work needing integration tests
+against representative data; the guardrail exists so the count can only go down.
 
 ### 3.5 Browser-execution smoke — "passes every test, dead in the browser"
 

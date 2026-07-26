@@ -71,6 +71,9 @@ jobs:
       - name: Import contracts (import-linter)
         run: lint-imports
 
+      - name: Complexity ratchet
+        run: python scripts/check_complexity_ratchet.py
+
       - name: File-size ratchet
         # Enforces against the PR merge base, alongside the diff-cover gate the
         # diff-scoped tooling already lives in. Pre-commit runs the same script in
@@ -188,6 +191,9 @@ jobs:
 
       - name: Import contracts (import-linter)
         run: lint-imports
+
+      - name: Complexity ratchet
+        run: python scripts/check_complexity_ratchet.py
 
       - name: File-size ratchet
         # Enforces against the PR merge base, alongside the diff-cover gate the

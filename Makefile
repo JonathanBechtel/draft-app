@@ -135,7 +135,7 @@ bio.ingest:
 	$(PYTHON) scripts/ingest_player_bios.py --file $(BBIO) --cache-dir $(CACHE) $(if $(DRY),--dry-run,) $(if $(VERBOSE),--verbose,) $(if $(OVERWRITE_MASTER),--overwrite-master,) $(if $(CREATE_MISSING),--create-missing,) $(if $(FIX),--fix-ambiguities $(FIX),)
 
 # Lint & format
-.PHONY: fmt lint lint.imports lint.filesize fix precommit test coverage coverage.diff visual visual.headed
+.PHONY: fmt lint lint.imports lint.filesize lint.complexity lint.complexity.update fix precommit test coverage coverage.diff visual visual.headed
 fmt:
 	ruff format .
 
@@ -151,6 +151,17 @@ lint.imports:
 # Enforces against main the way CI does; pre-commit runs the same script in warn mode.
 lint.filesize:
 	python scripts/check_file_size_ratchet.py --against origin/main --enforce
+
+# Per-file complexity ratchet (docs/plans/programmatic-code-discipline.md §1.6).
+# Ruff's per-file-ignores silences a rule for a whole file; this catches growth
+# *inside* those files. Counts may fall, never rise.
+lint.complexity:
+	python scripts/check_complexity_ratchet.py
+
+# Rewrite the baseline after simplifying code (or when an increase is warranted
+# and argued in the PR).
+lint.complexity.update:
+	python scripts/check_complexity_ratchet.py --update
 
 fix:
 	ruff check --fix .
