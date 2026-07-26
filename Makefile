@@ -143,7 +143,7 @@ lint:
 	ruff check .
 
 # Structural import contracts (docs/plans/programmatic-code-discipline.md §3.1).
-# Config lives in .importlinter; CI runs the same command.
+# Contracts live under [tool.importlinter] in pyproject.toml; CI runs the same command.
 lint.imports:
 	lint-imports
 

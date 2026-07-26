@@ -53,11 +53,12 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+from _discipline import text_has_reasoned_waiver
 
 
 # A file this long has outgrown a reviewable unit. Approximate by design.
@@ -67,7 +68,8 @@ THRESHOLD = 500
 # Targets the "grew beyond a reviewable unit" failure directly.
 DELTA_CAP = 300
 
-_WAIVER_RE = re.compile(r"#\s*discipline:\s*file-size\b(?P<reason>.*)")
+# The escape-hatch slug; syntax and the mandatory-reason rule live in _discipline.py.
+_RULE = "file-size"
 
 
 @dataclass(frozen=True)
@@ -77,7 +79,6 @@ class FileChange:
     path: str
     old_lines: int
     new_lines: int
-    old_path: str | None = None
 
     @property
     def delta(self) -> int:
@@ -92,13 +93,41 @@ def _git(*args: str) -> str:
     ).stdout
 
 
-def _count_lines_at_ref(ref: str, path: str) -> int:
-    """Line count of ``path`` as of ``ref``; 0 if it did not exist there."""
-    try:
-        blob = _git("show", f"{ref}:{path}")
-    except subprocess.CalledProcessError:
-        return 0
-    return len(blob.splitlines())
+def _line_deltas(against: str) -> dict[str, tuple[int, int]]:
+    """Map each changed path to its ``(added, deleted)`` line counts.
+
+    One git invocation for the whole changeset. The previous shape spawned a separate
+    ``git show <ref>:<path>`` per file to recover the old size, which is N+1 subprocesses
+    on every commit — and this hook runs with ``pass_filenames: false``, so it re-derives
+    the full changeset each time.
+    """
+    # -z keeps renames unambiguous: without it a rename renders as `old => new` in the
+    # path column, which would not key back to the path --name-status reported. Under -z
+    # a rename record leaves the path field empty and emits old then new as their own
+    # NUL-terminated tokens.
+    raw = _git("diff", "-M", "-C", "--numstat", "-z", against, "--", "app")
+    tokens = raw.split("\0")
+
+    deltas: dict[str, tuple[int, int]] = {}
+    index = 0
+    while index < len(tokens):
+        record = tokens[index]
+        index += 1
+        if not record:
+            continue
+        fields = record.split("\t")
+        if len(fields) < 3:
+            continue
+        added, deleted, path = fields[0], fields[1], fields[2]
+        if not path:  # rename/copy: the next two tokens are the old and new paths
+            if index + 1 >= len(tokens):
+                break
+            path = tokens[index + 1]
+            index += 2
+        if added == "-" or deleted == "-":  # binary; no line counts to reason about
+            continue
+        deltas[path] = (int(added), int(deleted))
+    return deltas
 
 
 def _count_lines_on_disk(path: str) -> int:
@@ -114,11 +143,9 @@ def _is_waived(path: str) -> bool:
     file = Path(path)
     if not file.is_file():
         return False
-    for line in file.read_text(encoding="utf-8", errors="replace").splitlines():
-        match = _WAIVER_RE.search(line)
-        if match and match.group("reason").strip():
-            return True
-    return False
+    return text_has_reasoned_waiver(
+        file.read_text(encoding="utf-8", errors="replace"), _RULE
+    )
 
 
 def collect_changes(against: str) -> list[FileChange]:
@@ -131,6 +158,7 @@ def collect_changes(against: str) -> list[FileChange]:
     # default pathspec globbing does not treat `/` specially, so `app/*.py` would
     # silently match nested paths too.
     raw = _git("diff", "-M", "-C", "--name-status", against, "--", "app")
+    deltas = _line_deltas(against)
 
     changes: list[FileChange] = []
     for line in raw.splitlines():
@@ -139,22 +167,30 @@ def collect_changes(against: str) -> list[FileChange]:
         fields = line.split("\t")
         status = fields[0]
 
-        if status.startswith(("R", "C")) and len(fields) >= 3:
-            old_path, new_path = fields[1], fields[2]
-        else:
-            old_path = new_path = fields[1]
+        # Rename/copy records carry both paths; the new one is what exists on disk.
+        new_path = (
+            fields[2]
+            if status.startswith(("R", "C")) and len(fields) >= 3
+            else fields[1]
+        )
 
         if status.startswith("D"):
             continue
         if not new_path.endswith(".py"):
             continue
 
+        # Recover the old size arithmetically rather than fetching the old blob:
+        # old = new - added + deleted. Falling back to (0, 0) leaves old == new,
+        # which reads as "unchanged size" — the safe direction if git reported a
+        # path here that --numstat did not.
+        added, deleted = deltas.get(new_path, (0, 0))
+        new_lines = _count_lines_on_disk(new_path)
+
         changes.append(
             FileChange(
                 path=new_path,
-                old_lines=_count_lines_at_ref(against, old_path),
-                new_lines=_count_lines_on_disk(new_path),
-                old_path=old_path if old_path != new_path else None,
+                old_lines=new_lines - added + deleted,
+                new_lines=new_lines,
             )
         )
     return changes
@@ -165,10 +201,16 @@ def evaluate(changes: list[FileChange]) -> tuple[list[str], int]:
     net_delta = sum(change.delta for change in changes)
     violations: list[str] = []
 
-    for change in changes:
-        if _is_waived(change.path):
-            continue
+    def report(message: str) -> None:
+        """Record a violation unless the file carries a justified waiver.
 
+        The waiver read happens here, not up front, so the common case — a touched file
+        nowhere near the threshold — never opens the file at all.
+        """
+        if not _is_waived(change.path):
+            violations.append(message)
+
+    for change in changes:
         is_new = change.old_lines == 0
 
         if is_new:
@@ -176,19 +218,19 @@ def evaluate(changes: list[FileChange]) -> tuple[list[str], int]:
             # module is ordinary work; the delta cap below is about cramming lines into
             # a file that already exists, so applying it here would tax every new module.
             if change.new_lines > THRESHOLD:
-                violations.append(
+                report(
                     f"{change.path}: new file is {change.new_lines} lines "
                     f"(threshold {THRESHOLD}); start it decomposed"
                 )
             continue
 
         if change.new_lines > THRESHOLD and change.delta > 0:
-            violations.append(
+            report(
                 f"{change.path}: {change.old_lines} -> {change.new_lines} lines "
                 f"(+{change.delta}); already over {THRESHOLD}, must not grow"
             )
         elif change.delta > DELTA_CAP:
-            violations.append(
+            report(
                 f"{change.path}: +{change.delta} lines in one change "
                 f"(cap {DELTA_CAP}); split it into reviewable pieces"
             )

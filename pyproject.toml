@@ -184,6 +184,67 @@ convention = "google"
 "scripts/top100/prod_promote.py" = ["PLR0913"]
 "scripts/top100/prospect_integrity_audit.py" = ["PLR0913"]
 
+# Import contracts — structural drift enforcement.
+#
+# Spec: docs/plans/programmatic-code-discipline.md §3.1
+# Principles: docs/plans/north-star-architecture.md (P1, P3)
+#
+# Every contract here traces to a specific past failure. The founding one: every module in
+# `app/services/event_desk/` imports `app.schemas.summer_league`, while the package presents
+# itself as a generic framework. Nothing made that contradiction visible until an
+# archaeological read of the code found it.
+#
+# Contracts 2, 3 and 5 below are installed *before* the packages they guard hold any code.
+# That is the cheapest architectural guarantee available: they start green and never regress,
+# with zero debt to pay down. Contract 4 (`event_desk` -> Summer League) fails broadly today
+# and lands in Phase 1 with an `ignore_imports` baseline that shrinks as the decoupling
+# proceeds; contract 1 (layering) needs its baseline measured before it can be enabled.
+#
+# Run locally: `make lint.imports`. Enforced in CI by .github/workflows/run-tests-on-pr.yml.
+[tool.importlinter]
+root_package = "app"
+
+# Contract 2 — the domain vocabulary describes the domain; it must not know how the domain
+# is persisted or served. Keeping it ORM-free is what lets value objects like `Watermark` be
+# used at every layer without dragging SQLModel along.
+[[tool.importlinter.contracts]]
+name = "app.domain must not import persistence, services, or routes"
+type = "forbidden"
+source_modules = ["app.domain"]
+forbidden_modules = ["app.schemas", "app.services", "app.routes"]
+
+# Contract 3 — the shared stat engine takes neutral inputs and returns numbers. Summer League
+# is one caller, not its shape. Without this, the engine acquires a spoke dependency the first
+# time a formula needs "just one" Summer League column, and source-agnosticism is gone for good.
+[[tool.importlinter.contracts]]
+name = "app.services.stats must not import Summer League"
+type = "forbidden"
+source_modules = ["app.services.stats"]
+forbidden_modules = [
+    "app.services.summer_league",
+    "app.services.summer_league_environment_registry",
+    "app.services.summer_league_environment_service",
+    "app.services.summer_league_explorer_service",
+    "app.services.summer_league_franchise_service",
+    "app.services.summer_league_games_service",
+    "app.services.summer_league_leaders_service",
+    "app.services.summer_league_metrics_service",
+    "app.services.summer_league_season_service",
+    "app.services.summer_league_shotchart_service",
+    "app.services.summer_league_stats_service",
+    "app.services.summer_league_team_service",
+    "app.schemas.summer_league",
+    "app.schemas.summer_league_pipeline",
+]
+
+# Contract 5 — sibling spokes may not import one another. Two spokes needing the same thing
+# must get it from the hub. Vacuous at one spoke, which is precisely why it is installed now:
+# spoke #2 inherits the constraint instead of discovering it.
+[[tool.importlinter.contracts]]
+name = "Source spokes must not import each other"
+type = "independence"
+modules = ["app.services.sources.*"]
+
 [tool.coverage.run]
 source = ["app"]
 branch = true

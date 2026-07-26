@@ -9,28 +9,15 @@ anyone to bypass it.
 
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
 from textwrap import dedent
 
 import pytest
 
-
-_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_unscoped_delete.py"
-
-
-def _load_checker():
-    """Import the checker script by path (scripts/ is not an installed package)."""
-    spec = importlib.util.spec_from_file_location("check_unscoped_delete", _SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+from tests.unit._script_loader import SCRIPTS_DIR, load_script
 
 
-checker = _load_checker()
+checker = load_script("check_unscoped_delete")
 
 
 def _violations(source: str) -> list[str]:
@@ -166,7 +153,7 @@ class TestRepositoryIsClean:
 
     def test_app_and_scripts_have_no_unwaived_violations(self):
         """Every remaining full-table delete carries a visible, justified waiver."""
-        root = _SCRIPT.resolve().parents[1]
+        root = SCRIPTS_DIR.parent
         found: list[str] = []
         for directory in ("app", "scripts"):
             for path in sorted((root / directory).rglob("*.py")):

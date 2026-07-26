@@ -8,27 +8,14 @@ here alongside the ordinary ratchet behavior.
 
 from __future__ import annotations
 
-import importlib.util
-import sys
-from pathlib import Path
+import subprocess
 
 import pytest
 
-
-_SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_file_size_ratchet.py"
-
-
-def _load_checker():
-    """Import the checker script by path (scripts/ is not an installed package)."""
-    spec = importlib.util.spec_from_file_location("check_file_size_ratchet", _SCRIPT)
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+from tests.unit._script_loader import load_script
 
 
-ratchet = _load_checker()
+ratchet = load_script("check_file_size_ratchet")
 FileChange = ratchet.FileChange
 THRESHOLD = ratchet.THRESHOLD
 DELTA_CAP = ratchet.DELTA_CAP
@@ -196,14 +183,18 @@ class TestEnforcementModes:
 class TestCollectChangesAgainstGit:
     """The git plumbing must read real diffs, including renames."""
 
-    def test_detects_a_growing_file_in_a_real_repo(self, tmp_path, monkeypatch):
-        """End-to-end over a throwaway git repo, not a mocked diff."""
-        import subprocess
-
+    @pytest.fixture
+    def git_repo(self, tmp_path, monkeypatch):
+        """An initialized throwaway repo, checked out as the working directory."""
         monkeypatch.chdir(tmp_path)
         subprocess.run(["git", "init", "-q"], check=True)
         subprocess.run(["git", "config", "user.email", "t@t.t"], check=True)
         subprocess.run(["git", "config", "user.name", "t"], check=True)
+        return tmp_path
+
+    def test_detects_a_growing_file_in_a_real_repo(self, git_repo):
+        """End-to-end over a throwaway git repo, not a mocked diff."""
+        tmp_path = git_repo
 
         target = tmp_path / "app" / "svc.py"
         target.parent.mkdir(parents=True)
@@ -223,14 +214,9 @@ class TestCollectChangesAgainstGit:
         assert len(violations) == 1
         assert "must not grow" in violations[0]
 
-    def test_rename_is_not_read_as_a_new_oversized_file(self, tmp_path, monkeypatch):
+    def test_rename_is_not_read_as_a_new_oversized_file(self, git_repo):
         """Moving a god file must not be punished as if it were newly written."""
-        import subprocess
-
-        monkeypatch.chdir(tmp_path)
-        subprocess.run(["git", "init", "-q"], check=True)
-        subprocess.run(["git", "config", "user.email", "t@t.t"], check=True)
-        subprocess.run(["git", "config", "user.name", "t"], check=True)
+        tmp_path = git_repo
 
         source = tmp_path / "app" / "svc.py"
         source.parent.mkdir(parents=True)

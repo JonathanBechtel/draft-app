@@ -8,7 +8,7 @@ parallel store; everything downstream is generic and source-blind. That is princ
 It is deliberately empty today. Phase 4 of ``docs/plans/summer-league-remediation-roadmap.md``
 reorganizes the existing Summer League services into ``sources/summer_league/``.
 
-**Contract (enforced by import-linter, ``.importlinter`` ``spokes-are-mutually-independent``):**
+**Contract** (enforced by import-linter; see ``[tool.importlinter]`` in ``pyproject.toml``):
 sibling spokes may not import one another. Two spokes that need the same thing must get it from
 the hub, not from each other. The contract is vacuous at one spoke and that is exactly why it is
 installed now — spoke #2 inherits the constraint instead of discovering it later. See

@@ -41,16 +41,18 @@ Usage: ``python scripts/check_unscoped_delete.py <paths...>``
 from __future__ import annotations
 
 import ast
-import re
 import sys
 from pathlib import Path
+from typing import Callable
+
+from _discipline import line_has_reasoned_waiver
 
 
 # Methods that narrow a delete construct to a subset of rows.
 _SCOPING_METHODS = frozenset({"where", "filter", "filter_by"})
 
-# `# discipline: unscoped-delete <reason>` — the reason is mandatory.
-_WAIVER_RE = re.compile(r"#\s*discipline:\s*unscoped-delete\b(?P<reason>.*)")
+# The escape-hatch slug; syntax and the mandatory-reason rule live in _discipline.py.
+_RULE = "unscoped-delete"
 
 
 def _parent_map(tree: ast.AST) -> dict[ast.AST, ast.AST]:
@@ -83,16 +85,32 @@ def _is_scoped_by_chain(node: ast.Call, parents: dict[ast.AST, ast.AST]) -> bool
         return False
 
 
-def _enclosing_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> ast.AST | None:
-    """Return the nearest enclosing function/class/module node."""
-    current: ast.AST | None = node
+def _find_ancestor(
+    node: ast.AST,
+    parents: dict[ast.AST, ast.AST],
+    predicate: Callable[[ast.AST], bool],
+    *,
+    include_self: bool,
+) -> ast.AST | None:
+    """Walk parent links from ``node`` until ``predicate`` matches.
+
+    ``include_self`` decides whether ``node`` itself is a candidate. Both callers below
+    used to inline this loop with *different* check-order, which is exactly the kind of
+    near-miss the next helper added here would copy from the wrong one.
+    """
+    current: ast.AST | None = node if include_self else parents.get(node)
     while current is not None:
-        current = parents.get(current)
-        if isinstance(
-            current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
-        ):
+        if predicate(current):
             return current
+        current = parents.get(current)
     return None
+
+
+def _is_scope(node: ast.AST) -> bool:
+    """True for nodes that delimit a function/class/module scope."""
+    return isinstance(
+        node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
+    )
 
 
 def _scoped_later_in_scope(node: ast.Call, parents: dict[ast.AST, ast.AST]) -> bool:
@@ -108,7 +126,7 @@ def _scoped_later_in_scope(node: ast.Call, parents: dict[ast.AST, ast.AST]) -> b
     if not isinstance(target, ast.Name):
         return False
 
-    scope = _enclosing_scope(assignment, parents)
+    scope = _find_ancestor(assignment, parents, _is_scope, include_self=False)
     if scope is None:
         return False
 
@@ -123,18 +141,6 @@ def _scoped_later_in_scope(node: ast.Call, parents: dict[ast.AST, ast.AST]) -> b
     return False
 
 
-def _enclosing_statement(
-    node: ast.AST, parents: dict[ast.AST, ast.AST]
-) -> ast.stmt | None:
-    """Return the innermost statement containing ``node``."""
-    current: ast.AST | None = node
-    while current is not None:
-        if isinstance(current, ast.stmt):
-            return current
-        current = parents.get(current)
-    return None
-
-
 def _waived(lines: list[str], node: ast.Call, parents: dict[ast.AST, ast.AST]) -> bool:
     """Return True if a justified waiver comment covers ``node``.
 
@@ -143,15 +149,19 @@ def _waived(lines: list[str], node: ast.Call, parents: dict[ast.AST, ast.AST]) -
     ``await db.execute(delete(X))  # discipline: ...`` across several lines, which would
     otherwise orphan the waiver from the call it justifies and silently re-fail the file.
     """
-    statement = _enclosing_statement(node, parents)
-    start = (statement.lineno if statement else node.lineno) - 1
-    end = statement.end_lineno or node.lineno if statement else node.lineno
+    statement = _find_ancestor(
+        node, parents, lambda n: isinstance(n, ast.stmt), include_self=True
+    )
+    if isinstance(statement, ast.stmt):
+        first, last = statement.lineno, statement.end_lineno or statement.lineno
+    else:
+        first = last = node.lineno
 
-    for candidate in range(start, end + 1):
-        if not 1 <= candidate <= len(lines):
-            continue
-        match = _WAIVER_RE.search(lines[candidate - 1])
-        if match and match.group("reason").strip():
+    # `first - 1` lets the justification sit on the line above the statement.
+    for candidate in range(first - 1, last + 1):
+        if 1 <= candidate <= len(lines) and line_has_reasoned_waiver(
+            lines[candidate - 1], _RULE
+        ):
             return True
     return False
 

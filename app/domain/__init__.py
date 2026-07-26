@@ -7,7 +7,7 @@ This package is the code-level home of the journey-graph vocabulary described in
 It is deliberately empty today. Phase 4 of ``docs/plans/summer-league-remediation-roadmap.md``
 populates it, starting with ``temporal.py``.
 
-**Contract (enforced by import-linter, ``.importlinter`` ``domain-vocabulary-is-orm-free``):**
+**Contract** (enforced by import-linter; see ``[tool.importlinter]`` in ``pyproject.toml``):
 nothing here may import ``app.schemas``, ``app.services``, or ``app.routes``. The vocabulary
 describes the domain; it does not know how the domain is persisted or served. Writing that
 contract before the package exists is why it starts green and stays green — see

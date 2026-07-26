@@ -8,7 +8,7 @@ today implemented three-to-eight times each across Python and hand-written SQL
 It is deliberately empty today. Phase 2 of ``docs/plans/summer-league-remediation-roadmap.md``
 lifts the engine here behind a golden-number parity harness.
 
-**Contract (enforced by import-linter, ``.importlinter`` ``stat-engine-is-source-agnostic``):**
+**Contract** (enforced by import-linter; see ``[tool.importlinter]`` in ``pyproject.toml``):
 nothing here may import ``app.services.summer_league*`` or ``app.schemas.summer_league*``. The
 engine takes neutral inputs and returns numbers; Summer League is one caller, not its shape.
 The contract exists before the code so the engine cannot acquire a spoke dependency on its
