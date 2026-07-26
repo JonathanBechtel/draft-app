@@ -92,9 +92,21 @@ A declarative registry (one entry per metric) is the spine. Each entry carries:
 ```text
 metric_key, metric_family, unit, denominator, definition_version,
 requires (canonical inputs it needs), formula (single definition),
+rollup_class (recombinable | additive_share | pool_recalibrated), grain_validity,
 comparison_semantics, allowed_reference_kinds, minimum_sample_rule,
 coverage_requirement, interpretation_note
 ```
+
+**Rollup semantics belong in the registry too — this taxonomy has been re-derived by hand at
+least five times.** How a metric aggregates across grains — **recombinable-from-box-totals**
+(recompute from summed components), **additive-share** (sum then re-share), **pool-recalibrated
+rate/composite** (must be recomputed against pool context, never averaged) — shows up
+independently in the advanced-metrics wiring, the Explorer's advanced metrics
+(`rollup_recombinable`), the Game Score surfaces (`game_score_line`), leaders venue/blend
+(`_blend_leader_values`), and the Class Tracker, each time as a comment plus bespoke code. It has
+already produced at least two bugs (the SQL-sort `COALESCE` gotcha; the ws82/vorp82
+reclassification). `rollup_class` plus per-grain validity (career / competition / game) makes it
+one declared fact every surface reads instead of five hand-derivations that can disagree.
 
 The `comparison_semantics` / `allowed_reference_kinds` / `minimum_sample_rule` fields are taken
 directly from the **Player Development Ledger** design
