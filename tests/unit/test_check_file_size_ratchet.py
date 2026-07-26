@@ -275,6 +275,37 @@ class TestCollectChangesAgainstGit:
         # The deletion itself must not be reported as a finding.
         assert not any("app/svc.py" in violation for violation in violations)
 
+    def test_a_large_deletion_does_not_buy_growth_of_an_existing_file(self, git_repo):
+        """Caught in review of the deletion fix (codex, PR #677).
+
+        Counting deletions widened the `net_delta <= 0` allowance: deleting an obsolete
+        1,200-line module while growing a 900-line service to 1,400 netted -700 and
+        suppressed a real violation. The converse test below only covered a deletion
+        *smaller* than the growth, so it did not catch it.
+
+        Deletion credit is now capped at the lines added in new files, so a deletion can
+        offset creation but never growth of a file that already existed.
+        """
+        tmp_path = git_repo
+        (tmp_path / "app").mkdir()
+        god = tmp_path / "app" / "god.py"
+        obsolete = tmp_path / "app" / "obsolete.py"
+        god.write_text("\n".join(f"x = {i}" for i in range(900)) + "\n")
+        obsolete.write_text("\n".join(f"z = {i}" for i in range(1200)) + "\n")
+        subprocess.run(["git", "add", "-A"], check=True)
+        subprocess.run(["git", "commit", "-qm", "base"], check=True)
+
+        god.write_text("\n".join(f"x = {i}" for i in range(1400)) + "\n")
+        obsolete.unlink()
+        subprocess.run(["git", "add", "-A"], check=True)
+
+        violations, net_delta = ratchet.evaluate(ratchet.collect_changes("HEAD"))
+        assert any("god.py" in violation for violation in violations)
+        assert net_delta > 0, (
+            "a deletion that was not redistributed into new files must not be credited"
+        )
+        assert ratchet.main(["--against", "HEAD", "--enforce"]) == 1
+
     def test_deleting_a_file_does_not_license_growing_a_god_file(self, git_repo):
         """Counting deletions must not become a way to buy growth elsewhere.
 

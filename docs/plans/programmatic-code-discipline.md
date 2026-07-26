@@ -145,6 +145,11 @@ naive delta check fails exactly the refactor we want. Design for it:
   additions*, not a rename. The first implementation skipped deletions, which made that
   changeset read as +5,000 lines of pure growth and fail — the rule blocking the decomposition
   it exists to encourage, via the one split shape rename detection cannot see.
+  **Cap that credit at the lines added in new files.** Uncapped, a deletion feeds the
+  net-change allowance with lines that went nowhere: deleting an obsolete 1,200-line module
+  while growing a 900-line service to 1,400 nets -700 and suppresses a real violation. A
+  deletion may offset *creation* — which is what a decomposition does — never the growth of a
+  file that already existed.
 - Provide an escape hatch (`# discipline: file-size <reason>`) requiring a justification visible
   in review.
 
