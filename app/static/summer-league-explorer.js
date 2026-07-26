@@ -65,6 +65,19 @@
     });
   }
 
+  // A blank metric row still serializes its default operator (fop=gte). Drop
+  // the whole triplet unless both a metric and value are present, otherwise a
+  // routine form submit produces a misleading "incomplete filter" warning.
+  function stripIncompleteMetricFilters(params) {
+    for (var i = 0; i < 3; i++) {
+      if (!params.get("fcol" + i) || !params.get("fval" + i)) {
+        params.delete("fcol" + i);
+        params.delete("fop" + i);
+        params.delete("fval" + i);
+      }
+    }
+  }
+
   // Push the just-loaded URL's params back onto the (persistent) form controls,
   // so the form always reflects the visible results. Params absent from the URL
   // reset their control to empty (the "All/Any" option).
@@ -77,6 +90,10 @@
       // overwriting .value — assigning .value to every radio would corrupt them.
       if (el.type === "radio") {
         el.checked = params.get(el.name) === el.value;
+        return;
+      }
+      if (el.type === "checkbox") {
+        el.checked = params.getAll(el.name).indexOf(el.value) !== -1;
         return;
       }
       el.value = params.has(el.name) ? params.get(el.name) : "";
@@ -148,6 +165,7 @@
     new URLSearchParams(new FormData(form)).forEach(function (v, k) {
       if (v !== "") clean.append(k, v);
     });
+    stripIncompleteMetricFilters(clean);
     load(form.action + "?" + clean.toString(), true);
   });
 
@@ -161,11 +179,12 @@
       new URLSearchParams(new FormData(form)).forEach(function (v, k) {
         if (v !== "") clean.append(k, v);
       });
+      stripIncompleteMetricFilters(clean);
       window.location.assign(form.action + "?" + clean.toString());
     });
   }
 
-  // Competition Context: the profile-scope toggle (seasons vs individual
+  // Competition Context: the profile-scope field (seasons vs individual
   // competitions) changes which controls are meaningful — the venue filter only
   // exists for individual competitions — so it must re-render the persistent
   // form, not AJAX-swap only the results. Navigate normally with a clean URL.
@@ -179,21 +198,8 @@
       if (v === "" || k === "venue" || k === "detail_year" || k === "competition_id") return;
       clean.append(k, v);
     });
+    stripIncompleteMetricFilters(clean);
     window.location.assign(form.action + "?" + clean.toString());
-  });
-
-  // Competition Context trend-metric picker lives inside the swapped results
-  // fragment, so delegate its change and re-run via AJAX (keeps scope/filters).
-  main.addEventListener("change", function (e) {
-    var t = e.target;
-    if (!t || t.id !== "comp-trend-metric") return;
-    var tf = t.form;
-    if (!tf) return;
-    var clean = new URLSearchParams();
-    new URLSearchParams(new FormData(tf)).forEach(function (v, k) {
-      if (v !== "") clean.append(k, v);
-    });
-    load("/stats/summer-league/explorer?" + clean.toString(), true);
   });
 
   // Mode segmented toggle: switching the view mode re-runs the query immediately
@@ -268,7 +274,7 @@
   syncModeButtons();
 
   // ── Competition Explorer: column-density progressive disclosure (#644) ─────
-  // The "Show all metrics" checkbox and its CSS sibling-selector rule do the
+  // The condensed/full checkbox and its CSS sibling-selector rule do the
   // actual show/hide with zero JS (works with JS off too — see
   // summer-league-competitions.css). This block only re-applies the user's
   // choice after an AJAX result swap replaces the checkbox with a fresh,

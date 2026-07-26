@@ -2,33 +2,6 @@
  * BEM-scoped `slg-comp*` styles layered on top of summer-league-games.css.
  * Reuses the shared tokens (--color-slate-*, --color-accent-emerald, --font-mono). */
 
-/* ── Scope toggle (seasons vs individual competitions) ───────────────────── */
-.slg-scope-toggle {
-  display: inline-flex;
-  flex-wrap: wrap;
-  width: fit-content;
-  border: 1px solid var(--color-slate-300, #cbd5e1);
-  border-radius: 6px;
-  overflow: hidden;
-}
-.slg-scope-btn {
-  font-family: var(--font-mono, monospace);
-  font-size: 0.8rem;
-  letter-spacing: 0.02em;
-  padding: 0.45rem 1rem;
-  cursor: pointer;
-  color: var(--color-slate-700, #334155);
-  background: var(--color-white, #fff);
-  border-right: 1px solid var(--color-slate-300, #cbd5e1);
-  user-select: none;
-  transition: background 0.15s, color 0.15s;
-}
-.slg-scope-btn:last-child { border-right: none; }
-.slg-scope-btn:hover:not(.is-active) { background: var(--color-slate-100, #f1f5f9); }
-.slg-scope-btn.is-active { background: var(--color-slate-900, #0f172a); color: #fff; }
-.slg-scope-btn input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; pointer-events: none; }
-.slg-scope-btn:focus-within { outline: 2px solid var(--color-accent-emerald, #10b981); outline-offset: 1px; }
-
 /* ── Scope notes / hints ─────────────────────────────────────────────────── */
 .slg-comp-scopenote {
   font-family: var(--font-mono, monospace);
@@ -92,33 +65,72 @@
 .slg-comp-density-label {
   display: inline-flex;
   align-items: center;
+  gap: 0.45rem;
   width: fit-content;
   font-family: var(--font-mono, monospace);
   font-size: 0.78rem;
   letter-spacing: 0.02em;
-  color: var(--color-accent-emerald, #10b981);
-  border: 1px solid var(--color-accent-emerald, #10b981);
-  border-radius: 6px;
-  padding: 0.35rem 0.75rem;
+  color: var(--color-slate-600, #475569);
   margin: 0 0 0.6rem;
   cursor: pointer;
   user-select: none;
-  transition: background 0.15s, color 0.15s;
 }
-.slg-comp-density-label:hover { background: var(--color-emerald-50, #ecfdf5); }
 .slg-comp-density-input:focus-visible + .slg-comp-density-label,
 .slg-comp-density-input:focus + .slg-comp-density-label {
   outline: 2px solid var(--color-accent-emerald, #10b981);
   outline-offset: 2px;
+  border-radius: 4px;
 }
-.slg-comp-density-label__on { display: none; }
-.slg-comp-density-input:checked + .slg-comp-density-label {
-  background: var(--color-slate-900, #0f172a);
-  border-color: var(--color-slate-900, #0f172a);
-  color: #fff;
+.slg-comp-density-label__title {
+  margin-right: 0.2rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-slate-700, #334155);
 }
-.slg-comp-density-input:checked + .slg-comp-density-label .slg-comp-density-label__off { display: none; }
-.slg-comp-density-input:checked + .slg-comp-density-label .slg-comp-density-label__on { display: inline; }
+.slg-comp-density-label__option {
+  transition: color 0.15s, font-weight 0.15s;
+}
+.slg-comp-density-label__option--condensed {
+  color: var(--color-slate-900, #0f172a);
+  font-weight: 700;
+}
+.slg-comp-density-label__track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 2.2rem;
+  height: 1.2rem;
+  padding: 0.12rem;
+  border-radius: 999px;
+  background: var(--color-slate-300, #cbd5e1);
+  transition: background 0.15s;
+}
+.slg-comp-density-label__thumb {
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 50%;
+  background: var(--color-white, #fff);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.28);
+  transition: transform 0.15s;
+}
+.slg-comp-density-label:hover .slg-comp-density-label__track {
+  background: var(--color-slate-400, #94a3b8);
+}
+.slg-comp-density-input:checked + .slg-comp-density-label .slg-comp-density-label__track {
+  background: var(--color-accent-emerald, #10b981);
+}
+.slg-comp-density-input:checked + .slg-comp-density-label .slg-comp-density-label__thumb {
+  transform: translateX(1rem);
+}
+.slg-comp-density-input:checked + .slg-comp-density-label .slg-comp-density-label__option--condensed {
+  color: var(--color-slate-500, #64748b);
+  font-weight: 400;
+}
+.slg-comp-density-input:checked + .slg-comp-density-label .slg-comp-density-label__option--full {
+  color: var(--color-slate-900, #0f172a);
+  font-weight: 700;
+}
 .slg-comp-density-input:checked ~ .slg-board .slg-comp-table [data-col-density="full"] {
   display: table-cell;
 }
@@ -327,24 +339,6 @@
 .slg-comp-prov__label { font-weight: 500; color: var(--color-slate-700, #334155); min-width: 8rem; }
 .slg-comp-prov__watermark, .slg-comp-prov__rows, .slg-comp-prov__status { font-family: var(--font-mono, monospace); font-size: 0.72rem; color: var(--color-slate-500, #64748b); }
 
-/* ── Trend chart ─────────────────────────────────────────────────────────── */
-.slg-comp-trend { margin-top: 1.5rem; }
-.slg-comp-trend__head { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
-.slg-comp-trend__pick { display: flex; align-items: center; gap: 0.4rem; }
-.slg-comp-trend__pick label { font-family: var(--font-mono, monospace); font-size: 0.72rem; text-transform: uppercase; color: var(--color-slate-500, #64748b); }
-.slg-comp-trend__pick select { font-family: var(--font-mono, monospace); font-size: 0.8rem; padding: 0.3rem 0.5rem; border: 1px solid var(--color-slate-300, #cbd5e1); border-radius: 5px; background: var(--color-white, #fff); }
-.slg-comp-trend__figure { margin: 0.6rem 0 0; }
-.slg-comp-trend__cap { font-family: var(--font-mono, monospace); font-size: 0.78rem; color: var(--color-slate-600, #475569); margin-bottom: 0.3rem; }
-.slg-comp-trend__unit { color: var(--color-slate-500, #64748b); font-weight: 600; }
-.slg-comp-trend__svg { width: 100%; max-width: 700px; height: auto; display: block; }
-.slg-comp-trend__axis { stroke: var(--color-slate-300, #cbd5e1); stroke-width: 1; }
-.slg-comp-trend__line { stroke: var(--color-accent-emerald, #10b981); stroke-width: 2.5; fill: none; }
-.slg-comp-trend__pt { fill: var(--color-accent-emerald, #10b981); stroke: var(--color-white, #fff); stroke-width: 1.5; }
-.slg-comp-trend__gap { stroke: var(--color-amber-500, #f59e0b); stroke-width: 2; }
-.slg-comp-trend__xtick, .slg-comp-trend__ytick { font-family: var(--font-mono, monospace); font-size: 11px; fill: var(--color-slate-500, #64748b); }
-.slg-comp-trend__table { margin-top: 0.8rem; max-width: 32rem; }
-.slg-comp-trend__tablecap { font-family: var(--font-mono, monospace); font-size: 0.72rem; text-transform: uppercase; color: var(--color-slate-500, #64748b); text-align: left; padding-bottom: 0.3rem; }
-
 /* ── Context strip (Players/Teams/Matchups handoff, #609) ───────────────────
    Compact, linked summary of the one approved Competition Context profile
    the current query resolves to. Never shown on the competitions subject
@@ -401,10 +395,6 @@
   .slg-comp-metrics, .slg-comp-attrs, .slg-comp-conf, .slg-comp-leaders__grid { grid-template-columns: 1fr; }
   .slg-comp-facts { grid-template-columns: repeat(2, 1fr); }
   .slg-context-strip { flex-direction: column; align-items: flex-start; }
-  .slg-scope-btn { flex: 1 1 auto; text-align: center; }
-  /* Full-width, comfortably tappable "Show all metrics" control (#644) — the
-     curated default matters most here, where dozens of columns previously
-     forced a long horizontal scroll before reaching anything comparable. */
-  .slg-comp-density-label { width: 100%; justify-content: center; padding: 0.6rem 0.75rem; }
+  .slg-comp-density-label { width: 100%; justify-content: center; padding: 0.35rem 0; }
   .slg-comp-table th.slg-explorer__label { min-width: 6.5rem; }
 }

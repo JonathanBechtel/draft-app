@@ -16,9 +16,7 @@ designed. It answers, per year and per competition:
 * how many competition and all-competitions season profiles would *certify*
   each v1 metric from the implementation-contract registry (§4).
 
-It never mutates raw or derived Summer League facts. The reader determines the
-honest historical trend range from the emitted numbers, not a single global
-quality flag.
+It never mutates raw or derived Summer League facts.
 
 Contract source of truth:
 ``docs/plans/competition-context-explorer-implementation-contract.md``.
@@ -316,35 +314,6 @@ class AuditReport:
     def all_records(self) -> list[CoverageRecord]:
         """Season rollups first, then their component competitions."""
         return [*self.seasons, *self.competitions]
-
-    def honest_trend_range(self) -> Optional[tuple[int, int]]:
-        """Contiguous year span where box metrics certify at least one season.
-
-        Box-derived metrics are the v1 floor (all shot/score/OT metrics build on
-        the same eligible final games). A year qualifies when its season rollup
-        certifies the box source as ``complete``.
-        """
-        good = sorted(
-            s.year
-            for s in self.seasons
-            if classify_coverage(s.final_games, s.box_complete_games)
-            == COVERAGE_COMPLETE
-        )
-        if not good:
-            return None
-        # Longest contiguous run.
-        best_start = best_end = good[0]
-        run_start = prev = good[0]
-        for yr in good[1:]:
-            if yr == prev + 1:
-                prev = yr
-            else:
-                if prev - run_start >= best_end - best_start:
-                    best_start, best_end = run_start, prev
-                run_start = prev = yr
-        if prev - run_start >= best_end - best_start:
-            best_start, best_end = run_start, prev
-        return best_start, best_end
 
 
 # ---------------------------------------------------------------------------
@@ -660,7 +629,6 @@ def report_to_json(report: AuditReport) -> str:
         "generated_at": report.generated_at,
         "database_host": report.database_host,
         "audit_version": report.audit_version,
-        "honest_trend_range": report.honest_trend_range(),
         "metric_registry": [asdict(spec) for spec in METRIC_REGISTRY],
         "records": [rec.to_flat_dict() for rec in report.all_records()],
     }
@@ -704,8 +672,6 @@ def _season_metric_summary(report: AuditReport) -> dict[str, dict[str, int]]:
 
 def report_to_markdown(report: AuditReport) -> str:
     """Render the human-readable findings document."""
-    trend = report.honest_trend_range()
-    trend_str = f"{trend[0]}–{trend[1]}" if trend else "none (no box-complete season)"
     lines: list[str] = []
     lines.append("# Competition Context Explorer — Coverage Audit")
     lines.append("")
@@ -723,21 +689,6 @@ def report_to_markdown(report: AuditReport) -> str:
         "mutates no raw or derived Summer League fact."
     )
     lines.append("")
-    lines.append("## Honest historical trend range")
-    lines.append("")
-    lines.append(
-        f"- **Box-complete season span:** **{trend_str}**. Only these years "
-        "certify the box-derived environment metrics (pace, ORtg, shooting, "
-        "turnover, assisted-FG) for every eligible final game of the "
-        "all-competitions season rollup."
-    )
-    lines.append(
-        "- Metrics remain in the schema for every year; sparse years publish "
-        "`partial`/`unavailable` per metric rather than narrowing the product. "
-        "Trend charts must show gaps, not interpolate."
-    )
-    lines.append("")
-
     lines.append("## Season rollups (all competitions per year)")
     lines.append("")
     lines.append(
@@ -908,10 +859,9 @@ async def _run_cli(args: argparse.Namespace) -> int:
             fh.write(report_to_markdown(report))
         print(f"wrote {md_path}")
 
-    trend = report.honest_trend_range()
     print(
         f"\nseasons={len(report.seasons)} competitions={len(report.competitions)} "
-        f"honest_trend_range={trend}"
+        "audited"
     )
     return 0
 

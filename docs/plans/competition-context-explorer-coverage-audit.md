@@ -4,11 +4,6 @@
 
 Read-only, reproducible inventory of what the Competition Context profiles (#606/#617) can publish honestly. Regenerate with `scripts/audit_summer_league_environment_coverage.py`. This report mutates no raw or derived Summer League fact.
 
-## Honest historical trend range
-
-- **Box-complete season span:** **2021–2025**. Only these years certify the box-derived environment metrics (pace, ORtg, shooting, turnover, assisted-FG) for every eligible final game of the all-competitions season rollup.
-- Metrics remain in the schema for every year; sparse years publish `partial`/`unavailable` per metric rather than narrowing the product. Trend charts must show gaps, not interpolate.
-
 ## Season rollups (all competitions per year)
 
 | Year | Comps | Final | Box✓ | Shot✓ | PBP✓ | Appeared (canon) | Unresolved | Draft known | Age known | Pos known | Origin known |
@@ -161,4 +156,3 @@ How many of the 20 season profiles certify each v1 metric (`complete` = every el
 - **Season dedup:** canonical appeared players and attribute known/total are
   recomputed at year grain so a player at multiple venues counts once;
   additive game/coverage counts are summed across competitions.
-

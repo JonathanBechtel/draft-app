@@ -351,7 +351,7 @@ async def seed_competition_context_demo(
         ends_on=date(2024, 7, 22),  # latest of lv/cc/slc 2024
         repeat_participants=8,
     )
-    # Season 2025: complete (second point for the season trend).
+    # Season 2025: complete.
     profiles["season2025"] = _profile(
         scope_kind=SCOPE_KIND_SEASON,
         year=2025,
@@ -372,7 +372,7 @@ async def seed_competition_context_demo(
         ends_on=date(2025, 7, 20),
         repeat_participants=3,
     )
-    # Season 2023: box-partial → pace is a visible gap in the season trend.
+    # Season 2023: box-partial.
     profiles["season2023"] = _profile(
         scope_kind=SCOPE_KIND_SEASON,
         year=2023,

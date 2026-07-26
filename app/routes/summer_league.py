@@ -336,7 +336,10 @@ async def summer_league_explorer(
     just the results table for in-place JS swaps; otherwise the full page renders.
     ``?format=csv`` streams a CSV download of the current query result.
     """
-    query = parse_query(dict(request.query_params))
+    query = parse_query(
+        dict(request.query_params)
+        | {"coverage": ",".join(request.query_params.getlist("coverage"))}
+    )
 
     # CSV export returns the full result set, not just the current page.
     is_csv = request.query_params.get("format") == "csv"
@@ -359,8 +362,7 @@ async def summer_league_explorer(
             if query.profile_scope == "competition"
             else SCOPE_KIND_SEASON
         )
-        # Registry-certified metric thresholds only (contract §6); these double
-        # as the trend-metric choices since every v1 metric is chartable.
+        # Registry-certified metric thresholds only (contract §6).
         filterable_columns = competition_filterable_columns(scope_kind)
     elif query.subject == "players" and query.grain == "per_game":
         filterable_columns = PER_GAME_FILTERABLE_COLUMNS

@@ -4,21 +4,16 @@
    the player grain param (contract §6). #}
 {% set q = result.query %}
 
-{# Preserve the charted trend metric across a filter re-run (the trend-panel
-   form owns the visible control; this hidden field keeps it from resetting). #}
-{% if q.trend_metric %}<input type="hidden" name="trend_metric" value="{{ q.trend_metric }}">{% endif %}
-
-{# Profile-scope toggle — changes which controls are meaningful (venue is only
-   valid for individual competitions), so it navigates rather than AJAX-swaps. #}
-<div class="slg-filter slg-filter--full">
-  <label id="ex-scope-label">View</label>
-  <div class="slg-scope-toggle" role="radiogroup" aria-labelledby="ex-scope-label">
+{# Profile scope is a standard filter field. Changing it still navigates because
+   venue is meaningful only for individual competitions, so the persistent form
+   controls must be rendered again. #}
+<div class="slg-filter">
+  <label for="ex-profile-scope">Results by</label>
+  <select id="ex-profile-scope" name="profile_scope">
     {% for val, lbl in [('season', 'Summer League seasons'), ('competition', 'Individual competitions')] %}
-    <label class="slg-scope-btn{{ ' is-active' if q.profile_scope == val else '' }}">
-      <input type="radio" name="profile_scope" value="{{ val }}" {{ 'checked' if q.profile_scope == val else '' }}>{{ lbl }}
-    </label>
+    <option value="{{ val }}" {{ 'selected' if q.profile_scope == val else '' }}>{{ lbl }}</option>
     {% endfor %}
-  </div>
+  </select>
 </div>
 
 <div class="slg-filter">
@@ -47,17 +42,19 @@
 {% endif %}
 
 <div class="slg-filter">
-  <label for="ex-min-gp" title="Minimum completed (final) games; scheduled/in-progress games never count">Min final games</label>
+  <label for="ex-min-gp" title="Minimum completed (final) games; scheduled/in-progress games never count">Min games completed</label>
   <input id="ex-min-gp" type="number" name="min_gp" min="0" value="{{ q.min_games }}">
 </div>
 
-<div class="slg-filter">
-  <label for="ex-coverage" title="Filter to profiles whose input coverage is complete for a source. PBP is informational and never gates a displayed metric.">Coverage</label>
-  <select id="ex-coverage" name="coverage">
-    {% for val, lbl in [('all', 'All'), ('box_complete', 'Box complete'), ('shot_complete', 'Shot-chart complete'), ('pbp_complete', 'PBP complete (info)')] %}
-    <option value="{{ val }}" {{ 'selected' if q.coverage == val else '' }}>{{ lbl }}</option>
+<div class="slg-filter slg-filter--full">
+  <label id="ex-coverage-label" title="Require complete input coverage for every selected source. PBP is informational and never gates a displayed metric.">Coverage required</label>
+  <div class="slg-coverage-options" role="group" aria-labelledby="ex-coverage-label">
+    {% for val, lbl in [('box_complete', 'Box'), ('shot_complete', 'Shot chart'), ('pbp_complete', 'PBP (info)')] %}
+    <label class="slg-coverage-option">
+      <input type="checkbox" name="coverage" value="{{ val }}" {{ 'checked' if val in q.coverage else '' }}>{{ lbl }}
+    </label>
     {% endfor %}
-  </select>
+  </div>
 </div>
 
 {# ── Metric threshold filters (registry-certified; up to 3 rows) ─────────── #}

@@ -1,6 +1,6 @@
 {# Competition Context (subject=competitions) shared macros.
    Kept separate from the player explorer_qs macro because competition state
-   uses profile_scope / coverage / trend_metric / detail_year / competition_id
+   uses profile_scope / coverage / detail_year / competition_id
    and never the player grain param (contract §6). #}
 
 {# Shared stale-profile badge: last good version is still served (never
@@ -23,8 +23,7 @@
 {%- if q.year_max %}&year_max={{ q.year_max }}{% endif %}
 {%- if q.venue and q.profile_scope == 'competition' %}&venue={{ q.venue }}{% endif %}
 {%- if q.min_games %}&min_gp={{ q.min_games }}{% endif %}
-{%- if q.coverage and q.coverage != 'all' %}&coverage={{ q.coverage }}{% endif %}
-{%- if q.trend_metric %}&trend_metric={{ q.trend_metric }}{% endif %}
+{%- for coverage in q.coverage %}&coverage={{ coverage }}{% endfor %}
 {%- for mf in q.metric_filters -%}
 &fcol{{ loop.index0 }}={{ mf.col }}&fop{{ loop.index0 }}={{ 'gte' if mf.op == '>=' else 'lte' }}&fval{{ loop.index0 }}={{ mf.value }}
 {%- endfor -%}

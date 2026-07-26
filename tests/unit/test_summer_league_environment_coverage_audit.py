@@ -18,7 +18,6 @@ from scripts.audit_summer_league_environment_coverage import (
     SOURCE_BOX,
     SOURCE_SHOT,
     AttributeCoverage,
-    AuditReport,
     CoverageRecord,
     classify_coverage,
     is_appearance,
@@ -226,54 +225,6 @@ def test_season_status_counts_are_summed() -> None:
     assert season.status_counts["scheduled"] == 3
     assert season.status_counts["postponed"] == 1
     assert season.status_counts["canceled"] == 4
-
-
-# --------------------------------------------------------------------------- #
-# Honest trend range
-# --------------------------------------------------------------------------- #
-
-
-def _season(year: int, *, final: int, box: int) -> CoverageRecord:
-    """Build a season record for trend-range tests."""
-    return CoverageRecord(
-        scope_kind="season",
-        scope_key=f"season:{year}",
-        year=year,
-        final_games=final,
-        box_complete_games=box,
-    )
-
-
-def _report(seasons: list[CoverageRecord]) -> AuditReport:
-    """Wrap seasons into a minimal report."""
-    return AuditReport(
-        generated_at="now",
-        database_host="test",
-        audit_version="1",
-        competitions=[],
-        seasons=seasons,
-    )
-
-
-def test_honest_trend_range_is_longest_box_complete_run() -> None:
-    """The trend range is the longest contiguous box-complete season span."""
-    report = _report(
-        [
-            _season(2020, final=10, box=5),  # partial — excluded
-            _season(2021, final=8, box=8),  # complete
-            _season(2022, final=9, box=9),  # complete
-            _season(2023, final=9, box=9),  # complete
-            _season(2024, final=0, box=0),  # unavailable — breaks the run
-            _season(2025, final=12, box=12),  # complete (isolated)
-        ]
-    )
-    assert report.honest_trend_range() == (2021, 2023)
-
-
-def test_honest_trend_range_none_without_any_complete_season() -> None:
-    """No box-complete season yields no honest trend range."""
-    report = _report([_season(2020, final=10, box=3), _season(2021, final=8, box=0)])
-    assert report.honest_trend_range() is None
 
 
 def test_flat_dict_exposes_metric_and_attribute_columns() -> None:
