@@ -44,15 +44,23 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Pre-existing `app/ -> scripts/` imports, recorded so the check can ratchet
-# rather than requiring one big refactor up front. Shrink this set by lifting
+# rather than requiring one big refactor up front. Shrink these sets by lifting
 # the shared logic into `app/services/` and having both callers import that.
-# Never add to it: a new entry means a shipped job just grew a dependency on
+# Never add to them: a new entry means a shipped job just grew a dependency on
 # operator tooling.
-_KNOWN_APP_IMPORTS_SCRIPTS: frozenset[str] = frozenset(
-    {
-        "app/cli/summer_league_roster_runner.py",
-    }
-)
+#
+# Baselined per *imported module*, not per file. Exempting a whole file would
+# let a fourth `scripts.*` import appear inside an already-listed runtime job
+# with the check staying silent -- the exact rot this guard exists to catch.
+_KNOWN_APP_IMPORTS_SCRIPTS: dict[str, frozenset[str]] = {
+    "app/cli/summer_league_roster_runner.py": frozenset(
+        {
+            "scripts.bbref_bio_scraper",
+            "scripts.fetch_summer_league_rosters",
+            "scripts.ingest_player_bios",
+        }
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -82,12 +90,54 @@ def cron_line_violates(line: str) -> bool:
     return bool(re.match(r"^cron\s*=", stripped)) and "scripts/" in stripped
 
 
+def join_continuations(lines: list[str]) -> list[tuple[int, str]]:
+    r"""Fold shell backslash-continuations into logical lines.
+
+    Returns `(lineno, logical_line)` where lineno is where the logical line began.
+    A `flyctl machine run` command is normally written across a dozen physical
+    lines ending in `\\`; matching only physical lines means the guard depends on
+    exactly how the YAML happens to be wrapped, and a harmless reformat silently
+    reopens the boundary. Comment lines are dropped before folding.
+    """
+    logical: list[tuple[int, str]] = []
+    buffer = ""
+    start = 0
+    for lineno, raw in enumerate(lines, start=1):
+        stripped = raw.strip()
+        if stripped.startswith("#"):
+            continue
+        if not buffer:
+            start = lineno
+        if stripped.endswith("\\"):
+            buffer += stripped[:-1].rstrip() + " "
+            continue
+        logical.append((start, (buffer + stripped).strip()))
+        buffer = ""
+    if buffer:
+        logical.append((start, buffer.strip()))
+    return logical
+
+
 def workflow_line_violates(line: str) -> bool:
-    """True if a workflow line is a `flyctl machine run ... --` tail using `scripts/`."""
+    """True if a logical workflow line deploys a `scripts/` path to a Fly machine.
+
+    Two shapes, because the container entrypoint is what matters and not the
+    formatting that expresses it:
+
+    * a ``--`` command tail whose next token references ``scripts/`` -- this is
+      the entrypoint argv, whether written inline or folded from a continuation;
+    * any ``flyctl machine run`` invocation mentioning ``scripts/`` at all, which
+      catches orderings the tail pattern alone would miss.
+
+    ``--app``/``--entrypoint`` style flags are not tails: the pattern requires
+    whitespace directly after ``--``.
+    """
     stripped = line.strip()
     if stripped.startswith("#"):
         return False
-    return bool(re.match(r"^--\s+\S", stripped)) and "scripts/" in stripped
+    if re.search(r"(?:^|\s)--\s+\S*scripts/", stripped):
+        return True
+    return "flyctl machine run" in stripped and "scripts/" in stripped
 
 
 def check_entrypoints() -> list[Violation]:
@@ -111,11 +161,12 @@ def check_entrypoints() -> list[Violation]:
                     )
                 )
 
-    # Deploy workflows: the `--` command tail of a `flyctl machine run`.
+    # Deploy workflows: the `--` command tail of a `flyctl machine run`, folded
+    # across backslash-continuations so the check does not depend on YAML wrapping.
     workflows = REPO_ROOT / ".github" / "workflows"
     for wf_path in sorted(workflows.glob("*.yml")) + sorted(workflows.glob("*.yaml")):
-        for lineno, line in enumerate(
-            wf_path.read_text(encoding="utf-8").splitlines(), start=1
+        for lineno, line in join_continuations(
+            wf_path.read_text(encoding="utf-8").splitlines()
         ):
             if workflow_line_violates(line):
                 violations.append(
@@ -164,21 +215,25 @@ def check_app_imports() -> list[Violation]:
             )
             continue
 
-        offenders = _imports_scripts(tree)
-        if offenders and rel not in _KNOWN_APP_IMPORTS_SCRIPTS:
-            for lineno, name in offenders:
-                violations.append(
-                    Violation(
-                        rel,
-                        lineno,
-                        "E2",
-                        f"app/ must not import operator tooling (`{name}`). Lift the "
-                        "shared logic into app/services/ and import that from both.",
-                    )
+        # Baselined per imported module: an import this file did not already have
+        # is a violation even though the file itself appears in the allowlist.
+        allowed = _KNOWN_APP_IMPORTS_SCRIPTS.get(rel, frozenset())
+        for lineno, name in _imports_scripts(tree):
+            if name in allowed:
+                continue
+            violations.append(
+                Violation(
+                    rel,
+                    lineno,
+                    "E2",
+                    f"app/ must not import operator tooling (`{name}`). Lift the "
+                    "shared logic into app/services/ and import that from both.",
                 )
+            )
 
-    # Ratchet hygiene: a file that no longer offends should leave the allowlist.
-    for known in sorted(_KNOWN_APP_IMPORTS_SCRIPTS):
+    # Ratchet hygiene: an allowlisted import that is gone should leave the list,
+    # otherwise the exemption silently outlives the dependency it was granted for.
+    for known, allowed in sorted(_KNOWN_APP_IMPORTS_SCRIPTS.items()):
         known_path = REPO_ROOT / known
         if not known_path.exists():
             violations.append(
@@ -194,13 +249,14 @@ def check_app_imports() -> list[Violation]:
         tree = ast.parse(
             known_path.read_text(encoding="utf-8"), filename=str(known_path)
         )
-        if not _imports_scripts(tree):
+        still_imported = {name for _, name in _imports_scripts(tree)}
+        for stale in sorted(allowed - still_imported):
             violations.append(
                 Violation(
                     known,
                     0,
                     "E2",
-                    "no longer imports scripts/ -- remove it from "
+                    f"no longer imports `{stale}` -- remove it from "
                     "_KNOWN_APP_IMPORTS_SCRIPTS so the boundary stays closed.",
                 )
             )

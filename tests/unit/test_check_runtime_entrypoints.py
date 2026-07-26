@@ -54,14 +54,81 @@ class TestWorkflowEntrypoints:
         assert guard.workflow_line_violates("              -- scripts/sl_desk_tick.py")
 
     def test_module_form_tail_is_clean(self):
-        assert not guard.workflow_line_violates("              -- -m app.cli.sl_desk_tick")
+        assert not guard.workflow_line_violates(
+            "              -- -m app.cli.sl_desk_tick"
+        )
 
     def test_commented_tail_is_not_a_violation(self):
-        assert not guard.workflow_line_violates("#            -- scripts/sl_desk_tick.py")
+        assert not guard.workflow_line_violates(
+            "#            -- scripts/sl_desk_tick.py"
+        )
 
     def test_bare_double_dash_is_not_a_violation(self):
         """A `--` with no command after it is a YAML artifact, not an entrypoint."""
         assert not guard.workflow_line_violates("        --")
+
+    def test_inline_single_line_command_is_a_violation(self):
+        """The guard must not depend on `--` starting its own physical line.
+
+        A whole `flyctl machine run ... -- scripts/job.py` written on one line
+        deploys an operator script exactly like the wrapped form does.
+        """
+        assert guard.workflow_line_violates(
+            'flyctl machine run "$IMG" --app prod -- scripts/job.py'
+        )
+
+    def test_flag_is_not_mistaken_for_a_command_tail(self):
+        """`--app`/`--entrypoint` have no space after `--`, so they are flags."""
+        assert not guard.workflow_line_violates("--app draft-app-prod")
+
+    def test_ci_runner_script_invocation_is_not_a_violation(self):
+        """`scripts/` run *on the runner* is the correct place for operator tooling.
+
+        Only container entrypoints are E1's business; flagging these would make
+        the guard unsatisfiable for the deploy workflow's seeding steps.
+        """
+        assert not guard.workflow_line_violates("python scripts/seed_nba_teams.py")
+        assert not guard.workflow_line_violates(
+            "python scripts/verify_cron_image_digests.py --app draft-app-prod"
+        )
+
+
+class TestContinuationFolding:
+    """E1: shell backslash-continuations must fold before the tail is matched."""
+
+    def test_tail_split_across_a_continuation_is_caught(self):
+        r"""`-- \` on one line and the script on the next is still an entrypoint.
+
+        Matching physical lines only made the guard depend on YAML wrapping, so a
+        harmless reformat could silently reopen the boundary.
+        """
+        folded = guard.join_continuations(
+            [
+                '  flyctl machine run "$IMG" \\',
+                "    --app prod \\",
+                "    -- \\",
+                "    scripts/job.py",
+            ]
+        )
+        assert len(folded) == 1
+        assert guard.workflow_line_violates(folded[0][1])
+
+    def test_the_shipped_module_form_folds_clean(self):
+        """The real workflow shape must stay green after folding."""
+        folded = guard.join_continuations(
+            [
+                '  flyctl machine run "$APP_IMAGE" \\',
+                '    --entrypoint "/app/.venv/bin/python" \\',
+                "    -- -m app.cli.sl_desk_tick",
+            ]
+        )
+        assert len(folded) == 1
+        assert not guard.workflow_line_violates(folded[0][1])
+
+    def test_folding_reports_the_starting_line_number(self):
+        """Violations should point at where the command began, not where it ended."""
+        folded = guard.join_continuations(["a", "b \\", "c", "d"])
+        assert folded == [(1, "a"), (2, "b c"), (4, "d")]
 
 
 class TestAppImportsScripts:
@@ -108,13 +175,39 @@ class TestRepoState:
     def test_allowlist_entries_still_exist_and_still_offend(self):
         """Guards the ratchet against rot in both directions.
 
-        An allowlist entry that no longer imports `scripts.*` (or no longer exists) must
-        be removed, or the boundary silently reopens for that file.
+        An allowlisted import that is gone (or a file that no longer exists) must be
+        removed, or the exemption outlives the dependency it was granted for.
         """
-        for known in guard._KNOWN_APP_IMPORTS_SCRIPTS:
+        for known, allowed in guard._KNOWN_APP_IMPORTS_SCRIPTS.items():
             path = guard.REPO_ROOT / known
             assert path.is_file(), f"{known} is allowlisted but does not exist"
             tree = ast.parse(path.read_text(encoding="utf-8"))
-            assert guard._imports_scripts(tree), (
-                f"{known} no longer imports scripts/; remove it from the allowlist"
+            still = {name for _, name in guard._imports_scripts(tree)}
+            assert allowed <= still, (
+                f"{known} no longer imports {sorted(allowed - still)}; "
+                "remove them from the allowlist"
             )
+
+    def test_allowlist_is_keyed_by_module_not_by_file(self):
+        """The exemption must name specific imports, so a new one is still caught.
+
+        A file-level allowlist would let a fourth `scripts.*` import appear inside
+        an already-listed runtime job with the check staying silent -- precisely
+        the rot this guard exists to catch.
+        """
+        assert isinstance(guard._KNOWN_APP_IMPORTS_SCRIPTS, dict)
+        for allowed in guard._KNOWN_APP_IMPORTS_SCRIPTS.values():
+            assert allowed, "an empty allowlist entry exempts the whole file"
+            assert all(m.startswith("scripts") for m in allowed)
+
+    def test_a_new_import_in_an_allowlisted_file_is_still_a_violation(self, tmp_path):
+        """The regression codex caught: baseline by import, not by file."""
+        target = next(iter(guard._KNOWN_APP_IMPORTS_SCRIPTS))
+        allowed = guard._KNOWN_APP_IMPORTS_SCRIPTS[target]
+        source = (guard.REPO_ROOT / target).read_text(encoding="utf-8")
+        tree = ast.parse("from scripts.some_new_tool import thing\n" + source)
+
+        offenders = {
+            name for _, name in guard._imports_scripts(tree) if name not in allowed
+        }
+        assert offenders == {"scripts.some_new_tool"}
