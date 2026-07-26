@@ -37,14 +37,38 @@ from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.player_aliases import PlayerAlias
 from app.schemas.player_bio_snapshots import PlayerBioSnapshot
 from app.schemas.player_college_stats import PlayerCollegeStats
-from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
+from app.schemas.player_content_mentions import (
+    ContentType,
+    MentionSource,
+    PlayerContentMention,
+)
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.player_lifecycle import PlayerLifecycle
 from app.schemas.player_status import PlayerStatus
+from app.schemas.draft_results import DraftResult
+from app.schemas.player_affiliation import AffiliationType, PlayerAffiliation
 from app.schemas.players_master import PlayerMaster
 from app.schemas.podcast_episodes import PodcastEpisode, PodcastEpisodeTag
 from app.schemas.podcast_shows import PodcastShow
 from app.schemas.seasons import Season
+from app.schemas.summer_league import (
+    SummerLeagueCompetition,
+    SummerLeagueGame,
+    SummerLeagueGameStatus,
+    SummerLeagueParticipation,
+    SummerLeaguePlayByPlayEvent,
+    SummerLeaguePlayerGameLog,
+    SummerLeaguePlayerResolutionReview,
+    SummerLeagueShotEvent,
+    SummerLeagueSourcePlayer,
+    SummerLeagueTeamEntry,
+)
+from app.schemas.summer_league_desk import (
+    SummerLeagueDeskGrade,
+    SummerLeagueDeskPlayerGrade,
+    SummerLeagueDeskStoryline,
+    SummerLeagueDeskTriggerType,
+)
 from app.services.player_merge_service import (
     count_inbound_references,
     find_duplicate_candidates,
@@ -58,7 +82,9 @@ from app.services.player_merge_service import (
 # ---------------------------------------------------------------------------
 
 
-async def _player(db: AsyncSession, display_name: str, is_stub: bool = True) -> PlayerMaster:
+async def _player(
+    db: AsyncSession, display_name: str, is_stub: bool = True
+) -> PlayerMaster:
     """Insert and flush a minimal PlayerMaster."""
     p = PlayerMaster(display_name=display_name, is_stub=is_stub)
     db.add(p)
@@ -165,7 +191,9 @@ async def _seed_full_fk(
     meta["bio_snap_id"] = snap.id
 
     # --- player_external_ids ---
-    ext = PlayerExternalId(player_id=discard.id, system="bbr", external_id="testplayer01")
+    ext = PlayerExternalId(
+        player_id=discard.id, system="bbr", external_id="testplayer01"
+    )
     db.add(ext)
     await db.flush()
     meta["ext_id"] = ext.id
@@ -337,12 +365,18 @@ async def test_merge_full_fk(db_session: AsyncSession) -> None:
 
     # Alias added on survivor
     alias_rows = (
-        await db_session.execute(
-            select(PlayerAlias).where(PlayerAlias.player_id == keep.id)  # type: ignore[arg-type]
+        (
+            await db_session.execute(
+                select(PlayerAlias).where(PlayerAlias.player_id == keep.id)  # type: ignore[arg-type]
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     alias_names = {a.full_name for a in alias_rows}
-    assert "Discard Player" in alias_names, "Alias for discard name must exist on survivor"
+    assert "Discard Player" in alias_names, (
+        "Alias for discard name must exist on survivor"
+    )
 
     # No orphaned FKs — check a sample of child tables
     for table, col in [
@@ -362,9 +396,7 @@ async def test_merge_full_fk(db_session: AsyncSession) -> None:
     ]:
         orphan_count = (
             await db_session.execute(
-                text(
-                    f"SELECT count(*) FROM {table} WHERE {col} = :discard_id"
-                ),
+                text(f"SELECT count(*) FROM {table} WHERE {col} = :discard_id"),
                 {"discard_id": discard.id},
             )
         ).scalar()
@@ -449,7 +481,9 @@ async def test_merge_singleton_no_conflict(db_session: AsyncSession) -> None:
     ).scalar()
     assert lc_for_keep == 1
 
-    assert report.per_table.get("player_lifecycle.player_id", {}).get("reassigned", 0) >= 1
+    assert (
+        report.per_table.get("player_lifecycle.player_id", {}).get("reassigned", 0) >= 1
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -571,13 +605,17 @@ async def test_merge_similarity_self_links_deleted(db_session: AsyncSession) -> 
     # No orphans for discard
     orphan_anchor = (
         await db_session.execute(
-            text("SELECT count(*) FROM player_similarity WHERE anchor_player_id = :pid"),
+            text(
+                "SELECT count(*) FROM player_similarity WHERE anchor_player_id = :pid"
+            ),
             {"pid": discard.id},
         )
     ).scalar()
     orphan_comp = (
         await db_session.execute(
-            text("SELECT count(*) FROM player_similarity WHERE comparison_player_id = :pid"),
+            text(
+                "SELECT count(*) FROM player_similarity WHERE comparison_player_id = :pid"
+            ),
             {"pid": discard.id},
         )
     ).scalar()
@@ -636,12 +674,14 @@ async def test_preview_merge_matches_execute(db_session: AsyncSession) -> None:
     # Per-table counts from preview should match executed
     for key in preview.per_table:
         if key in executed.per_table:
-            assert preview.per_table[key]["reassigned"] == executed.per_table[key]["reassigned"], (
-                f"{key}: preview reassigned != executed reassigned"
-            )
-            assert preview.per_table[key]["deleted_conflict"] == executed.per_table[key]["deleted_conflict"], (
-                f"{key}: preview deleted_conflict != executed deleted_conflict"
-            )
+            assert (
+                preview.per_table[key]["reassigned"]
+                == executed.per_table[key]["reassigned"]
+            ), f"{key}: preview reassigned != executed reassigned"
+            assert (
+                preview.per_table[key]["deleted_conflict"]
+                == executed.per_table[key]["deleted_conflict"]
+            ), f"{key}: preview deleted_conflict != executed deleted_conflict"
 
     # Both should report the alias
     assert preview.alias_added == executed.alias_added
@@ -850,7 +890,9 @@ async def test_count_inbound_references_with_data(db_session: AsyncSession) -> N
 
 
 @pytest.mark.asyncio
-async def test_find_duplicate_candidates_excludes_self(db_session: AsyncSession) -> None:
+async def test_find_duplicate_candidates_excludes_self(
+    db_session: AsyncSession,
+) -> None:
     """find_duplicate_candidates never returns the player itself."""
     async with db_session.begin_nested():
         player = await _player(db_session, "John Smith")
@@ -888,7 +930,9 @@ async def test_merge_alias_idempotent(db_session: AsyncSession) -> None:
     async with db_session.begin_nested():
         # Pre-create the alias that merge_players would insert.
         db_session.add(
-            PlayerAlias(player_id=keep.id, full_name="Discard Player", context="pre_existing")
+            PlayerAlias(
+                player_id=keep.id, full_name="Discard Player", context="pre_existing"
+            )
         )
         await db_session.flush()
 
@@ -964,7 +1008,9 @@ async def test_merge_enrichment_job_reassigned(db_session: AsyncSession) -> None
             {"pid": discard.id},
         )
     ).scalar()
-    assert orphan_count == 0, "No enrichment job should reference the deleted discard player"
+    assert orphan_count == 0, (
+        "No enrichment job should reference the deleted discard player"
+    )
 
     # The job should now point to the survivor
     survivor_count = (
@@ -985,7 +1031,9 @@ async def test_merge_enrichment_job_reassigned(db_session: AsyncSession) -> None
 
 
 @pytest.mark.asyncio
-async def test_merge_board_entries_same_board_conflict(db_session: AsyncSession) -> None:
+async def test_merge_board_entries_same_board_conflict(
+    db_session: AsyncSession,
+) -> None:
     """Discard's board entry is deleted when survivor is on the same board.
 
     Before the fix, board_entries had no conflict_columns spec, so reassigning
@@ -1055,7 +1103,9 @@ async def test_merge_board_entries_same_board_conflict(db_session: AsyncSession)
             {"pid": discard.id},
         )
     ).scalar()
-    assert orphan_count == 0, "No board entries should reference the deleted discard player"
+    assert orphan_count == 0, (
+        "No board entries should reference the deleted discard player"
+    )
 
     # Survivor's original entry on board_a must be intact (not overwritten)
     keep_a_exists = (
@@ -1067,7 +1117,9 @@ async def test_merge_board_entries_same_board_conflict(db_session: AsyncSession)
             {"pid": keep.id, "bid": board_a.id, "eid": keep_entry_a_id},
         )
     ).scalar()
-    assert keep_a_exists == 1, "Survivor's original board_a entry must survive the merge"
+    assert keep_a_exists == 1, (
+        "Survivor's original board_a entry must survive the merge"
+    )
 
     # No duplicate (board_a, keep.id) entries
     dup_count = (
@@ -1101,3 +1153,420 @@ async def test_merge_board_entries_same_board_conflict(db_session: AsyncSession)
     assert board_stats.get("reassigned", 0) == 1, (
         "Report must show 1 reassigned for board_entries (the board_b entry)"
     )
+
+
+# ---------------------------------------------------------------------------
+# Summer League + draft/affiliation FKs — ticket #675 (backlog 4.4)
+# ---------------------------------------------------------------------------
+
+
+async def _sl_scaffold(
+    db: AsyncSession,
+) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry, SummerLeagueGame]:
+    """Seed one competition, one team entry and one game for SL child rows."""
+    from datetime import date
+
+    token = secrets.token_hex(4)
+    comp = SummerLeagueCompetition(
+        year=2026,
+        league_id="15",
+        venue_slug=f"merge-test-{token}",
+        display_name=f"Merge Test SL {token}",
+        starts_on=date(2026, 7, 1),
+        ends_on=date(2026, 7, 20),
+    )
+    db.add(comp)
+    await db.flush()
+
+    team = SummerLeagueTeamEntry(
+        competition_id=comp.id,
+        nba_stats_team_id=f"team-{token}",
+        raw_team_name=f"Merge Team {token}",
+        raw_team_abbreviation="MT",
+        team_slug=f"merge-team-{token}",
+    )
+    db.add(team)
+    await db.flush()
+
+    game = SummerLeagueGame(
+        competition_id=comp.id,
+        nba_stats_game_id=f"game-{token}",
+        game_date=date(2026, 7, 10),
+        tip_datetime=None,
+        home_team_entry_id=team.id,
+        away_team_entry_id=team.id,
+        status=SummerLeagueGameStatus.FINAL,
+    )
+    db.add(game)
+    await db.flush()
+    return comp, team, game
+
+
+async def _sl_source_player(
+    db: AsyncSession, player: PlayerMaster
+) -> SummerLeagueSourcePlayer:
+    """Seed a source player resolved to the given canonical player."""
+    token = secrets.token_hex(4)
+    src = SummerLeagueSourcePlayer(
+        nba_stats_person_id=f"person-{token}",
+        raw_player_name=player.display_name or "SL Player",
+        normalized_name=(player.display_name or "sl player").lower(),
+        canonical_player_id=player.id,
+    )
+    db.add(src)
+    await db.flush()
+    return src
+
+
+@pytest.mark.asyncio
+async def test_merge_summer_league_union(db_session: AsyncSession) -> None:
+    """Merging two players who both hold Summer League data succeeds (#675).
+
+    Before the fix, none of the summer_league_* tables (nor draft_results /
+    player_affiliations) were registered with the merge service, so the final
+    DELETE players_master raised a ForeignKeyViolation.
+
+    Seeds both players with participation, game logs and shot events, plus
+    discard-side PBP references on all three person columns, a draft result,
+    an affiliation, a resolved source player, a resolution review, and
+    storylines on both subject columns. Asserts the merge completes, the
+    survivor holds the union, and no column still references the discard.
+    """
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep SL Player")
+        discard = await _player(db_session, "Discard SL Player")
+
+    async with db_session.begin_nested():
+        comp, team, game = await _sl_scaffold(db_session)
+        keep_src = await _sl_source_player(db_session, keep)
+        discard_src = await _sl_source_player(db_session, discard)
+
+        for player, src in ((keep, keep_src), (discard, discard_src)):
+            db_session.add(
+                SummerLeagueParticipation(
+                    competition_id=comp.id,
+                    team_entry_id=team.id,
+                    source_player_id=src.id,
+                    player_id=player.id,
+                )
+            )
+            db_session.add(
+                SummerLeaguePlayerGameLog(
+                    competition_id=comp.id,
+                    game_id=game.id,
+                    team_entry_id=team.id,
+                    source_player_id=src.id,
+                    player_id=player.id,
+                    nba_stats_person_id=src.nba_stats_person_id,
+                    raw_player_name=src.raw_player_name,
+                    pts=10,
+                )
+            )
+            db_session.add(
+                SummerLeagueShotEvent(
+                    game_id=game.id,
+                    competition_id=comp.id,
+                    team_entry_id=team.id,
+                    source_player_id=src.id,
+                    player_id=player.id,
+                    nba_stats_person_id=src.nba_stats_person_id,
+                    nba_stats_game_id=game.nba_stats_game_id,
+                    nba_stats_game_event_id=1 if player is keep else 2,
+                    made=True,
+                )
+            )
+
+        # Discard appears on each PBP person column (scorer / assist / block).
+        for event_num, person_col in (
+            (1, "person1_id"),
+            (2, "person2_id"),
+            (3, "person3_id"),
+        ):
+            db_session.add(
+                SummerLeaguePlayByPlayEvent(
+                    game_id=game.id,
+                    competition_id=comp.id,
+                    nba_stats_game_id=game.nba_stats_game_id,
+                    event_num=event_num,
+                    **{person_col: discard.id},
+                )
+            )
+
+        db_session.add(
+            DraftResult(
+                draft_year=2026,
+                overall_pick=59,
+                round=2,
+                round_pick=29,
+                player_id=discard.id,
+                raw_player_name=discard.display_name or "Discard SL Player",
+            )
+        )
+        db_session.add(
+            PlayerAffiliation(
+                player_id=discard.id,
+                affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
+                source="test_seed",
+            )
+        )
+        db_session.add(
+            SummerLeaguePlayerResolutionReview(
+                source_player_id=discard_src.id,
+                raw_player_name=discard_src.raw_player_name,
+                nba_stats_person_id=discard_src.nba_stats_person_id,
+                selected_player_id=discard.id,
+            )
+        )
+        db_session.add(
+            SummerLeagueDeskStoryline(
+                game_date=game.game_date,
+                competition_id=comp.id,
+                game_id=game.id,
+                trigger_type=SummerLeagueDeskTriggerType.STREAK,
+                subject_player_id=discard.id,
+                base_weight=1.0,
+                magnitude=1.0,
+                weight=1.0,
+            )
+        )
+        db_session.add(
+            SummerLeagueDeskStoryline(
+                game_date=game.game_date,
+                competition_id=comp.id,
+                game_id=game.id,
+                trigger_type=SummerLeagueDeskTriggerType.DUEL,
+                subject_player_id=keep.id,
+                subject_player_id_2=discard.id,
+                base_weight=1.0,
+                magnitude=1.0,
+                weight=1.0,
+            )
+        )
+        await db_session.flush()
+
+    async with db_session.begin_nested():
+        report = await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    # Discard row must be gone (this DELETE is what used to FK-fail).
+    gone = (
+        await db_session.execute(
+            select(PlayerMaster).where(PlayerMaster.id == discard.id)  # type: ignore[arg-type]
+        )
+    ).scalar_one_or_none()
+    assert gone is None, "Discard player row must be deleted"
+
+    # No column may still reference the discard.
+    for table, col in [
+        ("draft_results", "player_id"),
+        ("player_affiliations", "player_id"),
+        ("summer_league_participation", "player_id"),
+        ("summer_league_player_game_logs", "player_id"),
+        ("summer_league_shot_events", "player_id"),
+        ("summer_league_source_players", "canonical_player_id"),
+        ("summer_league_player_resolution_reviews", "selected_player_id"),
+        ("summer_league_play_by_play_events", "person1_id"),
+        ("summer_league_play_by_play_events", "person2_id"),
+        ("summer_league_play_by_play_events", "person3_id"),
+        ("summer_league_desk_storylines", "subject_player_id"),
+        ("summer_league_desk_storylines", "subject_player_id_2"),
+    ]:
+        orphan_count = (
+            await db_session.execute(
+                text(f"SELECT count(*) FROM {table} WHERE {col} = :discard_id"),
+                {"discard_id": discard.id},
+            )
+        ).scalar()
+        assert orphan_count == 0, (
+            f"Orphaned FK in {table}.{col} for discard_id={discard.id}"
+        )
+
+    # Survivor holds the union: both game logs, both shot events, both
+    # participation rows, and every discard-side reference now points at keep.
+    for table, col, expected in [
+        ("summer_league_participation", "player_id", 2),
+        ("summer_league_player_game_logs", "player_id", 2),
+        ("summer_league_shot_events", "player_id", 2),
+        ("summer_league_source_players", "canonical_player_id", 2),
+        ("summer_league_play_by_play_events", "person1_id", 1),
+        ("summer_league_play_by_play_events", "person2_id", 1),
+        ("summer_league_play_by_play_events", "person3_id", 1),
+        ("draft_results", "player_id", 1),
+        ("player_affiliations", "player_id", 1),
+        ("summer_league_player_resolution_reviews", "selected_player_id", 1),
+        ("summer_league_desk_storylines", "subject_player_id", 2),
+        ("summer_league_desk_storylines", "subject_player_id_2", 1),
+    ]:
+        keep_count = (
+            await db_session.execute(
+                text(f"SELECT count(*) FROM {table} WHERE {col} = :keep_id"),
+                {"keep_id": keep.id},
+            )
+        ).scalar()
+        assert keep_count == expected, (
+            f"Survivor should hold {expected} rows in {table}.{col}, got {keep_count}"
+        )
+
+    # Report reflects the reassignments.
+    assert (
+        report.per_table["summer_league_player_game_logs.player_id"]["reassigned"] == 1
+    )
+    assert (
+        report.per_table["summer_league_play_by_play_events.person2_id"]["reassigned"]
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+async def test_merge_desk_grades_conflict(db_session: AsyncSession) -> None:
+    """Desk grade rows collide on (competition_id, baseline_version) (#675).
+
+    uq_summer_league_desk_player_grades_player_competition_version includes
+    player_id, so when both players are graded in the same competition and
+    baseline the discard's row must be dropped rather than reassigned; a
+    discard-only grade under a different baseline_version is reassigned.
+    """
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Graded Player")
+        discard = await _player(db_session, "Discard Graded Player")
+
+    async with db_session.begin_nested():
+        comp, _team, _game = await _sl_scaffold(db_session)
+
+        def _grade(
+            player_id: int, version: str, pctl: float
+        ) -> SummerLeagueDeskPlayerGrade:
+            return SummerLeagueDeskPlayerGrade(
+                player_id=player_id,
+                competition_id=comp.id,
+                baseline_version=version,
+                cohort_key="all",
+                subject_value=10.0,
+                pctl=pctl,
+                grade=SummerLeagueDeskGrade.WARM,
+            )
+
+        # Same competition + baseline for both players — unique conflict.
+        db_session.add(_grade(keep.id, "v1", 80.0))
+        db_session.add(_grade(discard.id, "v1", 40.0))
+        # Discard-only baseline — reassigned.
+        db_session.add(_grade(discard.id, "v2", 55.0))
+        await db_session.flush()
+
+    async with db_session.begin_nested():
+        report = await merge_players(
+            db_session,
+            keep_id=keep.id,  # type: ignore[arg-type]
+            discard_id=discard.id,  # type: ignore[arg-type]
+        )
+
+    # No grade rows left for the discard.
+    orphans = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM summer_league_desk_player_grades "
+                "WHERE player_id = :pid"
+            ),
+            {"pid": discard.id},
+        )
+    ).scalar()
+    assert orphans == 0
+
+    # Survivor keeps its own v1 grade (pctl 80, not the discard's 40) and
+    # gains the discard's v2 grade.
+    rows = (
+        await db_session.execute(
+            text(
+                "SELECT baseline_version, pctl "
+                "FROM summer_league_desk_player_grades "
+                "WHERE player_id = :pid ORDER BY baseline_version"
+            ),
+            {"pid": keep.id},
+        )
+    ).all()
+    assert [(r[0], r[1]) for r in rows] == [("v1", 80.0), ("v2", 55.0)]
+
+    tbl = report.per_table["summer_league_desk_player_grades.player_id"]
+    assert tbl["deleted_conflict"] == 1
+    assert tbl["reassigned"] == 1
+
+
+@pytest.mark.asyncio
+async def test_preview_merge_reports_summer_league_tables(
+    db_session: AsyncSession,
+) -> None:
+    """preview_merge reports non-zero counts for the #675 tables, without writes."""
+    async with db_session.begin_nested():
+        keep = await _player(db_session, "Keep Preview Player")
+        discard = await _player(db_session, "Discard Preview Player")
+
+    async with db_session.begin_nested():
+        comp, team, game = await _sl_scaffold(db_session)
+        discard_src = await _sl_source_player(db_session, discard)
+        db_session.add(
+            SummerLeagueParticipation(
+                competition_id=comp.id,
+                team_entry_id=team.id,
+                source_player_id=discard_src.id,
+                player_id=discard.id,
+            )
+        )
+        db_session.add(
+            SummerLeaguePlayerGameLog(
+                competition_id=comp.id,
+                game_id=game.id,
+                team_entry_id=team.id,
+                source_player_id=discard_src.id,
+                player_id=discard.id,
+                nba_stats_person_id=discard_src.nba_stats_person_id,
+                raw_player_name=discard_src.raw_player_name,
+            )
+        )
+        db_session.add(
+            DraftResult(
+                draft_year=2026,
+                overall_pick=60,
+                round=2,
+                round_pick=30,
+                player_id=discard.id,
+                raw_player_name=discard.display_name or "Discard Preview Player",
+            )
+        )
+        await db_session.flush()
+
+    preview = await preview_merge(
+        db_session,
+        keep_id=keep.id,  # type: ignore[arg-type]
+        discard_id=discard.id,  # type: ignore[arg-type]
+    )
+
+    for key in (
+        "summer_league_participation.player_id",
+        "summer_league_player_game_logs.player_id",
+        "summer_league_source_players.canonical_player_id",
+        "draft_results.player_id",
+    ):
+        assert preview.per_table.get(key, {}).get("reassigned", 0) == 1, (
+            f"preview_merge must report the pending reassignment for {key}"
+        )
+
+    # Dry run: the discard player and its rows are untouched.
+    still_there = (
+        await db_session.execute(
+            select(PlayerMaster).where(PlayerMaster.id == discard.id)  # type: ignore[arg-type]
+        )
+    ).scalar_one_or_none()
+    assert still_there is not None, "preview_merge must not delete the discard player"
+    discard_logs = (
+        await db_session.execute(
+            text(
+                "SELECT count(*) FROM summer_league_player_game_logs "
+                "WHERE player_id = :pid"
+            ),
+            {"pid": discard.id},
+        )
+    ).scalar()
+    assert discard_logs == 1, "preview_merge must not reassign rows"

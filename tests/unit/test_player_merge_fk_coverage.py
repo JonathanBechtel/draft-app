@@ -49,30 +49,11 @@ _SPEC_TABLE_ALIASES = {"source_analytics_outlier": "source_analytics"}
 # fails the build, and classifying one of these without removing it here also fails — so the
 # list cannot quietly go stale in either direction.
 #
-# Every entry below is a live merge bug today: merging a player holding any of this data hits
-# a RESTRICT FK. Fixing them means deciding reassign-vs-cascade per edge and, for the
-# reassignment cases, working out the uniqueness/conflict columns — real merge behavior that
-# belongs with integration tests against representative data, not folded into a guardrail.
-_PENDING_CLASSIFICATION: frozenset[tuple[str, str]] = frozenset(
-    {
-        # Canonical assertions about the player — almost certainly reassign.
-        ("draft_results", "player_id"),
-        ("player_affiliations", "player_id"),
-        ("summer_league_participation", "player_id"),
-        ("summer_league_player_game_logs", "player_id"),
-        ("summer_league_shot_events", "player_id"),
-        ("summer_league_play_by_play_events", "person1_id"),
-        ("summer_league_play_by_play_events", "person2_id"),
-        ("summer_league_play_by_play_events", "person3_id"),
-        ("summer_league_source_players", "canonical_player_id"),
-        ("summer_league_player_resolution_reviews", "selected_player_id"),
-        # Desk projections — regenerable, so cascade is plausible, but that needs a
-        # migration to change the FK rather than a merge-service registration.
-        ("summer_league_desk_player_grades", "player_id"),
-        ("summer_league_desk_storylines", "subject_player_id"),
-        ("summer_league_desk_storylines", "subject_player_id_2"),
-    }
-)
+# Emptied by #675: all thirteen pending edges were classified as reassignments
+# (the Desk projections deliberately so — see the PR rationale — keeping the fix
+# migration-free). Keep this frozenset so any future FK that arrives unclassified
+# fails the build rather than reviving the drift.
+_PENDING_CLASSIFICATION: frozenset[tuple[str, str]] = frozenset()
 
 
 def _registered_columns() -> set[tuple[str, str]]:
