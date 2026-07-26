@@ -128,7 +128,11 @@ def _line_deltas(against: str) -> dict[str, tuple[int, int]]:
     # path column, which would not key back to the path --name-status reported. Under -z
     # a rename record leaves the path field empty and emits old then new as their own
     # NUL-terminated tokens.
-    raw = _git("diff", "-M", "-C", "--numstat", "-z", against, "--", "app")
+    #
+    # Deliberately unscoped: a `-- app` pathspec would hide the *source* half of a file
+    # moved into app/ from elsewhere (e.g. scripts/ -> app/cli/), so git could not pair
+    # it and the move would read as a brand-new oversized file. Callers filter to app/.
+    raw = _git("diff", "-M", "-C", "--numstat", "-z", against)
     tokens = raw.split("\0")
 
     deltas: dict[str, tuple[int, int]] = {}
@@ -180,10 +184,11 @@ def collect_changes(against: str) -> list[FileChange]:
     # Always measure from where this branch diverged, never from the base branch's tip.
     base = _merge_base(against)
 
-    # Scope with a plain directory pathspec and filter extensions in Python: git's
-    # default pathspec globbing does not treat `/` specially, so `app/*.py` would
-    # silently match nested paths too.
-    raw = _git("diff", "-M", "-C", "--name-status", base, "--", "app")
+    # Diff the whole tree and filter in Python. Scoping git itself to `app` would strip
+    # the source side of a cross-directory move (scripts/ -> app/cli/), leaving an
+    # unpaired add that reads as a new oversized file. Filtering here also sidesteps
+    # git's pathspec globbing, which does not treat `/` specially.
+    raw = _git("diff", "-M", "-C", "--name-status", base)
     deltas = _line_deltas(base)
 
     changes: list[FileChange] = []
@@ -200,7 +205,7 @@ def collect_changes(against: str) -> list[FileChange]:
             else fields[1]
         )
 
-        if not new_path.endswith(".py"):
+        if not new_path.endswith(".py") or not new_path.startswith("app/"):
             continue
 
         # Recover the old size arithmetically rather than fetching the old blob:

@@ -8,7 +8,7 @@ storyline/grade recompute. Two different things happen at two different times,
 and this module is careful never to conflate them:
 
 * **Content** (hero copy, slate weights, grades, commentary prose) is whatever the
-  last hourly tick (`scripts/sl_desk_tick.py`, #516/#523) wrote to T2
+  last hourly tick (`app/cli/sl_desk_tick.py`, #516/#523) wrote to T2
   (`summer_league_desk_player_grades`) / T4 (`summer_league_desk_slate`). This can
   legitimately lag by up to an hour — that's what the `freshness` stamp on the
   payload communicates.
@@ -2339,7 +2339,7 @@ class DeskRenderVariant:
     this module can't import that one at module scope without a circular
     import (`render_snapshots.py` imports `DeskView` from here), so the
     conversion to `RenderSnapshotWrite` happens in the caller
-    (`scripts/sl_desk_tick.py`), which already imports both freely.
+    (`app/cli/sl_desk_tick.py`), which already imports both freely.
     """
 
     daily_state: EventDailyState
@@ -2358,7 +2358,7 @@ async def build_desk_render_variants(
     """Build the COMPLETE Preview/Live/Recap x Tracker cohort/stat-view variant matrix.
 
     Called as the FINAL step of the Summer League Desk's hourly tick
-    (`scripts/sl_desk_tick.py::run_desk_tick`, launch-readiness item 10),
+    (`app/cli/sl_desk_tick.py::run_desk_tick`, launch-readiness item 10),
     only after every required upstream step (scoreboard/live-refresh/
     normalize/grades/storylines/commentary/`event_desk_state` freshness) has
     genuinely succeeded -- the caller wraps the whole tick in one transaction

@@ -499,7 +499,7 @@ def scrape_letters(
     extra_slugs: Optional[Iterable[str]] = None,
 ) -> List[Dict[str, object]]:
     client = _client(timeout=timeout)
-    cache_dir = Path("scraper/cache")
+    cache_dir = Path("data/scraper-cache")
     player_cache_dir = cache_dir / "players"
     rows_out: List[Dict[str, object]] = []
     seen_slugs: Set[str] = set()
@@ -685,7 +685,10 @@ def main() -> None:
         "--all", dest="all_letters", action="store_true", help="Scrape all letters a-z"
     )
     parser.add_argument(
-        "--out-dir", type=str, default="scraper/output", help="Output directory for CSV"
+        "--out-dir",
+        type=str,
+        default="data/scraper-output",
+        help="Output directory for CSV",
     )
     parser.add_argument(
         "--throttle", type=float, default=3.0, help="Seconds to sleep between requests"

@@ -289,7 +289,7 @@ identifies as a root cause of confident local changes producing distant defects.
 | File | Lines |
 |---|---|
 | `app/services/summer_league/desk_read.py` | ~2,623 |
-| `scripts/sl_desk_tick.py` | ~1,439 |
+| `app/cli/sl_desk_tick.py` | ~1,439 |
 | `app/services/summer_league/desk_storylines.py` | ~1,358 |
 | `app/services/summer_league/desk_commentary.py` | ~916 |
 | `app/services/summer_league/desk_facts.py` | ~727 |

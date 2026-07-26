@@ -122,8 +122,8 @@ upsert (``grade_players_bulk``, ``compute_desk_storylines``,
 over the same data updates rows in place rather than duplicating them.
 
 Run:
-  scripts/with-db-env.sh conda run -n draftguru python scripts/sl_desk_tick.py
-  scripts/with-db-env.sh conda run -n draftguru python scripts/sl_desk_tick.py \
+  scripts/with-db-env.sh conda run -n draftguru python -m app.cli.sl_desk_tick
+  scripts/with-db-env.sh conda run -n draftguru python -m app.cli.sl_desk_tick \
       --raw-root data/raw/nba_stats/summer_league
 """
 

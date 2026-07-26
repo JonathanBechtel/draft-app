@@ -1,7 +1,7 @@
 """Ingest Draft Combine CSVs (anthro, agility, shooting) into the database.
 
 Usage:
-  python scripts/ingest_combine.py --out-dir scraper/output [--season 2024-25] [--source anthro|agility|shooting|all]
+  python scripts/ingest_combine.py --out-dir data/scraper-output [--season 2024-25] [--source anthro|agility|shooting|all]
 
 Notes:
   - Uses app.utils.db_async for async engine/session.
@@ -627,7 +627,7 @@ def main() -> None:
     parser.add_argument(
         "--out-dir",
         type=str,
-        default="scraper/output",
+        default="data/scraper-output",
         help="Directory containing CSVs",
     )
     parser.add_argument(

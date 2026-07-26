@@ -33,7 +33,7 @@ This demonstrates that the apparent hour-long Desk runtime is primarily lock wai
 
 - `app/cli/summer_league_ingest_runner.py`: `backfill_summer_league_backbone`, `normalize_shot_events`, and `normalize_pbp_events` share one `db.begin()` block and one advisory-lock lifetime.
 - `app/services/summer_league/normalization.py`: shot normalization resolves/upserts a source player and flushes for each event; PBP normalization similarly resolves actors and upserts per event.
-- `scripts/sl_desk_tick.py`: the higher-priority Desk uses a blocking advisory-lock acquisition with no bounded wait.
+- `app/cli/sl_desk_tick.py`: the higher-priority Desk uses a blocking advisory-lock acquisition with no bounded wait.
 - `.github/workflows/fly-deploy-prod.yml`: a failed wait for the Desk machine to stop leaves it on an older image, with only a warning and no later reconciliation.
 
 ## Desired architecture

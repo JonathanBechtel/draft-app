@@ -21,7 +21,7 @@ run:
 #   make scrape OUT=outdir    # custom output directory
 PYTHON ?= python
 SOURCE ?= all
-OUT ?= scraper/output
+OUT ?= data/scraper-output
 BBIO ?= $(shell ls -t $(OUT)/bbio_*.csv 2>/dev/null | head -n1)
 ARGS ?=
 scrape:
@@ -116,7 +116,7 @@ metrics:
 LETTERS ?=
 ALL ?=
 THROTTLE ?= 3
-CACHE ?= scraper/cache/players
+CACHE ?= data/scraper-cache/players
 FIX ?=
 FROM_INDEX_DIR ?=
 FROM_PLAYER_DIR ?=
@@ -162,6 +162,12 @@ lint.complexity:
 # and argued in the PR).
 lint.complexity.update:
 	python scripts/check_complexity_ratchet.py --update
+
+# app/cli (shipped runtime jobs) vs scripts/ (operator tooling) boundary.
+# Catches a Fly cron entrypoint pointed at scripts/, and any new app/ -> scripts/
+# import. See CLAUDE.md "Executable code lives in two places".
+lint.entrypoints:
+	python scripts/check_runtime_entrypoints.py
 
 fix:
 	ruff check --fix .

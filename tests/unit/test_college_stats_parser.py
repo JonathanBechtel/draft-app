@@ -10,7 +10,7 @@ import pytest
 
 from app.services.college_stats_service import parse_college_stats_html
 
-FIXTURE_PATH = Path("scrapers/bbref/player_page_example.html")
+FIXTURE_PATH = Path("tests/fixtures/scrapers/bbref/player_page_example.html")
 
 
 @pytest.fixture

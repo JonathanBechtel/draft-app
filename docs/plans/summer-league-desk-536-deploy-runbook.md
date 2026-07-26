@@ -128,7 +128,7 @@ flyctl machine run "$IMAGE" \
   --memory 1024 \
   --cpus 1 \
   --entrypoint "/app/.venv/bin/python" \
-  -- scripts/sl_desk_tick.py
+  -- -m app.cli.sl_desk_tick
 ```
 
 ### 1.4 Manual first tick — **[MUTATES INFRA: writes T2/T3/T4/event_desk_state on stage]**
@@ -209,7 +209,7 @@ flyctl machine run "$IMAGE" \
   --memory 1024 \
   --cpus 1 \
   --entrypoint "/app/.venv/bin/python" \
-  -- scripts/sl_desk_tick.py
+  -- -m app.cli.sl_desk_tick
 ```
 
 ### 2.4 Manual first tick on prod — **[MUTATES INFRA: writes T2/T3/T4/event_desk_state on prod]**

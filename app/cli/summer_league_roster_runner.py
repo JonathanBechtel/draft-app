@@ -100,8 +100,8 @@ FETCH_TIMEOUT_SECONDS = 30.0
 FETCH_DELAY_SECONDS = 0.5
 
 # Mirrors scripts/bbref_bio_scraper.py CLI defaults / output locations.
-BIO_OUT_DIR = Path("scraper/output")
-BIO_CACHE_DIR = Path("scraper/cache/players")
+BIO_OUT_DIR = Path("data/scraper-output")
+BIO_CACHE_DIR = Path("data/scraper-cache/players")
 BIO_SCRAPE_THROTTLE_SECONDS = 3.0
 BIO_SCRAPE_TIMEOUT_SECONDS = 30.0
 

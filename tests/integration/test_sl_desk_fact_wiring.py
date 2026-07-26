@@ -1,6 +1,6 @@
 """Integration tests for wiring all eight #520 fact detectors into Job B (#524).
 
-`scripts/sl_desk_tick.py`'s commentary step (#516) originally wired only
+`app/cli/sl_desk_tick.py`'s commentary step (#516) originally wired only
 ``detect_percentile`` -- the other seven detectors were implemented and
 unit-tested (#520) but never invoked because no ticket supplied their
 caller-fetched peer populations. `app/services/summer_league/desk_fact_queries.py`
@@ -47,7 +47,7 @@ from app.schemas.summer_league_desk import (
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league.nba_stats_client import NBAStatsClient
-from scripts.sl_desk_tick import run_desk_tick
+from app.cli.sl_desk_tick import run_desk_tick
 
 pytestmark = pytest.mark.asyncio
 

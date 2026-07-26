@@ -73,7 +73,7 @@ async def _materialize_desk_snapshots(db: AsyncSession, *, now: datetime) -> Non
 
     The `/` route reads a persisted render snapshot (`get_desk_view_from_snapshot`)
     and NEVER live-assembles, so a route render in a test must first materialize
-    snapshots exactly as `scripts/sl_desk_tick.py`'s step 7 does. Uses
+    snapshots exactly as `app/cli/sl_desk_tick.py`'s step 7 does. Uses
     `build_desk_render_variants` (T1-baseline-optional -- degrades gracefully)
     rather than the full `run_desk_tick` so a Tracker test that doesn't seed a
     baseline can still exercise the route. Commits, mirroring the tick's

@@ -62,7 +62,7 @@ Use these only when BRef lacks a field:
 2. **Scrape BRef index pages**
    - Iterate letters `a`–`z` (and `players/` special cases such as "_" for non-alphabetic surnames).
    - For each row, extract: slug, player name, position, birth year, debut/final season, college, active indicator (asterisk).
-   - Cache the raw HTML under `scraper/cache/players_{letter}.html` to aid debugging and keep re-runs deterministic.
+   - Cache the raw HTML under `data/scraper-cache/players_{letter}.html` to aid debugging and keep re-runs deterministic.
    - Throttle requests with `time.sleep(3)` (or higher) and send the documented user agent to comply with robots guidance.
    - Some players—especially recent draft picks or those who changed their last name—have slugs whose first letter no longer matches the index bucket (e.g., `artesro01` listed under "W"). The scraper now resolves URLs by slug instead of the letter, but if a player is missing entirely from the index you scraped, pass their slug via `EXTRA_SLUGS=slug1,slug2` (or `EXTRA_SLUGS_FILE=...`) so their player page is still fetched and exported.
 
@@ -87,7 +87,7 @@ Use these only when BRef lacks a field:
 ## Running the One-Time Ingestion
 
 - Activate the project environment (`conda activate draftguru`).
-- Execute the script in dry-run mode to verify parsing (`python scripts/ingest_player_bios.py --file <path/to/bbio.csv> --cache-dir scraper/cache/players --dry-run`).
+- Execute the script in dry-run mode to verify parsing (`python scripts/ingest_player_bios.py --file <path/to/bbio.csv> --cache-dir data/scraper-cache/players --dry-run`).
 - Inspect the generated cache files and logs; spot-check a few players against BRef manually.
 - Rerun without `--dry-run` to commit updates to the database. Provide command-line options for `--letters a,b,c`, `--player-id 123`, or `--slug lebronj01` so partial reruns are easy.
 - The `bio.ingest` make target automatically points to the newest `bbio_*.csv` in `OUT`; pass `BBIO=...` only when you need to ingest an older export.

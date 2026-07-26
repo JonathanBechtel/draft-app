@@ -11,7 +11,7 @@ Two modes:
   (or before promoting a build to production). Confirms the two
   build-time prerequisites the tick itself hard-depends on:
   this year's Summer League competition(s) are registered
-  (:func:`scripts.sl_desk_tick.resolve_target_competitions`'s fallback path
+  (:func:`app.cli.sl_desk_tick.resolve_target_competitions`'s fallback path
   reads exactly this), and Job A
   (``scripts/build_sl_cohort_baselines.py``) has produced an *active* T1
   baseline for every required grain -- event, debut, and game (the game
@@ -30,7 +30,7 @@ Two modes:
     preflight failure, but a mismatched ``schema_version`` on rows that *do*
     exist is.
 * ``post-tick`` — run **after** a deliberate, one-time manual tick
-  (``scripts/sl_desk_tick.py``) to confirm it actually took effect. The same
+  (``app/cli/sl_desk_tick.py``) to confirm it actually took effect. The same
   two build-time checks are re-verified (Job A must still be satisfied), plus
   two checks that only make sense once a tick has run:
 
@@ -216,7 +216,7 @@ async def _check_registration(
             status=ReadinessStatus.FAIL,
             message=(
                 f"No active 'events' row found for key={event_key!r} after a tick; "
-                "Job B (scripts/sl_desk_tick.py) should have synced this on its first run."
+                "Job B (app/cli/sl_desk_tick.py) should have synced this on its first run."
             ),
         )
     competition_ids = event.calendar_ref.get("competition_ids")

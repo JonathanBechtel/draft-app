@@ -49,11 +49,11 @@ The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, 
 
 ### Cron Machine (summer-league-desk-cron)
 
-- **Purpose**: Run the Summer League Desk hourly tick (`scripts/sl_desk_tick.py`):
+- **Purpose**: Run the Summer League Desk hourly tick (`app/cli/sl_desk_tick.py`):
   scoreboard ingest -> targeted live raw refresh -> normalize -> scoped metrics
   rebuild -> grades -> storylines -> commentary -> `event_desk_state` upsert.
 - **Resources**: 1 shared CPU, 1GB RAM
-- **Entrypoint**: `/app/.venv/bin/python scripts/sl_desk_tick.py`
+- **Entrypoint**: `/app/.venv/bin/python -m app.cli.sl_desk_tick`
 - **Region**: `ewr` (Newark)
 - **Writer priority**: the Desk takes a transaction-scoped PostgreSQL advisory lock
   before its pipeline starts. The full Summer League ingestion cron uses the same

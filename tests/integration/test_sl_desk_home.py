@@ -44,7 +44,7 @@ from app.services.event_desk.registry import sync_summer_league_event
 from app.services.summer_league.desk_read import _build_game_hero, get_desk_payload
 from app.services.summer_league.metrics import game_score_line
 from app.services.summer_league.nba_stats_client import NBAStatsClient
-from scripts.sl_desk_tick import run_desk_tick
+from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.perf._capture import count_queries
 from tests.integration.perf.budgets import DESK_HOME_QUERY_BUDGETS
 
