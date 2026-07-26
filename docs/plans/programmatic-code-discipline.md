@@ -182,6 +182,25 @@ Currently `[tool.ruff.lint]` only extends `D` (pydocstyle), so there is substant
 `per-file-ignores`, and require new code to pass. Also note `tests` and `alembic` are currently
 excluded from Ruff entirely — worth revisiting separately.
 
+**Amendment (shipped, Phase 0): `per-file-ignores` alone is not the ratchet.** Raised in review
+of PR #673 — a `per-file-ignores` entry silences a rule for the *whole file*, so once
+`desk_read.py` is baselined for `C901`, a brand-new complexity-15 function in that same file
+passes `ruff check` untouched. The baseline forgives exactly what it was meant to forgive and
+nothing stops the file getting worse.
+
+The shipped design keeps both mechanisms, because they cover different ground:
+
+| Mechanism | Covers | Blind to |
+|---|---|---|
+| `per-file-ignores` (pyproject) | quiet `ruff check` + editor diagnostics on known debt; a brand-new *file* still fails immediately | growth inside a baselined file |
+| `scripts/check_complexity_ratchet.py` + `complexity-baseline.json` | per-`(file, rule)` counts that may fall but never rise | swapping one violation for another at equal count |
+
+The script runs Ruff with `--isolated` so `per-file-ignores` cannot hide the findings from it.
+Counts, rather than the inline `# noqa` annotations the review suggested, because annotating
+all 265 findings would add a line per offending function across 94 files — many already over
+the file-size threshold, so the annotations would trip §1.4 and need their own waivers. A
+counts file keeps the debt out of the source entirely.
+
 ### 1.7 Migration safety
 
 **Failure:** incident #669 — a release migration's non-concurrent `CREATE INDEX` queued behind a
@@ -325,16 +344,29 @@ reflective reassignment would resurrect rows the cascade semantics intend to del
 supplies the *audit universe*; a human classifies each edge once, and the test enforces that the
 classification stays total.
 
-**Built, with two corrections from contact with the code** (`tests/unit/test_player_merge_fk_coverage.py`):
+**Shipped (Phase 0):** `tests/unit/test_player_merge_fk_coverage.py`, with one correction from
+contact with the code and one result worth recording.
 
-1. **There is a third class: *null-out*.** `source_analytics.biggest_outlier_player_id` is a
-   nullable back-reference the merge blanks rather than repoints, registered under a sentinel
-   spec name (`source_analytics_outlier`) that `_merge_child_table` special-cases. Reading the
-   FK graph against the reassignment list alone reports it as unclassified. A reflective test
-   has to know the sentinel mapping or it produces a false finding on day one.
-2. **Thirteen columns are unclassified today**, so the test ships with a shrink-only baseline
-   like every other guardrail here rather than as a red build. The drift 4.4 predicted is
-   real and now enumerated; closing it is a separate change.
+**The correction — there is a third class: *null-out*.**
+`source_analytics.biggest_outlier_player_id` is a nullable back-reference the merge blanks
+rather than repoints, registered under a sentinel spec name (`source_analytics_outlier`) that
+`_merge_child_table` special-cases. Reading the FK graph against the reassignment list alone
+reports it as unclassified. A reflective test has to know the sentinel mapping or it produces a
+false finding on day one.
+
+**The result — the rule confirmed the drift it predicted.** Of 36 FKs to `players_master`, 19
+were registered, 3 were `CASCADE`, and **13 were unclassified** — every one a live merge failure
+(`summer_league_*`, shot events, play-by-play, participation, `draft_results`,
+`player_affiliations`). They were itemized in a shrink-only `_KNOWN_UNCLASSIFIED` baseline, in
+the same shape as this repo's other guardrail ratchets: a *new* unclassified FK fails the build,
+and classifying one without removing its entry also fails, so the list cannot go stale in either
+direction. A third assertion catches the reverse drift — a registered spec whose FK no longer
+exists.
+
+**All 13 are now classified (#675) and the baseline is empty.** The rule earned its keep twice
+over: it found the drift, and the constraint analysis it prompted showed the repair was far
+smaller than feared — only one of the 13 tables has a unique constraint containing the player
+column, so the rest cannot collide on reassignment, and no migration was required.
 
 ### 3.4b Guard the hand-maintained lists the same way
 

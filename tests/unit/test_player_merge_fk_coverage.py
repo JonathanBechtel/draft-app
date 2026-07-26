@@ -27,14 +27,17 @@ enforces that the classification stays total. Every column with a foreign key to
 Deliberately **not** auto-derived: reflective reassignment would resurrect rows the cascade
 semantics intend to delete. Classification is a human decision recorded in code.
 
-The baseline
-------------
-Thirteen columns are unclassified today — the drift 4.4 describes, now enumerated instead of
-merely asserted. ``_KNOWN_UNCLASSIFIED`` is a ratchet in the same shape as the repo's other
-guardrail baselines (Ruff ``per-file-ignores``, import-linter ``ignore_imports``): a **new**
-FK fails immediately, and the list can only shrink. Fixing the underlying merge gap means
-registering those tables with conflict semantics per table, which is its own change — see
-backlog 4.3/4.4.
+The baseline — now empty
+------------------------
+This guard shipped with thirteen unclassified columns enumerated in
+``_KNOWN_UNCLASSIFIED``: a ratchet in the same shape as the repo's other guardrail baselines
+(Ruff ``per-file-ignores``, import-linter ``ignore_imports``), where a **new** FK fails
+immediately and the list can only shrink.
+
+**All thirteen have since been classified** (#675) — registered for reassignment in
+``player_merge_service``, so a merge no longer RESTRICT-fails on Summer League data. The
+baseline is kept as an empty frozenset rather than deleted, so the next FK that arrives
+unclassified fails against zero tolerance instead of quietly re-establishing a list.
 """
 
 from __future__ import annotations
@@ -62,25 +65,10 @@ _SENTINEL_TABLES: dict[str, tuple[str, str]] = {
 }
 
 # Columns with an FK to players_master that are neither registered for reassignment nor
-# declared CASCADE. This list may shrink, never grow. Each entry is a merge that will
-# RESTRICT-fail today if the discarded player holds rows in that table.
-_KNOWN_UNCLASSIFIED: frozenset[tuple[str, str]] = frozenset(
-    {
-        ("draft_results", "player_id"),
-        ("player_affiliations", "player_id"),
-        ("summer_league_desk_player_grades", "player_id"),
-        ("summer_league_desk_storylines", "subject_player_id"),
-        ("summer_league_desk_storylines", "subject_player_id_2"),
-        ("summer_league_participation", "player_id"),
-        ("summer_league_play_by_play_events", "person1_id"),
-        ("summer_league_play_by_play_events", "person2_id"),
-        ("summer_league_play_by_play_events", "person3_id"),
-        ("summer_league_player_game_logs", "player_id"),
-        ("summer_league_player_resolution_reviews", "selected_player_id"),
-        ("summer_league_shot_events", "player_id"),
-        ("summer_league_source_players", "canonical_player_id"),
-    }
-)
+# declared CASCADE. Empty since #675 classified the original thirteen, and it stays that way:
+# the stale-entry test below means an entry added here must be genuinely unclassified, and
+# the ratchet only ever shrinks.
+_KNOWN_UNCLASSIFIED: frozenset[tuple[str, str]] = frozenset()
 
 
 def _load_all_schemas() -> None:

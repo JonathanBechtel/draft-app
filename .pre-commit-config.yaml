@@ -27,6 +27,14 @@ repos:
         entry: python scripts/check_unscoped_delete.py
         language: system
         files: ^(app|scripts)/.*\.py$
+      - id: complexity-ratchet
+        name: Block complexity growth beyond the baseline
+        # Runs ruff --isolated so per-file-ignores cannot hide growth inside an
+        # already-baselined file. Needs the whole tree, not per-file arguments.
+        entry: python scripts/check_complexity_ratchet.py
+        language: system
+        pass_filenames: false
+        files: ^(app|scripts)/.*\.py$
       - id: file-size-ratchet
         name: Warn when a change grows an oversized app/ module
         # Warns only here so feedback lands while context is fresh; CI enforces the
