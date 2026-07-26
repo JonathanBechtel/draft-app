@@ -143,7 +143,7 @@ ROUTE_BUDGETS: dict[str, int] = {
     # completely different, cheaper read path — one facet query (year/venue
     # from current profiles only, skipping the 7 player/team facet reads
     # above), one list query, plus at most one detail lookup + one membership
-    # read + one venue-series trend read when requested — and is NOT
+    # read when requested — and is NOT
     # exercised by this generic harness: `representative_dataset` seeds no
     # `summer_league_environment_profiles` rows, so a competitions request
     # here would only ever measure the trivial empty-result path. It is

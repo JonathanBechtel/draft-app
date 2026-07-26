@@ -24,7 +24,6 @@ from app.services.summer_league_explorer_service import (
     _PLAYER_STAT_COLUMNS,
     _build_profile_view,
     _build_result,
-    _build_trend,
     _compute_player_values,
     _is_single_competition,
     _passes_coverage_filter,
@@ -540,11 +539,11 @@ def _profile(**overrides: object) -> SummerLeagueEnvironmentProfile:
 
 
 def test_parse_query_competitions_defaults() -> None:
-    """subject=competitions defaults to season scope, coverage=all, sort=year, min_gp=0."""
+    """Competitions defaults to season scope with no coverage requirements."""
     q = parse_query({"subject": "competitions"})
     assert q.subject == "competitions"
     assert q.profile_scope == "season"
-    assert q.coverage == "all"
+    assert q.coverage == ()
     assert q.sort == "year"
     assert q.min_games == 0
     assert q.competition_id is None
@@ -581,24 +580,27 @@ def test_parse_query_competitions_competition_id_clears_detail_year() -> None:
 
 
 def test_parse_query_competitions_invalid_profile_scope_and_coverage_degrade() -> None:
-    """Garbage profile_scope/coverage/trend_metric degrade to defaults, never raise."""
+    """Garbage profile_scope and coverage degrade to defaults, never raise."""
     q = parse_query(
         {
             "subject": "competitions",
             "profile_scope": "bogus",
             "coverage": "bogus",
-            "trend_metric": "not_a_metric",
         }
     )
     assert q.profile_scope == "season"
-    assert q.coverage == "all"
-    assert q.trend_metric is None
+    assert q.coverage == ()
 
 
-def test_parse_query_competitions_valid_trend_metric_accepted() -> None:
-    """A registered metric key is accepted verbatim as trend_metric."""
-    q = parse_query({"subject": "competitions", "trend_metric": "pace_per_48"})
-    assert q.trend_metric == "pace_per_48"
+def test_parse_query_competitions_combines_coverage_requirements() -> None:
+    """Comma-normalized repeated coverage values retain deterministic AND state."""
+    q = parse_query(
+        {
+            "subject": "competitions",
+            "coverage": "shot_complete,box_complete",
+        }
+    )
+    assert q.coverage == ("box_complete", "shot_complete")
 
 
 def test_parse_query_competitions_min_gp_explicit_zero_still_zero() -> None:
@@ -698,12 +700,9 @@ def test_parse_query_competitions_malformed_year_min_visible_year_max_preserved(
 def test_parse_query_competitions_implausible_year_min_is_clamped() -> None:
     """An absurd year_min is clamped to the plausible floor, never dropped.
 
-    _build_trend materializes one point per integer year in [year_min,
-    year_max], so an unbounded value like -100000000 would otherwise make it
-    allocate/iterate millions of TrendPoints before rendering (codex finding
-    on PR #656). Dropping the value to None would remove the lower bound
-    entirely and silently broaden the query — the exact anti-pattern #636
-    forbids — so it must be clamped, keeping the filter restrictive.
+    Dropping the value to None would remove the lower bound entirely and
+    silently broaden the query — the exact anti-pattern #636 forbids — so it
+    must be clamped, keeping the filter restrictive.
     """
     q = parse_query(
         {
@@ -748,12 +747,6 @@ def test_parse_query_competitions_malformed_competition_id_recorded() -> None:
     )
     assert q.competition_id is None
     assert any("xyz" in msg for msg in q.validation_errors)
-
-
-def test_parse_query_competitions_unknown_trend_metric_recorded() -> None:
-    q = parse_query({"subject": "competitions", "trend_metric": "not_a_metric"})
-    assert q.trend_metric is None
-    assert any("not_a_metric" in msg for msg in q.validation_errors)
 
 
 def test_parse_query_competitions_incomplete_predicate_recorded() -> None:
@@ -831,9 +824,9 @@ def test_passes_coverage_filter_box_complete() -> None:
     partial = _build_profile_view(
         _profile(final_games=20, box_complete_games=5), metrics_for_scope("season_all_competitions")
     )
-    assert _passes_coverage_filter(complete, "box_complete") is True
-    assert _passes_coverage_filter(partial, "box_complete") is False
-    assert _passes_coverage_filter(partial, "all") is True
+    assert _passes_coverage_filter(complete, ("box_complete",)) is True
+    assert _passes_coverage_filter(partial, ("box_complete",)) is False
+    assert _passes_coverage_filter(partial, ()) is True
 
 
 def test_passes_metric_filter_rejects_null_and_partial_values() -> None:
@@ -942,30 +935,6 @@ def test_sort_competition_views_nulls_last_both_directions() -> None:
 
     asc = _sort_competition_views(views, "pace_per_48", "asc", metric_by_key)
     assert [v.year for v in asc] == [2023, 2024, 2022]
-
-
-def test_build_trend_has_visible_gaps_for_uncertified_years() -> None:
-    """One point per surviving year; a non-complete year is a None gap, not a zero."""
-    from app.services.summer_league_environment_registry import metrics_for_scope
-
-    defs = metrics_for_scope("season_all_competitions")
-    definition = get_metric("pace_per_48")
-    covered = _build_profile_view(
-        _profile(scope_key="season:2024", year=2024, final_games=20, box_complete_games=20, pace_per_48=95.5),
-        defs,
-    )
-    uncovered = _build_profile_view(
-        _profile(scope_key="season:2023", year=2023, final_games=20, box_complete_games=0, pace_per_48=None),
-        defs,
-    )
-    trend = _build_trend(
-        "pace_per_48", definition, [uncovered, covered], scope_kind="season_all_competitions", venue_slug=None
-    )
-    assert [p.year for p in trend.points] == [2023, 2024]
-    assert trend.points[0].value is None
-    assert trend.points[0].coverage == "unavailable"
-    assert trend.points[1].value == 95.5
-    assert trend.points[1].coverage == "complete"
 
 
 def test_view_to_row_scales_ratio_metrics_for_display() -> None:

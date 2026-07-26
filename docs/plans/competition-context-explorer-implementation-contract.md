@@ -29,7 +29,7 @@ spoke. The audit must report, by year and competition:
 The audit produces `docs/plans/competition-context-explorer-coverage-audit.md` and a
 machine-readable CSV/JSON artifact from a repeatable read-only script. It does not change
 raw facts. Metrics remain in the schema even when the audit shows sparse history, but the
-report determines the honest trend range and which field-composition distributions can be
+report determines which metric and field-composition distributions can be
 published rather than silently inferred.
 
 ## 2. Scope and profile identity
@@ -192,7 +192,7 @@ deduplicated franchise. This mirrors how every other season-scope metric pools r
 totals rather than averaging or deduplicating across competitions (§2), and it is asserted in
 the registry's `distinct_teams` interpretation text so the decision cannot silently drift.
 
-## 6. URL, detail, trend, and export contract
+## 6. URL, detail, and export contract
 
 Do not overload the existing player `grain` parameter. Competition state uses:
 
@@ -202,8 +202,7 @@ profile_scope=season|competition
 year_min=<year>&year_max=<year>
 venue=<slug>
 min_gp=<int>
-coverage=all|box_complete|shot_complete|pbp_complete
-trend_metric=<registered metric key>
+coverage=box_complete&coverage=shot_complete&coverage=pbp_complete
 competition_id=<stable SummerLeagueCompetition.id>
 detail_year=<year>
 sort=<registered key>&dir=asc|desc&page=<int>
@@ -223,10 +222,8 @@ validation state and never broaden another scope parameter.
   inputs are removed rather than broadening the scope.
 - Invalid metric keys, ranges, or identifiers degrade to a visible validation/empty state
   and never silently broaden results.
-- Season trend has one point per surviving year and visible gaps.
-- Competition trend renders only after one venue/competition series is selected; the
-  unfiltered competition table prompts for a venue rather than combining unrelated
-  competitions into one line.
+- Repeated `coverage` values compose with AND semantics; omitting the parameter applies
+  no coverage requirement.
 - Competition list/detail CSV ships in v1 and includes stable scope identifiers, values,
   definitions/units, coverage counts/status, calculation version, and freshness. CSV and
   HTML use the same result contract.
@@ -288,8 +285,8 @@ it is never silently replaced by request-time aggregation.
 
 ## 9. Performance contract
 
-- `/stats/summer-league/explorer?subject=competitions`, including list, filtered trend,
-  and selected detail, stays at or below the existing 10-query route budget.
+- `/stats/summer-league/explorer?subject=competitions`, including list and selected
+  detail, stays at or below the existing 10-query route budget.
 - Competition requests load subject-specific facets only; they do not execute draft,
   country, position, or team facet queries intended for player results.
 - `partial=1` costs no more queries than the corresponding full render.
@@ -314,6 +311,6 @@ Integration and browser/visual verification must use a repeatable seed containin
 - resolved/unresolved players and known/unknown field attributes;
 - a stale prior profile and a failed replacement attempt that preserves it.
 
-The visual harness must capture season list/detail/trend, competition list/detail/trend,
+The visual harness must capture season list/detail, competition list/detail,
 partial coverage, empty/invalid, cross-subject strip, season/venue reuse, and desktop/mobile
 states from deterministic data rather than whichever records happen to exist locally.

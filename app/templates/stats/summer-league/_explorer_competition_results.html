@@ -1,4 +1,4 @@
-{# Competition Context results: scope note, row table, detail, and trend.
+{# Competition Context results: scope note, row table, and detail.
    Included by _explorer_results.html when subject == 'competitions'; renders
    standalone for ?partial=1 JS swaps. #}
 {% from "stats/summer-league/_explorer_competition_macros.html" import comp_qs, comp_cell, coverage_badge %}
@@ -45,12 +45,6 @@
   </p>
   {% endif %}
 
-  {# Competition scope with no venue selected: prompt before charting a trend
-     so unrelated venues are never blended into one line (contract §6). #}
-  {% if is_competition_scope and not q.venue and not detail and not result.competition_not_found %}
-  <p class="slg-comp-hint">Pick a venue or open a competition to chart a single-series trend. The table below still lists every competition edition.</p>
-  {% endif %}
-
   <p class="slg-explorer-count">
     {{ result.total }} {{ 'result' if result.total == 1 else 'results' }}
     {% if result.total > result.page_size %}
@@ -62,16 +56,18 @@
   </p>
 
   {# ── Column-density progressive disclosure (#644) ────────────────────────
-     Pure HTML/CSS checkbox: the "Show all metrics" control and the table are
+     Pure HTML/CSS checkbox: the metric-view toggle and the table are
      siblings, so `~` sibling-selector CSS reveals `[data-col-density="full"]`
      cells purely from `:checked` state — no JS required for the default
      curated view or for expanding to the full ~30-column matrix. CSV and the
      detail panel below always carry every metric regardless of this toggle
      (contract §6: nothing is removed from the export contract). #}
-  <input type="checkbox" id="comp-density-all" class="slg-comp-density-input">
+  <input type="checkbox" id="comp-density-all" class="slg-comp-density-input" aria-label="Use full metric view">
   <label for="comp-density-all" class="slg-comp-density-label">
-    <span class="slg-comp-density-label__off">Show all metrics</span>
-    <span class="slg-comp-density-label__on">Showing all metrics — hide extras</span>
+    <span class="slg-comp-density-label__title">Metric view</span>
+    <span class="slg-comp-density-label__option slg-comp-density-label__option--condensed">Condensed</span>
+    <span class="slg-comp-density-label__track" aria-hidden="true"><span class="slg-comp-density-label__thumb"></span></span>
+    <span class="slg-comp-density-label__option slg-comp-density-label__option--full">Full</span>
   </label>
 
   {# ── Row table ──────────────────────────────────────────────────────────── #}
@@ -119,7 +115,7 @@
             {%- if result.competition_not_found -%}
             The requested competition could not be found.
             {%- else -%}
-            No competition profiles match these filters.{% if q.coverage != 'all' or q.metric_filters %} Try relaxing coverage or stat thresholds.{% endif %}
+            No competition profiles match these filters.{% if q.coverage or q.metric_filters %} Try relaxing coverage or stat thresholds.{% endif %}
             {%- endif -%}
           </td></tr>
           {% endfor %}
@@ -139,8 +135,5 @@
   {% if detail %}
     {% include "stats/summer-league/_explorer_competition_detail.html" %}
   {% endif %}
-
-  {# ── Trend ──────────────────────────────────────────────────────────────── #}
-  {% include "stats/summer-league/_explorer_competition_trend.html" %}
 
 </div>

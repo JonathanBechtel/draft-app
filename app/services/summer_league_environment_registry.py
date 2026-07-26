@@ -68,35 +68,6 @@ class MetricUnit(str, Enum):
     COUNT = "count"  # a whole count
 
 
-# Short, human-facing unit label per ``MetricUnit`` — the single source of
-# truth reused by any surface (trend chart heading/description, axis/table
-# fallback) that needs a compact unit indicator next to a metric value,
-# distinct from ``MetricUnit.value`` (the raw enum name used inside the
-# definition dropdown's machine-oriented "Unit" row).
-_UNIT_DISPLAY_LABELS: dict["MetricUnit", str] = {
-    MetricUnit.RATIO: "%",
-    MetricUnit.POINTS: "pts",
-    MetricUnit.POSSESSIONS: "possessions",
-    MetricUnit.PACE: "pace/48",
-    MetricUnit.RATING: "per 100 poss",
-    MetricUnit.YEARS: "yrs",
-    MetricUnit.COUNT: "count",
-}
-
-
-def unit_label(unit: "MetricUnit") -> str:
-    """Short display unit for ``unit`` (e.g. ``"%"``, ``"pts"``, ``"yrs"``).
-
-    Args:
-        unit: A registry ``MetricUnit``.
-
-    Returns:
-        The compact human-facing unit string shared across every surface
-        that must expose a metric's unit next to its value.
-    """
-    return _UNIT_DISPLAY_LABELS[unit]
-
-
 class CoverageSource(str, Enum):
     """Input whose per-game coverage certifies a metric across a scope."""
 

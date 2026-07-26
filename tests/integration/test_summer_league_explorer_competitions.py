@@ -2,7 +2,7 @@
 
 Exercises the public route, server-rendered states, the ``?partial=1`` fragment,
 CSV parity, five-section detail, definitions/coverage/stale states, membership,
-trend/table parity, and empty/invalid handling — all against the deterministic
+and empty/invalid handling — all against the deterministic
 seed fixture (contract §10) rather than ambient developer data.
 """
 
@@ -60,7 +60,7 @@ async def test_other_subjects_have_no_competition_regression(app_client: AsyncCl
     """Existing subjects still render their own controls, not competition ones."""
     resp = await app_client.get(f"{EXPLORER}?subject=players")
     assert resp.status_code == 200
-    assert "slg-scope-toggle" not in resp.text  # competition-only control
+    assert 'name="profile_scope"' not in resp.text  # competition-only control
     assert "Draft class" in resp.text  # player control still present
 
 
@@ -79,6 +79,19 @@ async def test_season_scope_one_row_per_year(
     assert "Summer League seasons" in resp.text
     assert "2024 Summer League (all competitions)" in resp.text
     assert "2025 Summer League (all competitions)" in resp.text
+
+
+async def test_competition_scope_is_a_standard_dropdown(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Season/competition grain is presented as a regular filter field."""
+    await _seed(db_session)
+    resp = await app_client.get(f"{EXPLORER}?subject=competitions")
+    assert resp.status_code == 200
+    assert '<select id="ex-profile-scope" name="profile_scope">' in resp.text
+    assert '<option value="season" selected>Summer League seasons</option>' in resp.text
+    assert '<option value="competition" >Individual competitions</option>' in resp.text
+    assert "slg-scope-toggle" not in resp.text
 
 
 async def test_competition_scope_one_row_per_edition(
@@ -137,6 +150,22 @@ async def test_coverage_filter_shot_complete(
     labels = {r.label for r in result.rows}
     assert "2024 Las Vegas" in labels  # shot complete
     assert "2024 California Classic" not in labels  # box-only, shot missing
+
+
+async def test_coverage_filters_compose_with_and_semantics(
+    app_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Multiple checked sources require complete coverage for every source."""
+    await _seed(db_session)
+    resp = await app_client.get(
+        f"{EXPLORER}?subject=competitions&profile_scope=competition"
+        "&coverage=box_complete&coverage=shot_complete&coverage=pbp_complete"
+    )
+    assert resp.status_code == 200
+    assert "2024 Las Vegas" in resp.text
+    assert "2024 California Classic" not in resp.text
+    assert resp.text.count('name="coverage"') == 3
+    assert resp.text.count("checked") >= 3
 
 
 async def test_metric_threshold_filter_composes(
@@ -315,19 +344,6 @@ async def test_team_count_csv_includes_column(
     assert any(r and r[0] == "distinct_teams" for r in reader)  # in the definitions trailer
 
 
-async def test_team_count_selectable_as_trend_metric(
-    app_client: AsyncClient, db_session: AsyncSession
-) -> None:
-    """Team count can also chart as a trend series, consistent with every
-    other registry metric (contract §6: no parallel per-metric machinery)."""
-    await _seed(db_session)
-    resp = await app_client.get(
-        f"{EXPLORER}?subject=competitions&profile_scope=season&trend_metric=distinct_teams"
-    )
-    assert resp.status_code == 200
-    assert "Team Count" in resp.text
-
-
 # --------------------------------------------------------------------------- #
 # Detail — identity, five sections, membership, definitions, coverage
 # --------------------------------------------------------------------------- #
@@ -396,8 +412,8 @@ async def test_competition_id_canonicalizes_stale_venue_after_resolution(
     db_session: AsyncSession,
 ) -> None:
     """An inconsistent venue is cleared/corrected only after competition_id
-    resolves — never left in place to narrow the list away from (or blend the
-    trend series away from) the competition the link names (ticket #636)."""
+    resolves — never left in place to narrow the list away from the competition
+    the link names (ticket #636)."""
     refs = await _seed(db_session)
     cid = refs.competition_ids["cc2024"]  # california_classic, not las_vegas
     q = parse_query(
@@ -413,7 +429,7 @@ async def test_competition_id_canonicalizes_stale_venue_after_resolution(
     assert result.competition_detail is not None
     assert result.competition_detail.competition_id == cid
     assert result.competition_detail.venue_slug == "california_classic"
-    # Canonicalized in place: the list/trend downstream now agree with detail.
+    # Canonicalized in place: the list downstream now agrees with detail.
     assert q.venue == "california_classic"
     assert q.validation_errors
     labels = {r.label for r in result.rows}
@@ -666,152 +682,6 @@ async def test_leaders_unavailable_when_no_eligible_players(
 
 
 # --------------------------------------------------------------------------- #
-# Trend
-# --------------------------------------------------------------------------- #
-
-
-async def test_season_trend_one_point_per_year_with_gap(
-    db_session: AsyncSession,
-) -> None:
-    """Season trend has one point per surviving year; a partial year is a gap."""
-    await _seed(db_session)
-    q = parse_query(
-        {"subject": "competitions", "profile_scope": "season", "trend_metric": "pace_per_48"}
-    )
-    result = await run_explorer_query(db_session, q)
-    trend = result.competition_trend
-    assert trend is not None
-    by_year = {p.year: p for p in trend.points}
-    assert by_year[2023].value is None  # box-partial -> gap, never zero
-    assert by_year[2024].value is not None
-    assert by_year[2025].value is not None
-
-
-async def test_competition_trend_requires_venue(
-    db_session: AsyncSession,
-) -> None:
-    """The unfiltered competition table renders no trend (never blends venues)."""
-    await _seed(db_session)
-    q = parse_query({"subject": "competitions", "profile_scope": "competition"})
-    result = await run_explorer_query(db_session, q)
-    assert result.competition_trend is None
-
-
-async def test_competition_trend_single_venue_series(
-    db_session: AsyncSession,
-) -> None:
-    """A venue-scoped competition trend renders one series across its years."""
-    await _seed(db_session)
-    q = parse_query(
-        {
-            "subject": "competitions",
-            "profile_scope": "competition",
-            "venue": "las_vegas",
-            "trend_metric": "pace_per_48",
-        }
-    )
-    result = await run_explorer_query(db_session, q)
-    trend = result.competition_trend
-    assert trend is not None
-    assert trend.venue_slug == "las_vegas"
-    years = {p.year for p in trend.points}
-    assert years == {2023, 2024, 2025}
-
-
-async def test_trend_and_table_agree(
-    app_client: AsyncClient, db_session: AsyncSession
-) -> None:
-    """Rendered trend table values match the table cell values for the same metric."""
-    await _seed(db_session)
-    resp = await app_client.get(
-        f"{EXPLORER}?subject=competitions&profile_scope=season&trend_metric=offensive_rating"
-    )
-    assert resp.status_code == 200
-    # The offensive_rating value (104.9) must appear in BOTH the results-table
-    # cell and the trend data table — i.e. at least twice. A single occurrence
-    # would mean the trend failed to render the selected metric, which this
-    # test exists to catch (a bare substring check would pass on the table
-    # alone and silently miss a missing trend).
-    assert resp.text.count("104.9") >= 2
-
-
-async def test_trend_widened_range_shows_explicit_missing_year_gap(
-    db_session: AsyncSession,
-) -> None:
-    """A calendar year with no profile at all still gets an explicit point (#642).
-
-    The deterministic seed has season profiles for 2023-2025 only. Widening
-    the trend's year range to 2021-2025 must not omit 2021/2022 — each must
-    appear as its own gap point (``has_profile=False``) rather than letting
-    the chart connect 2023 straight through to whatever came before it.
-    """
-    await _seed(db_session)
-    q = parse_query(
-        {
-            "subject": "competitions",
-            "profile_scope": "season",
-            "trend_metric": "pace_per_48",
-            "year_min": "2021",
-            "year_max": "2025",
-        }
-    )
-    result = await run_explorer_query(db_session, q)
-    trend = result.competition_trend
-    assert trend is not None
-    years = [p.year for p in trend.points]
-    assert years == [2021, 2022, 2023, 2024, 2025]
-    by_year = {p.year: p for p in trend.points}
-    assert by_year[2021].value is None
-    assert by_year[2021].has_profile is False
-    assert by_year[2022].value is None
-    assert by_year[2022].has_profile is False
-    # 2023 is a genuinely different case: a profile exists, but the metric
-    # itself is box-partial -> null. Distinguish it from the missing years.
-    assert by_year[2023].has_profile is True
-    assert by_year[2023].value is None
-
-
-async def test_venue_trend_missing_year_is_a_gap_not_a_bridge(
-    db_session: AsyncSession,
-) -> None:
-    """A venue series with a gap year renders that year explicitly, isolated per venue."""
-    await _seed(db_session)
-    q = parse_query(
-        {
-            "subject": "competitions",
-            "profile_scope": "competition",
-            "venue": "las_vegas",
-            "trend_metric": "pace_per_48",
-            "year_min": "2020",
-            "year_max": "2025",
-        }
-    )
-    result = await run_explorer_query(db_session, q)
-    trend = result.competition_trend
-    assert trend is not None
-    assert trend.venue_slug == "las_vegas"
-    by_year = {p.year: p for p in trend.points}
-    for missing_year in (2020, 2021, 2022):
-        assert by_year[missing_year].has_profile is False
-        assert by_year[missing_year].value is None
-
-
-async def test_trend_chart_displays_the_metric_unit(
-    app_client: AsyncClient, db_session: AsyncSession
-) -> None:
-    """The trend heading, accessible SVG description, and table all show the unit."""
-    await _seed(db_session)
-    resp = await app_client.get(
-        f"{EXPLORER}?subject=competitions&profile_scope=season&trend_metric=three_fg_pct"
-    )
-    assert resp.status_code == 200
-    html = resp.text
-    # Ratio metrics display "%" as their unit everywhere the unit is shown.
-    assert "(%)" in html  # figcaption + table caption/header
-    assert 'in %' in html or "in % by year" in html  # accessible svg description
-
-
-# --------------------------------------------------------------------------- #
 # Partial / CSV parity
 # --------------------------------------------------------------------------- #
 
@@ -894,7 +764,6 @@ async def test_unknown_competition_id_no_detail(
     # no unfiltered "every competition" fallback.
     assert result.rows == []
     assert result.total == 0
-    assert result.competition_trend is None
 
 
 async def test_unknown_competition_id_html_shows_error_not_full_table(
@@ -963,13 +832,10 @@ async def test_unknown_competition_id_csv_has_no_rows_and_explains(
 async def test_html_render_within_query_budget(
     db_session: AsyncSession, app_client: AsyncClient, async_engine: AsyncEngine
 ) -> None:
-    """HTML list + detail + trend, and its partial, stay within the 10-query
+    """HTML list + detail, and its partial, stay within the 10-query
     ceiling (contract §9) — the HTML render costs the same as the CSV path."""
     await _seed(db_session)
-    full_url = (
-        f"{EXPLORER}?subject=competitions&profile_scope=season"
-        "&detail_year=2024&trend_metric=pace_per_48"
-    )
+    full_url = f"{EXPLORER}?subject=competitions&profile_scope=season&detail_year=2024"
     partial_url = full_url + "&partial=1"
     # Warm up caches so the measured render reflects steady state.
     assert (await app_client.get(full_url)).status_code == 200

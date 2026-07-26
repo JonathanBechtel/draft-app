@@ -86,12 +86,13 @@ leaderboard into a scouting conclusion.
 
 ### Required controls
 
-- **View:** Summer League seasons / Individual competitions.
-- **Year range:** enables an annual 2020–2025 table and trend chart in season view.
+- **Results by:** Summer League seasons / Individual competitions.
+- **Year range:** enables an annual 2020–2025 table in season view.
 - **Venue/competition:** available only in individual-competition view.
 - **Minimum completed games:** protects against early-event noise.
-- **Coverage:** all / box complete / shot-chart complete / PBP complete.
-- **Display:** table and one selected metric trend across the filtered year range.
+- **Coverage required:** independent box / shot-chart / PBP checkboxes that compose with
+  AND semantics; none selected means no coverage requirement.
+- **Display:** condensed/full metric table toggle.
 - **Metric thresholds:** pace, ORtg, 3PA share, 3P%, rim share, rim FG%, turnover rate,
   assisted-FG rate, score margin, team count, first-time share, drafted-entering-event
   share, lottery share, median age, and coverage—only when registry coverage certifies
@@ -136,9 +137,7 @@ feature feeds existing discovery rather than becoming a fifth isolated table.
    counts remain separately labeled—one player can appear at multiple venues.
 4. Each metric is independently nullable when its input coverage is incomplete. A missing
    shot-chart rate is not zero and does not invalidate box-derived pace or turnover rate.
-5. Trend charts render only consistently defined, sufficiently covered years; gaps remain
-   visible with an explanation.
-6. The exact metric formulas, coverage gates, field-composition semantics, stable URL
+5. The exact metric formulas, coverage gates, field-composition semantics, stable URL
    parameters, profile version publication, query ceilings, and operational refresh rules
    live in `docs/plans/competition-context-explorer-implementation-contract.md` and are
    shared by every ticket.

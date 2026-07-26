@@ -3,11 +3,13 @@
 Runs against a live server whose database is seeded with the deterministic
 Competition Context demo dataset (scripts/seed_competition_context_demo.py) so
 captures are reproducible, not dependent on ambient data. States covered
-(contract §10): season list/detail/trend, competition list/detail/trend,
+(contract §10): season list/detail, competition list/detail,
 partial/box-only coverage, stale, empty/invalid, and desktop/mobile.
 """
 
 from __future__ import annotations
+
+import re
 
 from playwright.sync_api import Page, expect
 
@@ -26,39 +28,32 @@ class TestCompetitionExplorerStructure:
         active = page.locator('.slg-subject-tab[aria-current="page"]')
         expect(active).to_have_text("Competitions")
 
-    def test_scope_toggle_switches_view(self, page: Page, goto) -> None:
-        """Switching to individual competitions renders competition rows."""
+    def test_scope_dropdown_switches_view(self, page: Page, goto) -> None:
+        """Selecting individual competitions renders competition rows."""
         goto(f"{EXPLORER}?subject=competitions")
         expect(page.locator(".slg-comp-scopenote")).to_contain_text("Summer League seasons")
-        # The radio is visually hidden (the label is the button), so click the
-        # label; the change handler navigates to the individual-competition view.
-        page.locator(".slg-scope-btn", has_text="Individual competitions").click()
+        page.locator("#ex-profile-scope").select_option("competition")
         page.wait_for_load_state("networkidle")
         expect(page.locator(".slg-comp-scopenote")).to_contain_text("Individual competitions")
 
     def test_open_season_detail_ajax(self, page: Page, goto) -> None:
         """Clicking a season row opens the five-section profile in place."""
         goto(f"{EXPLORER}?subject=competitions")
-        page.get_by_role("link", name="Open profile for 2024 Summer League (all competitions)").click()
+        page.locator(".slg-comp-open").first.click()
         detail = page.locator("#comp-detail")
         expect(detail).to_be_visible()
         expect(detail).to_contain_text("How it played")
         expect(detail).to_contain_text("Data confidence")
 
-    def test_trend_metric_switch(self, page: Page, goto) -> None:
-        """Changing the trend metric updates the trend caption without a reload."""
-        goto(f"{EXPLORER}?subject=competitions&detail_year=2024")
-        page.locator("#comp-trend-metric").select_option("offensive_rating")
-        page.wait_for_load_state("networkidle")
-        expect(page.locator(".slg-comp-trend__cap")).to_contain_text("Offensive Rating")
-
     def test_js_off_cold_load(self, browser, base_url) -> None:
-        """A shared detail URL renders complete with JavaScript disabled."""
+        """A shared detail URL renders its profile with JavaScript disabled."""
         context = browser.new_context(java_script_enabled=False)
         page = context.new_page()
-        page.goto(f"{base_url.rstrip('/')}{EXPLORER}?subject=competitions&detail_year=2024")
+        page.goto(f"{base_url.rstrip('/')}{EXPLORER}?subject=competitions")
+        detail_href = page.locator(".slg-comp-open").first.get_attribute("href")
+        assert detail_href is not None
+        page.goto(f"{base_url.rstrip('/')}{EXPLORER}{detail_href}")
         expect(page.locator("#comp-detail")).to_be_visible()
-        expect(page.locator(".slg-comp-trend__table")).to_be_visible()
         context.close()
 
     def test_js_off_default_columns_are_curated(self, browser, base_url) -> None:
@@ -90,15 +85,14 @@ class TestCompetitionExplorerStructure:
         context.close()
 
     def test_density_toggle_curates_then_expands_columns(self, page: Page, goto) -> None:
-        """Default view hides full-only metric columns; the "Show all metrics"
-        control reveals them without a page reload, and hides them again on
-        re-toggle (#644). The checkbox is accessibly hidden (clip technique,
-        like the existing scope-toggle radios) — a real user clicks the
-        visible label, which natively toggles the associated checkbox."""
+        """The condensed/full metric-view toggle changes column density."""
         goto(f"{EXPLORER}?subject=competitions")
         full_cells = page.locator('[data-col-density="full"]')
         expect(full_cells.first).to_be_hidden()
         label = page.locator('label[for="comp-density-all"]')
+        expect(label).to_contain_text("Metric view")
+        expect(label).to_contain_text("Condensed")
+        expect(label).to_contain_text("Full")
         label.click()
         expect(full_cells.first).to_be_visible()
         label.click()
@@ -141,8 +135,10 @@ class TestCompetitionExplorerScreenshots:
         goto(f"{EXPLORER}?subject=competitions")
         screenshot.capture_full_page("sl_competitions_season_list")
 
-    def test_season_detail_trend_desktop(self, page: Page, goto, screenshot) -> None:
-        goto(f"{EXPLORER}?subject=competitions&detail_year=2024&trend_metric=pace_per_48")
+    def test_season_detail_desktop(self, page: Page, goto, screenshot) -> None:
+        goto(f"{EXPLORER}?subject=competitions")
+        page.locator(".slg-comp-open").first.click()
+        page.wait_for_selector("#comp-detail")
         screenshot.capture_full_page("sl_competitions_season_detail")
 
     def test_competition_list_desktop(self, page: Page, goto, screenshot) -> None:
@@ -152,16 +148,16 @@ class TestCompetitionExplorerScreenshots:
     def test_competition_detail_partial(self, page: Page, goto, screenshot) -> None:
         """California Classic is box-only: rim metrics show unavailable, not zero."""
         goto(f"{EXPLORER}?subject=competitions&profile_scope=competition")
-        page.get_by_role("link", name="Open profile for 2024 California Classic").click()
+        page.get_by_role("link", name=re.compile("California Classic")).first.click()
         page.wait_for_selector("#comp-detail")
         screenshot.capture_full_page("sl_competitions_competition_detail_partial")
 
-    def test_competition_venue_trend(self, page: Page, goto, screenshot) -> None:
+    def test_competition_venue_filter(self, page: Page, goto, screenshot) -> None:
         goto(
             f"{EXPLORER}?subject=competitions&profile_scope=competition"
-            "&venue=las_vegas&trend_metric=pace_per_48"
+            "&venue=las_vegas"
         )
-        screenshot.capture_full_page("sl_competitions_venue_trend")
+        screenshot.capture_full_page("sl_competitions_venue_filter")
 
     def test_empty_state(self, page: Page, goto, screenshot) -> None:
         goto(f"{EXPLORER}?subject=competitions&year_min=2099")
@@ -174,7 +170,9 @@ class TestCompetitionExplorerScreenshots:
 
     def test_season_detail_mobile(self, page: Page, goto, screenshot) -> None:
         page.set_viewport_size(MOBILE)
-        goto(f"{EXPLORER}?subject=competitions&detail_year=2024")
+        goto(f"{EXPLORER}?subject=competitions")
+        page.locator(".slg-comp-open").first.click()
+        page.wait_for_selector("#comp-detail")
         screenshot.capture_full_page("sl_competitions_season_detail_mobile")
 
     def test_season_list_all_metrics_expanded_desktop(self, page: Page, goto, screenshot) -> None:

@@ -16,6 +16,10 @@
    intercepting clicks so it can't be focused/typed into. */
 .slg-filter--full { grid-column: 1 / -1; }
 .slg-add-filter-btn { font-size: 0.8rem; background: none; border: 1px solid var(--accent, #4aa8ff); border-radius: 3px; padding: 0.2rem 0.5rem; cursor: pointer; color: var(--accent, #4aa8ff); }
+.slg-coverage-options { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.slg-filter .slg-coverage-option { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0.65rem; border: 1px solid var(--color-slate-300, #cbd5e1); border-radius: 6px; background: #fff; color: var(--color-slate-700, #334155); cursor: pointer; }
+.slg-filter .slg-coverage-option:has(input:checked) { border-color: var(--color-accent-emerald, #10b981); background: var(--color-emerald-50, #ecfdf5); color: var(--color-slate-900, #0f172a); }
+.slg-filter .slg-coverage-option input { width: auto; margin: 0; padding: 0; accent-color: var(--color-accent-emerald, #10b981); }
 /* Mode segmented toggle (Per game / Per 36 / Per 100 / Totals) */
 .slg-filter--mode { grid-column: 1 / -1; }
 .slg-mode-toggle { display: inline-flex; flex-wrap: wrap; width: fit-content; border: 1px solid var(--color-slate-300, #cbd5e1); border-radius: 6px; overflow: hidden; }
