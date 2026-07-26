@@ -29,6 +29,7 @@ from app.services.player_merge_tables import (
     _CHILD_TABLES,
     _SIMILARITY_ANCHOR,
     _SIMILARITY_COMPARISON,
+    _SPEC_TABLE_ALIASES,
     _ChildTable,
 )
 
@@ -449,8 +450,9 @@ async def merge_players(
     unique-constraint conflicts (delete the discard's conflicting rows) and
     singletons (keep survivor's row), inserts an alias from the discard's
     display_name onto the survivor, and deletes the discard ``PlayerMaster``
-    row.  ``player_embeddings`` and ``pending_image_previews`` are dropped
-    automatically via ``ON DELETE CASCADE``.
+    row.  ``player_embeddings``, ``pending_image_previews`` and
+    ``summer_league_player_seasons`` are dropped automatically via
+    ``ON DELETE CASCADE``.
 
     The caller is responsible for wrapping this call in ``async with db.begin()``
     so that a mid-merge failure triggers a full rollback.
@@ -495,46 +497,15 @@ async def count_inbound_references(
         Dict mapping table.column label to row count (only non-zero entries
         are included).
     """
-    ref_specs: list[tuple[str, str, str]] = [
-        # (table, player_column, display_label)
-        ("player_aliases", "player_id", "player_aliases.player_id"),
-        ("player_lifecycle", "player_id", "player_lifecycle.player_id"),
-        ("player_status", "player_id", "player_status.player_id"),
-        ("player_content_mentions", "player_id", "player_content_mentions.player_id"),
-        ("player_college_stats", "player_id", "player_college_stats.player_id"),
-        ("player_external_ids", "player_id", "player_external_ids.player_id"),
-        ("player_bio_snapshots", "player_id", "player_bio_snapshots.player_id"),
-        ("player_metric_values", "player_id", "player_metric_values.player_id"),
-        ("combine_anthro", "player_id", "combine_anthro.player_id"),
-        ("combine_agility", "player_id", "combine_agility.player_id"),
-        ("combine_shooting_results", "player_id", "combine_shooting_results.player_id"),
-        ("big_board_consensus", "player_id", "big_board_consensus.player_id"),
-        ("board_entries", "player_id", "board_entries.player_id"),
-        ("news_items", "player_id", "news_items.player_id"),
-        ("podcast_episodes", "player_id", "podcast_episodes.player_id"),
-        ("player_image_assets", "player_id", "player_image_assets.player_id"),
-        (
-            "player_similarity",
-            "anchor_player_id",
-            "player_similarity.anchor_player_id",
-        ),
-        (
-            "player_similarity",
-            "comparison_player_id",
-            "player_similarity.comparison_player_id",
-        ),
-        (
-            "source_analytics",
-            "biggest_outlier_player_id",
-            "source_analytics.biggest_outlier_player_id",
-        ),
-    ]
-
+    # Derived from the classified merge specs so the safe-delete guard can
+    # never drift from the merge path again (#675): every reassignable
+    # (table, column) pair is by construction a non-CASCADE inbound FK.
     counts: dict[str, int] = {}
-    for table, col, label in ref_specs:
-        n = await _count_rows(db, table, col, player_id)
+    for spec in (*_CHILD_TABLES, _SIMILARITY_ANCHOR, _SIMILARITY_COMPARISON):
+        table = _SPEC_TABLE_ALIASES.get(spec.table, spec.table)
+        n = await _count_rows(db, table, spec.player_column, player_id)
         if n:
-            counts[label] = n
+            counts[f"{table}.{spec.player_column}"] = n
     return counts
 
 

@@ -112,6 +112,13 @@ _SIMILARITY_COMPARISON = _ChildTable(
     ("snapshot_id", "anchor_player_id", "dimension"),
 )
 
+# Synthetic spec names → real table, for specs the merge path special-cases
+# (the sentinel's table name is not a real table, so anything iterating the
+# specs against the database must map it back first).
+_SPEC_TABLE_ALIASES = {"source_analytics_outlier": "source_analytics"}
+
 # Tables that are ON DELETE CASCADE — they are automatically dropped when the
 # discard row is deleted, so we never reassign them.
-# player_embeddings, pending_image_previews
+# player_embeddings, pending_image_previews, summer_league_player_seasons
+# (SL player-season metric rows are a regenerable projection; the next metrics
+# rebuild recreates them under the surviving identity).

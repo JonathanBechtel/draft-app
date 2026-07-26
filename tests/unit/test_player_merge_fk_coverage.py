@@ -19,7 +19,8 @@ enforces that the classification stays total. Every column with a foreign key to
     Registered with the merge service, which repoints the row at the survivor.
 ``cascade``
     Declared ``ondelete="CASCADE"`` — rows that intentionally die with the discarded
-    identity (``player_embeddings``, ``pending_image_previews``).
+    identity (``player_embeddings``, ``pending_image_previews``,
+    ``summer_league_player_seasons`` — the last a regenerable metrics projection).
 ``null-out``
     A nullable back-reference the merge service blanks rather than repoints. Spelled with a
     sentinel spec name that ``_merge_child_table`` special-cases; see ``_SENTINEL_TABLES``.
