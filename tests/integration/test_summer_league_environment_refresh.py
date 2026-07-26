@@ -310,6 +310,7 @@ async def test_rollback_unknown_scope_key_raises(db_session: AsyncSession) -> No
 # --------------------------------------------------------------------------- #
 # Two-session concurrency (barrier-synchronized), both lock-acquisition orders
 # --------------------------------------------------------------------------- #
+@pytest.mark.committed_db
 async def test_concurrent_refresh_blocks_rollback(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],
@@ -375,6 +376,7 @@ async def test_concurrent_refresh_blocks_rollback(
     assert current is not None and current.version == 1
 
 
+@pytest.mark.committed_db
 async def test_concurrent_rollback_blocks_refresh(
     db_session: AsyncSession,
     session_factory: async_sessionmaker[AsyncSession],

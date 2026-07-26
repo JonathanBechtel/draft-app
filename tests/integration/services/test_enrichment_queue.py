@@ -43,6 +43,8 @@ from app.services.enrichment_queue_service import (
     enrichment_status,
 )
 
+pytestmark = pytest.mark.committed_db
+
 
 # ---------------------------------------------------------------------------
 # Schema-aware session factory fixture
