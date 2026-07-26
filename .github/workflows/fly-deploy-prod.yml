@@ -226,6 +226,7 @@ jobs:
           python scripts/reconcile_cron_image.py \
             --app draft-app-prod \
             --machine summer-league-desk-cron \
+            --command "-m app.cli.sl_desk_tick" \
             --wait-timeout-s 600 || \
             echo "::warning::Desk cron reconciliation retry did not land; the post-deploy verification step will fail the check if it is still drifted."
 
