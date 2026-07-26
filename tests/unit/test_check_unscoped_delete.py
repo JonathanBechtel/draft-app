@@ -267,6 +267,87 @@ class TestLegacyQueryDelete:
         )
         assert found == []
 
+    def test_stored_builder_is_flagged(self):
+        """`q = db.query(Model)` then `q.delete()` is the same wipe, stored first."""
+        found = _violations(
+            """
+            def wipe(db):
+                q = db.query(PlayerSeason)
+                q.delete()
+            """
+        )
+        assert len(found) == 1
+
+    def test_conditionally_filtered_builder_is_flagged(self):
+        """A rebinding that only narrows on some paths must not launder the wipe.
+
+        Same fail-closed stance as the `delete(Model)` builder form: proving the
+        narrowing unconditional needs control-flow analysis, so the checker doesn't try.
+        """
+        found = _violations(
+            """
+            def wipe(db, scope):
+                q = db.query(PlayerSeason)
+                if scope:
+                    q = q.filter(PlayerSeason.player_id.in_(scope))
+                q.delete()
+            """
+        )
+        assert len(found) == 1
+
+    def test_builder_assigned_from_filtered_chain_passes(self):
+        """A builder born scoped (`db.query(A).filter(...)`) is not the construct."""
+        found = _violations(
+            """
+            def trim(db, pid):
+                q = db.query(PlayerSeason).filter(PlayerSeason.player_id == pid)
+                q.delete()
+            """
+        )
+        assert found == []
+
+    def test_waiver_covers_stored_builder(self):
+        """The escape hatch works at the delete site, where the argument is reviewed."""
+        found = _violations(
+            """
+            def reset(db):
+                q = db.query(PlayerSeason)
+                # discipline: unscoped-delete test fixture, table is scratch
+                q.delete()
+            """
+        )
+        assert found == []
+
+    def test_sibling_function_names_do_not_taint_each_other(self):
+        """An unscoped `q` in one function must not flag a born-scoped `q` elsewhere."""
+        found = _violations(
+            """
+            def build(db):
+                q = db.query(PlayerSeason)
+                return q
+
+            def trim(db, pid):
+                q = db.query(PlayerSeason).filter(PlayerSeason.player_id == pid)
+                q.delete()
+            """
+        )
+        assert found == []
+
+    def test_closure_over_outer_builder_is_still_flagged(self):
+        """A nested function deleting an outer scope's unscoped builder is the same wipe."""
+        found = _violations(
+            """
+            def outer(db):
+                q = db.query(PlayerSeason)
+
+                def wipe():
+                    q.delete()
+
+                return wipe
+            """
+        )
+        assert len(found) == 1
+
 
 class TestAllowsScopedAndWaivedDeletes:
     """Legitimate forms must stay silent, or the rule trains people to bypass it."""
