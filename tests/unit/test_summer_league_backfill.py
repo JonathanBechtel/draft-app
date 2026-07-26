@@ -287,3 +287,45 @@ async def test_backfill_stops_after_audit_failures_without_force(
     assert report.player_logs is None
     assert called_competition is False
     assert report.warnings
+
+
+@pytest.mark.asyncio
+async def test_missing_raw_manifests_error_names_the_pipeline_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Skipping the raw fetch must fail with actionable ordering guidance.
+
+    Backfill is stage 3 of a five-stage pipeline and reads manifests the raw fetch wrote to
+    disk; it cannot produce them itself. The error previously stated only that manifests
+    were missing, which does not tell an operator whether they skipped stage 1 or simply
+    pointed --raw-root at the wrong directory. Both remedies must appear.
+    """
+
+    async def fake_audit(_db: object, **_kwargs: Any) -> SummerLeagueAuditReport:
+        return SummerLeagueAuditReport(raw_root=Path("raw"), runs=())
+
+    monkeypatch.setattr(backfill, "audit_summer_league_raw", fake_audit)
+
+    with pytest.raises(ValueError) as excinfo:
+        await backfill.backfill_summer_league_backbone(
+            FakeSession(),  # type: ignore[arg-type]
+            backfill.SummerLeagueBackfillOptions(
+                year=2024,
+                league_id="15",
+                raw_root=Path("raw"),
+            ),
+        )
+
+    message = str(excinfo.value)
+    assert "No Summer League raw manifests found" in message
+    # The ordered pipeline, so a skipped stage 1 is obvious.
+    for stage in (
+        "fetch_summer_league_raw.py",
+        "audit_summer_league_raw.py",
+        "normalize_summer_league.py",
+        "rebuild_sl_metrics.py",
+    ):
+        assert stage in message, f"missing {stage} from the ordering guidance"
+    # The scope actually searched, so a wrong path is not misdiagnosed as a missing fetch.
+    assert "--raw-root" in message
+    assert "2024" in message and "15" in message

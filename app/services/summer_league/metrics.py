@@ -728,9 +728,6 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     uper = compute_uper(b, tm, ctx)
     ps.aper = _d(ctx.pace, tm_pace) * uper
 
-    uper = compute_uper(b, tm, ctx)
-    ps.aper = _d(ctx.pace, tm_pace) * uper
-
     ortg, tot_poss, pprod = compute_ortg(b, tm, opp)
     drtg = compute_drtg(b, tm, opp, tm_poss)
     m["ortg"] = round(ortg, 1)
@@ -1441,8 +1438,11 @@ async def rebuild(
 
     if scope is None:
         # Unscoped: full wipe-and-rebuild, unchanged from before #523.
+        # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
         await db.execute(delete(SummerLeaguePlayerSeason))
+        # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
         await db.execute(delete(SummerLeagueMetricContext))
+        # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
         await db.execute(delete(SummerLeagueMetricModel))
 
         version = model_version or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")

@@ -37,6 +37,7 @@ dev = [
     "pytest-xdist==3.8.0",
     "diff-cover==9.2.0",
     "httpx==0.28.1",
+    "import-linter==2.1",
     "ruff==0.13.0",
     "mypy==1.18.1",
     "pre-commit==3.8.0",
@@ -57,15 +58,192 @@ module = "app.cli.compute_metrics"
 disable_error_code = "attr-defined,arg-type,call-overload,misc"
 
 [tool.ruff]
-exclude = ["alembic", "tests"]
+# `.codex` holds local agent worktrees — full copies of the repo that CI never sees.
+# Without excluding them, local `make lint` reports every finding twice over.
+exclude = ["alembic", "tests", ".codex"]
 
 [tool.ruff.lint]
-extend-select = ["D"]
+# C901/PLR0915/PLR0913 target the over-populated functions inside over-populated
+# services — a named root cause of the Summer League failures. Adopted with a
+# ratchet, not all at once: the 95 files below are baselined in
+# [tool.ruff.lint.per-file-ignores], and everything new must pass.
+# See docs/plans/programmatic-code-discipline.md §1.6.
+extend-select = ["D", "C901", "PLR0915", "PLR0913"]
 # Ignore missing docstring rules - only enforce formatting on existing docstrings
 ignore = ["D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107"]
 
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-statements = 50
+max-args = 5
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+# Complexity baseline — existing violations only. This list is a ratchet: entries
+# may be removed as functions are simplified, never added. A new file, or a new
+# rule violation in a file not listed for that rule, fails the build.
+#
+# Regenerate after a cleanup with:
+#   ruff check --select C901,PLR0915,PLR0913 --output-format json .
+[tool.ruff.lint.per-file-ignores]
+"app/cli/backfill_metrics.py" = ["C901", "PLR0915"]
+"app/cli/compute_combine_scores.py" = ["C901", "PLR0913", "PLR0915"]
+"app/cli/compute_metrics.py" = ["C901", "PLR0913", "PLR0915"]
+"app/cli/recompute_metrics.py" = ["C901", "PLR0915"]
+"app/cli/summer_league_ingest_runner.py" = ["C901", "PLR0913", "PLR0915"]
+"app/routes/admin/auth.py" = ["PLR0913"]
+"app/routes/admin/boards.py" = ["C901", "PLR0913"]
+"app/routes/admin/images.py" = ["PLR0913"]
+"app/routes/admin/news_items.py" = ["C901", "PLR0913", "PLR0915"]
+"app/routes/admin/news_sources.py" = ["PLR0913"]
+"app/routes/admin/players.py" = ["C901", "PLR0913"]
+"app/routes/admin/podcast_episodes.py" = ["PLR0913"]
+"app/routes/admin/podcast_shows.py" = ["PLR0913"]
+"app/routes/admin/stubs.py" = ["PLR0913"]
+"app/routes/admin/youtube_channels.py" = ["PLR0913"]
+"app/routes/admin/youtube_videos.py" = ["PLR0913"]
+"app/routes/players.py" = ["PLR0913"]
+"app/routes/stats.py" = ["C901", "PLR0913"]
+"app/routes/summer_league.py" = ["PLR0913"]
+"app/routes/ui.py" = ["C901", "PLR0913", "PLR0915"]
+"app/routes/videos.py" = ["PLR0913"]
+"app/services/admin_image_service.py" = ["PLR0913", "PLR0915"]
+"app/services/admin_player_service.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/board_auto_ingest_service.py" = ["C901", "PLR0915"]
+"app/services/board_extraction_service.py" = ["C901"]
+"app/services/board_service.py" = ["PLR0913"]
+"app/services/college_stats_service.py" = ["C901", "PLR0913"]
+"app/services/combine_score_service.py" = ["C901"]
+"app/services/combine_stats_service.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/consensus_read_service.py" = ["C901", "PLR0913"]
+"app/services/consensus_service.py" = ["C901"]
+"app/services/enrichment_queue_service.py" = ["C901", "PLR0915"]
+"app/services/event_desk/controller.py" = ["PLR0913"]
+"app/services/image_generation.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/metrics_service.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/news_ingestion_service.py" = ["C901", "PLR0915"]
+"app/services/news_service.py" = ["C901", "PLR0913"]
+"app/services/player_merge_service.py" = ["C901"]
+"app/services/podcast_ingestion_service.py" = ["C901", "PLR0915"]
+"app/services/share_cards/model_builders.py" = ["C901", "PLR0915"]
+"app/services/similarity_service.py" = ["PLR0913"]
+"app/services/summer_league/audit.py" = ["PLR0913"]
+"app/services/summer_league/batch_progress.py" = ["PLR0913"]
+"app/services/summer_league/desk_fact_queries.py" = ["PLR0913"]
+"app/services/summer_league/desk_facts.py" = ["PLR0913"]
+"app/services/summer_league/desk_grades.py" = ["PLR0913"]
+"app/services/summer_league/desk_read.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/summer_league/desk_storylines.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/summer_league/environment_fixtures.py" = ["PLR0913"]
+"app/services/summer_league/live_ingestion.py" = ["PLR0913"]
+"app/services/summer_league/metrics.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/summer_league/normalization.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/summer_league/pipeline_state.py" = ["PLR0913"]
+"app/services/summer_league/player_resolution.py" = ["PLR0913"]
+"app/services/summer_league/roster_ingest.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/summer_league/scoreboard_ingest.py" = ["C901", "PLR0913"]
+"app/services/summer_league_environment_service.py" = ["C901", "PLR0915"]
+"app/services/summer_league_explorer_service.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/summer_league_games_service.py" = ["PLR0913"]
+"app/services/summer_league_leaders_service.py" = ["PLR0913"]
+"app/services/video_ingestion_service.py" = ["C901"]
+"app/services/video_service.py" = ["PLR0913"]
+"scripts/audit_summer_league_environment_coverage.py" = ["C901", "PLR0913"]
+"scripts/audit_top_pick_sl_coverage.py" = ["C901", "PLR0915"]
+"scripts/bbref_bio_scraper.py" = ["C901", "PLR0913", "PLR0915"]
+"scripts/big_boards/sync_from_prod.py" = ["PLR0913"]
+"scripts/check_sl_desk_readiness.py" = ["C901", "PLR0913"]
+"scripts/collect_college_logos.py" = ["C901", "PLR0915"]
+"scripts/collect_nba_logos.py" = ["C901", "PLR0915"]
+"scripts/curate_backfill_candidates.py" = ["C901"]
+"scripts/deduplicate_players.py" = ["C901"]
+"scripts/explain_route.py" = ["C901", "PLR0913", "PLR0915"]
+"scripts/fetch_summer_league_rosters.py" = ["C901", "PLR0913"]
+"scripts/fix_495_top_pick_dup_resolution.py" = ["C901", "PLR0915"]
+"scripts/fix_namesake_contamination.py" = ["C901", "PLR0913"]
+"scripts/generate_consensus_history.py" = ["PLR0913"]
+"scripts/generate_player_images.py" = ["C901", "PLR0913", "PLR0915"]
+"scripts/generate_school_seed_data.py" = ["C901", "PLR0915"]
+"scripts/infographics/hero.py" = ["PLR0913"]
+"scripts/infographics/leaderboard.py" = ["PLR0913"]
+"scripts/infographics/scatter.py" = ["C901", "PLR0915"]
+"scripts/ingest_combine.py" = ["C901", "PLR0913"]
+"scripts/ingest_draft_results.py" = ["C901", "PLR0913", "PLR0915"]
+"scripts/ingest_player_bios.py" = ["C901", "PLR0913", "PLR0915"]
+"scripts/merge_2025_draft_dup_players.py" = ["C901"]
+"scripts/merge_prod_shooting_dup_players.py" = ["C901"]
+"scripts/nba_draft_scraper.py" = ["C901"]
+"scripts/normalize_summer_league.py" = ["C901"]
+"scripts/seed_film_room.py" = ["C901", "PLR0915"]
+"scripts/sl_desk_tick.py" = ["C901", "PLR0913", "PLR0915"]
+"scripts/top100/cbb_enrich.py" = ["PLR0913"]
+"scripts/top100/prod_cleanup_plan.py" = ["PLR0913"]
+"scripts/top100/prod_promote.py" = ["PLR0913"]
+"scripts/top100/prospect_integrity_audit.py" = ["PLR0913"]
+
+# Import contracts — structural drift enforcement.
+#
+# Spec: docs/plans/programmatic-code-discipline.md §3.1
+# Principles: docs/plans/north-star-architecture.md (P1, P3)
+#
+# Every contract here traces to a specific past failure. The founding one: every module in
+# `app/services/event_desk/` imports `app.schemas.summer_league`, while the package presents
+# itself as a generic framework. Nothing made that contradiction visible until an
+# archaeological read of the code found it.
+#
+# Contracts 2, 3 and 5 below are installed *before* the packages they guard hold any code.
+# That is the cheapest architectural guarantee available: they start green and never regress,
+# with zero debt to pay down. Contract 4 (`event_desk` -> Summer League) fails broadly today
+# and lands in Phase 1 with an `ignore_imports` baseline that shrinks as the decoupling
+# proceeds; contract 1 (layering) needs its baseline measured before it can be enabled.
+#
+# Run locally: `make lint.imports`. Enforced in CI by .github/workflows/run-tests-on-pr.yml.
+[tool.importlinter]
+root_package = "app"
+
+# Contract 2 — the domain vocabulary describes the domain; it must not know how the domain
+# is persisted or served. Keeping it ORM-free is what lets value objects like `Watermark` be
+# used at every layer without dragging SQLModel along.
+[[tool.importlinter.contracts]]
+name = "app.domain must not import persistence, services, or routes"
+type = "forbidden"
+source_modules = ["app.domain"]
+forbidden_modules = ["app.schemas", "app.services", "app.routes"]
+
+# Contract 3 — the shared stat engine takes neutral inputs and returns numbers. Summer League
+# is one caller, not its shape. Without this, the engine acquires a spoke dependency the first
+# time a formula needs "just one" Summer League column, and source-agnosticism is gone for good.
+[[tool.importlinter.contracts]]
+name = "app.services.stats must not import Summer League"
+type = "forbidden"
+source_modules = ["app.services.stats"]
+forbidden_modules = [
+    "app.services.summer_league",
+    "app.services.summer_league_environment_registry",
+    "app.services.summer_league_environment_service",
+    "app.services.summer_league_explorer_service",
+    "app.services.summer_league_franchise_service",
+    "app.services.summer_league_games_service",
+    "app.services.summer_league_leaders_service",
+    "app.services.summer_league_metrics_service",
+    "app.services.summer_league_season_service",
+    "app.services.summer_league_shotchart_service",
+    "app.services.summer_league_stats_service",
+    "app.services.summer_league_team_service",
+    "app.schemas.summer_league",
+    "app.schemas.summer_league_pipeline",
+]
+
+# Contract 5 — sibling spokes may not import one another. Two spokes needing the same thing
+# must get it from the hub. Vacuous at one spoke, which is precisely why it is installed now:
+# spoke #2 inherits the constraint instead of discovering it.
+[[tool.importlinter.contracts]]
+name = "Source spokes must not import each other"
+type = "independence"
+modules = ["app.services.sources.*"]
 
 [tool.coverage.run]
 source = ["app"]

@@ -68,6 +68,15 @@ jobs:
       - name: Lint (ruff)
         run: ruff check .
 
+      - name: Import contracts (import-linter)
+        run: lint-imports
+
+      - name: File-size ratchet
+        # Enforces against the PR merge base, alongside the diff-cover gate the
+        # diff-scoped tooling already lives in. Pre-commit runs the same script in
+        # warn mode. See docs/plans/programmatic-code-discipline.md §1.4.
+        run: python scripts/check_file_size_ratchet.py --against origin/${{ github.base_ref }} --enforce
+
       - name: Cache mypy incremental state
         uses: actions/cache@v4
         with:
@@ -176,6 +185,15 @@ jobs:
 
       - name: Lint (ruff)
         run: ruff check .
+
+      - name: Import contracts (import-linter)
+        run: lint-imports
+
+      - name: File-size ratchet
+        # Enforces against the PR merge base, alongside the diff-cover gate the
+        # diff-scoped tooling already lives in. Pre-commit runs the same script in
+        # warn mode. See docs/plans/programmatic-code-discipline.md §1.4.
+        run: python scripts/check_file_size_ratchet.py --against origin/${{ github.base_ref }} --enforce
 
       - name: Cache mypy incremental state
         uses: actions/cache@v4

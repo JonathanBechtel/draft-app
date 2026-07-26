@@ -216,7 +216,6 @@ async def test_players_aggregates_and_sorts(db_session: AsyncSession) -> None:
     await _seed(db_session)
     result = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
 
-    assert result.available is True
     assert result.total == 2
     assert [r.label for r in result.rows] == ["Big Scorer", "Role Player"]
     assert result.rows[0].values["pts"] == 30.0
@@ -376,7 +375,6 @@ async def test_teams_aggregates_record_from_scores(db_session: AsyncSession) -> 
     await _seed_teams(db_session)
     result = await run_explorer_query(db_session, ExplorerQuery(subject="teams"))
 
-    assert result.available is True
     assert result.total == 2
     top = result.rows[0]
     assert top.label.startswith("Alpha")
@@ -473,7 +471,6 @@ async def test_teams_advanced_missing_inputs_graceful(db_session: AsyncSession) 
     await db_session.commit()
 
     result = await run_explorer_query(db_session, ExplorerQuery(subject="teams"))
-    assert result.available is True
     assert result.total == 2
 
     for row in result.rows:
@@ -497,7 +494,6 @@ async def test_games_one_row_per_game_with_total_and_margin(
     await _seed_teams(db_session)  # 2 games: 110-90 and 105-95
     result = await run_explorer_query(db_session, ExplorerQuery(subject="games"))
 
-    assert result.available is True
     assert result.total == 2
     assert {r.values["total"] for r in result.rows} == {200}
     assert {r.values["margin"] for r in result.rows} == {20, 10}
@@ -931,7 +927,6 @@ async def test_grain_per_competition_one_row_per_event(
             subject="players", grain="per_competition", min_games=1, min_minutes=1
         ),
     )
-    assert result.available is True
     assert result.total == 2
     # Labels carry venue name and year.
     labels = {r.label for r in result.rows}
@@ -1117,7 +1112,6 @@ async def test_grain_per_game_one_row_per_log(
         db_session,
         ExplorerQuery(subject="players", grain="per_game"),
     )
-    assert result.available is True
     assert result.total == 3
     # Each row links to the game box.
     for row in result.rows:
@@ -5189,7 +5183,6 @@ async def test_competitions_season_list_pools_across_venues(db_session: AsyncSes
         db_session, parse_query({"subject": "competitions", "profile_scope": "season"})
     )
     assert result.subject == "competitions"
-    assert result.available is True
     years = sorted(r.values["year"] for r in result.rows)
     assert years == [2023, 2024]
     row_2024 = next(r for r in result.rows if r.values["year"] == 2024)

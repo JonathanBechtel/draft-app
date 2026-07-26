@@ -1,6 +1,21 @@
 """Backfill audited Summer League backbone data into product tables.
 
-Run:
+Ordering precondition
+---------------------
+This step is stage 3 of a five-stage pipeline and **hard-fails without raw manifests on
+disk** — it reads what the raw fetch wrote and cannot produce it itself. Run in order::
+
+    1. scripts/fetch_summer_league_raw.py     # writes raw snapshots + manifests
+    2. scripts/audit_summer_league_raw.py     # verifies those manifests parse
+    3. this script                            # backbone rows from audited raw data
+    4. scripts/normalize_summer_league.py     # box scores / game logs
+    5. scripts/rebuild_sl_metrics.py          # derived metrics
+
+Skipping stage 1 produces a "No Summer League raw manifests found" error, which now names
+the commands above; a wrong ``--raw-root`` produces the same error, so check the path
+before re-fetching.
+
+Run::
 
     conda run -n draftguru python scripts/backfill_summer_league_backbone.py \
       --year 2024 --league-id 15 \

@@ -682,13 +682,13 @@ async def test_morning_hero_and_slate_under_ten_never_collapses(
 
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=True)
     register_template_filters(env)
-    hero_html = env.get_template("summer_league/desk/hero_morning.html").render(
+    hero_html = env.get_template("summer-league/desk/hero_morning.html").render(
         desk_payload=payload,
         desk_players=view["players"],
         desk_matchups=view["matchups"],
         desk_game_year=game_year,
     )
-    slate_html = env.get_template("summer_league/desk/slate.html").render(
+    slate_html = env.get_template("summer-league/desk/slate.html").render(
         desk_payload=payload,
         desk_players=view["players"],
         desk_matchups=view["matchups"],
@@ -789,7 +789,7 @@ async def test_slate_ten_plus_games_marks_zero_signal_tail_for_js(
 
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=True)
     register_template_filters(env)
-    slate_html = env.get_template("summer_league/desk/slate.html").render(
+    slate_html = env.get_template("summer-league/desk/slate.html").render(
         desk_payload=payload,
         desk_players=view["players"],
         desk_matchups=view["matchups"],
@@ -859,7 +859,7 @@ async def test_quiet_slate_hero_renders_solo_fallback(db_session: AsyncSession) 
     view = await get_desk_view_context(db_session, payload)
     env = Environment(loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=True)
     register_template_filters(env)
-    hero_html = env.get_template("summer_league/desk/hero_morning.html").render(
+    hero_html = env.get_template("summer-league/desk/hero_morning.html").render(
         desk_payload=payload,
         desk_players=view["players"],
         desk_matchups=view["matchups"],

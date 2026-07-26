@@ -22,3 +22,17 @@ repos:
         entry: python scripts/check_route_conventions.py
         language: system
         files: ^app/routes/.*\.py$
+      - id: unscoped-delete
+        name: Ban unscoped delete(Model) (P2 - retain history by default)
+        entry: python scripts/check_unscoped_delete.py
+        language: system
+        files: ^(app|scripts)/.*\.py$
+      - id: file-size-ratchet
+        name: Warn when a change grows an oversized app/ module
+        # Warns only here so feedback lands while context is fresh; CI enforces the
+        # same rule against the PR merge base. Needs the whole changeset, not
+        # per-file arguments, to evaluate net change.
+        entry: python scripts/check_file_size_ratchet.py
+        language: system
+        pass_filenames: false
+        files: ^app/.*\.py$
