@@ -307,9 +307,13 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         changes = collect_changes(args.against)
-    except subprocess.CalledProcessError as exc:  # pragma: no cover - CI plumbing
+    except subprocess.CalledProcessError as exc:
+        # Fail closed when enforcing: a missing base ref or broken diff in CI must
+        # surface as a red gate, not silently wave the changeset through. Warn-only
+        # mode (pre-commit) stays permissive so a local git hiccup cannot block a
+        # commit the CI gate will still judge.
         sys.stderr.write(f"file-size ratchet: git diff failed: {exc}\n")
-        return 0
+        return 1 if args.enforce else 0
 
     if not changes:
         return 0
