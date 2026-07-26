@@ -9,10 +9,12 @@ Public API
 * :func:`preview_merge` — dry-run count of rows affected per table.
 * :func:`merge_players` — atomic reassignment of all FK references from the
   discarded player to the survivor, plus alias creation and row deletion.
-* :func:`count_inbound_references` — per-table inbound FK count, used by the
-  safe-delete guard.
 * :func:`find_duplicate_candidates` — near-duplicate candidates (excludes
   the player itself).
+
+The safe-delete guard's counterpart, :func:`~app.services.player_merge_references
+.count_inbound_references`, lives in its own module — it is derived from the same
+child-table registry but asks a read-only question and needs none of this machinery.
 """
 
 from __future__ import annotations
@@ -29,7 +31,6 @@ from app.services.player_merge_tables import (
     _CHILD_TABLES,
     _SIMILARITY_ANCHOR,
     _SIMILARITY_COMPARISON,
-    _SPEC_TABLE_ALIASES,
     _ChildTable,
 )
 
@@ -70,34 +71,6 @@ class MergeReport:
     discard_id: int
     per_table: dict[str, dict[str, int]]
     alias_added: str | None
-
-
-# ---------------------------------------------------------------------------
-# Inbound-reference query (safe-delete guard)
-# ---------------------------------------------------------------------------
-
-# Derived from the classified merge specs so the safe-delete guard can never
-# drift from the merge path again (#675): every reassignable (table, column)
-# pair is by construction a non-CASCADE inbound FK.
-_INBOUND_REFERENCE_SPECS: tuple[tuple[str, str], ...] = tuple(
-    (_SPEC_TABLE_ALIASES.get(spec.table, spec.table), spec.player_column)
-    for spec in (*_CHILD_TABLES, _SIMILARITY_ANCHOR, _SIMILARITY_COMPARISON)
-)
-
-_INBOUND_REFERENCE_LABELS: tuple[str, ...] = tuple(
-    f"{table}.{column}" for table, column in _INBOUND_REFERENCE_SPECS
-)
-
-# One statement rather than one per spec (#681): the registry is 30+ entries
-# and bulk stub deletion runs the guard once per selected player, so a query
-# apiece meant hundreds of sequential round trips to Postgres for what is a
-# handful of index lookups. Names come from the registry (trusted constants),
-# and every referenced column carries a player-leading index.
-_INBOUND_REFERENCE_SQL: str = "\nUNION ALL\n".join(
-    f"SELECT '{table}.{column}' AS label, count(*) AS n"
-    f" FROM {table} WHERE {column} = :player_id"
-    for table, column in _INBOUND_REFERENCE_SPECS
-)
 
 
 # ---------------------------------------------------------------------------
@@ -505,42 +478,6 @@ async def merge_players(
         performed_by,
     )
     return await _run_merge(db, keep_id=keep_id, discard_id=discard_id, dry_run=False)
-
-
-async def count_inbound_references(
-    db: AsyncSession,
-    player_id: int,
-) -> dict[str, int]:
-    """Return a per-table count of all inbound FK references for a player.
-
-    Used by the safe-delete guard to block deletion of players that still
-    have attached data.  Only counts non-CASCADE tables (CASCADE tables
-    drop automatically and are not a deletion blocker).
-
-    Issued as a single ``UNION ALL`` statement over the classified merge
-    specs (:data:`_INBOUND_REFERENCE_SQL`) — one round trip per player rather
-    than one per registered table.
-
-    Args:
-        db: Active async database session.
-        player_id: Player to inspect.
-
-    Returns:
-        Dict mapping table.column label to row count (only non-zero entries
-        are included), in registry order.
-    """
-    rows = (
-        await db.execute(text(_INBOUND_REFERENCE_SQL), {"player_id": player_id})
-    ).all()
-    counts_by_label = {str(label): int(n or 0) for label, n in rows}
-    # Rebuild in registry order rather than result order: UNION ALL does not
-    # guarantee row order, and the labels end up in delete_stub's user-facing
-    # refusal message.
-    return {
-        label: counts_by_label[label]
-        for label in _INBOUND_REFERENCE_LABELS
-        if counts_by_label.get(label)
-    }
 
 
 async def find_duplicate_candidates(

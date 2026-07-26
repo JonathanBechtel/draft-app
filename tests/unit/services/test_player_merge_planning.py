@@ -282,7 +282,7 @@ def test_child_table_conflict_columns_optional() -> None:
 
 def test_inbound_reference_sql_covers_every_registered_spec() -> None:
     """The batched guard query has one branch per registry entry, labelled to match."""
-    from app.services.player_merge_service import (
+    from app.services.player_merge_references import (
         _INBOUND_REFERENCE_LABELS,
         _INBOUND_REFERENCE_SPECS,
         _INBOUND_REFERENCE_SQL,
@@ -303,7 +303,7 @@ def test_inbound_reference_sql_covers_every_registered_spec() -> None:
 
 def test_inbound_reference_sql_resolves_the_sentinel_table_name() -> None:
     """The source_analytics sentinel spec must query the real table, not the alias."""
-    from app.services.player_merge_service import (
+    from app.services.player_merge_references import (
         _INBOUND_REFERENCE_LABELS,
         _INBOUND_REFERENCE_SQL,
     )
@@ -321,7 +321,7 @@ async def test_count_inbound_references_issues_one_round_trip() -> None:
     """
     from unittest.mock import AsyncMock, MagicMock
 
-    from app.services.player_merge_service import count_inbound_references
+    from app.services.player_merge_references import count_inbound_references
 
     result = MagicMock()
     result.all.return_value = [

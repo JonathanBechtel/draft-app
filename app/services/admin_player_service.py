@@ -481,7 +481,7 @@ async def delete_stub(
 ) -> None:
     """Delete a stub player, refusing if it has inbound references.
 
-    Uses :func:`~app.services.player_merge_service.count_inbound_references`
+    Uses :func:`~app.services.player_merge_references.count_inbound_references`
     to guard against deleting players that have attached data rows.  Stubs
     with *only* lifecycle/alias rows (auto-created alongside the stub) are
     treated as orphans and deleted along with those child rows.
@@ -494,7 +494,7 @@ async def delete_stub(
         ValueError: If the player is not found, is not a stub, or has
             non-trivial inbound references that would block deletion.
     """
-    from app.services.player_merge_service import count_inbound_references
+    from app.services.player_merge_references import count_inbound_references
 
     player = await get_player_by_id(db, player_id)
     if player is None:

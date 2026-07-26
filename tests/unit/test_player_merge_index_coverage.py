@@ -42,7 +42,7 @@ from sqlalchemy import Table, UniqueConstraint
 from sqlmodel import SQLModel
 
 from app import schemas as schemas_pkg
-from app.services.player_merge_service import (
+from app.services.player_merge_tables import (
     _CHILD_TABLES,
     _SIMILARITY_ANCHOR,
     _SIMILARITY_COMPARISON,

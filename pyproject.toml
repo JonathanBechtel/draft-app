@@ -235,6 +235,7 @@ forbidden_modules = [
     "app.services.summer_league_team_service",
     "app.schemas.summer_league",
     "app.schemas.summer_league_desk",
+    "app.schemas.summer_league_events",
     "app.schemas.summer_league_environment",
     "app.schemas.summer_league_metrics",
     "app.schemas.summer_league_pipeline",

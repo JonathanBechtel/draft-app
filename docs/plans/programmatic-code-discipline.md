@@ -427,6 +427,14 @@ player, so the round trips multiplied even once every lookup was indexed. The tw
 independent and both were needed: indexes make each branch an Index Scan, batching makes it
 one round trip.
 
+**§1.4 collected on the same change.** Both files the fix had to touch were already over the
+threshold, so the ratchet refused the growth and got two decompositions instead of a waiver:
+the event-grain tables moved to `app/schemas/summer_league_events.py` (re-exported, so no
+import site changed), and the safe-delete guard to `app/services/player_merge_references.py` —
+a read-only question derived from the registry that never needed the merge machinery. §3.4b's
+coverage test then caught the new schema module missing from import contract 3. Three guards
+composing on one small change is the intended behaviour, not friction.
+
 ### 3.5 Browser-execution smoke — "passes every test, dead in the browser"
 
 **Failure:** heat shading shipped with an ES `export` statement in a classic `<script>` tag —

@@ -37,11 +37,8 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskStoryline,
     SummerLeagueDeskTriggerType,
 )
-from app.services.player_merge_service import (
-    count_inbound_references,
-    merge_players,
-    preview_merge,
-)
+from app.services.player_merge_references import count_inbound_references
+from app.services.player_merge_service import merge_players, preview_merge
 from tests.integration.conftest import make_player
 
 
