@@ -191,6 +191,7 @@ The live issue queue and this plan describe the same work; keep them pointing at
 | **#661** (scheduler success ≠ data refresh) | Implements the operational half of desk §1's watermark contract — scheduler / source / projection / snapshot signals kept distinct. Complements Phase 5's user-facing contract; ship whenever ready |
 | **#662–#667** (Desk decomposition) | Phase 5 material. **Sequencing guard:** execute after Phase 2's stat consolidation, or restrict each ticket to pure moves — otherwise duplicated math gets scattered into more files (sequencing rule 3) |
 | **#645, #646, #648** (Explorer/environment modularization) | Same Phase 5 guard applies |
+| **#675** (merge FK classification) | The live half of Phase 0's merge-coverage row. The *guard* landed with Phase 0's gap fixes and enumerated 13 unclassified FKs; #675 classifies them and empties the baseline. Independent of any phase — ship whenever ready, and before the next identity cleanup that needs to merge SL-bearing players |
 | **#655** (xdist vs. remote Neon test DB) | Test-infrastructure prerequisite for trustworthy phase exits; independent of any phase, worth doing early |
 | **#626–#630, #632** (shipped) | The "already fixed at HEAD — do not re-fight" record |
 

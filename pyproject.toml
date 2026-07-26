@@ -234,8 +234,14 @@ forbidden_modules = [
     "app.services.summer_league_stats_service",
     "app.services.summer_league_team_service",
     "app.schemas.summer_league",
+    "app.schemas.summer_league_desk",
+    "app.schemas.summer_league_environment",
+    "app.schemas.summer_league_metrics",
     "app.schemas.summer_league_pipeline",
 ]
+# This list is enumerated, not wildcarded, because import-linter module expressions match
+# whole dotted segments: `app.services.summer_league*` is not expressible. A hand-list
+# drifts, so tests/unit/test_import_contract_coverage.py asserts it stays complete.
 
 # Contract 5 — sibling spokes may not import one another. Two spokes needing the same thing
 # must get it from the hub. Vacuous at one spoke, which is precisely why it is installed now:
