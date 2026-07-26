@@ -1,9 +1,12 @@
 """Async SQLAlchemy engine and session helpers."""
 
+import asyncio
 import importlib
 import pkgutil
 import ssl
-from typing import Any, AsyncGenerator, Dict, Tuple
+import time
+from dataclasses import dataclass
+from typing import Any, AsyncGenerator, Dict, Optional, Tuple
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import text as sa_text
@@ -133,6 +136,102 @@ async def init_db():
 async def dispose_engine() -> None:
     """Dispose of the async engine and its connection pool."""
     await engine.dispose()
+
+
+# Must stay comfortably below the pool's own ``pool_timeout`` (30s by default), or a
+# saturated pool makes the probe hang for the same 30 seconds the public routes did
+# during incident #669 instead of reporting the saturation.
+READINESS_TIMEOUT_SECONDS = 5.0
+
+
+@dataclass(frozen=True)
+class ReadinessReport:
+    """Outcome of a database-exercising readiness check.
+
+    Attributes:
+        database_ok: True when a trivial query completed within the timeout.
+        latency_ms: Round-trip time of the probe query, or None when it failed.
+        error: Short description of the failure, or None on success.
+        pool: Connection-pool gauges captured before the probe ran.
+    """
+
+    database_ok: bool
+    latency_ms: Optional[float]
+    error: Optional[str]
+    pool: Dict[str, int]
+
+
+def pool_stats() -> Dict[str, int]:
+    """Return connection-pool gauges without checking out a connection.
+
+    Pool saturation was invisible during incident #669 — the web workers had filled
+    their pool and were timing out, but nothing exposed that. These gauges are read
+    straight off the pool object, so they stay reportable even when no connection can
+    be acquired.
+    """
+    pool = engine.sync_engine.pool
+    stats: Dict[str, int] = {}
+    # NullPool and StaticPool (used by some test configurations) implement only a
+    # subset of these; report what the configured pool actually tracks.
+    for gauge in ("size", "checkedin", "checkedout", "overflow"):
+        probe = getattr(pool, gauge, None)
+        if callable(probe):
+            try:
+                stats[gauge] = int(probe())
+            except (TypeError, ValueError, AttributeError):
+                continue
+    return stats
+
+
+async def check_database_readiness(
+    timeout_seconds: float = READINESS_TIMEOUT_SECONDS,
+) -> ReadinessReport:
+    """Run a bounded ``SELECT 1`` and report whether the database is usable.
+
+    Deliberately goes through the application's own engine and pool rather than
+    opening a private connection: the question this answers is "can a request get a
+    working database connection right now", and a probe with privileged access would
+    have stayed green through incident #669 exactly as ``/health`` did.
+
+    Args:
+        timeout_seconds: Upper bound on the whole probe, including time spent waiting
+            for a free pool slot.
+
+    Returns:
+        A ReadinessReport. Never raises — a failed probe is a reported result, not an
+        exception, so the caller can always answer with a status code.
+    """
+    stats = pool_stats()
+    started = time.perf_counter()
+
+    async def _ping() -> None:
+        async with engine.connect() as conn:
+            await conn.execute(sa_text("SELECT 1"))
+
+    try:
+        await asyncio.wait_for(_ping(), timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        return ReadinessReport(
+            database_ok=False,
+            latency_ms=None,
+            error=(
+                f"database probe exceeded {timeout_seconds:g}s "
+                "(connection pool saturated or database unreachable)"
+            ),
+            pool=stats,
+        )
+    except Exception as exc:
+        return ReadinessReport(
+            database_ok=False,
+            latency_ms=None,
+            error=f"{type(exc).__name__}: {exc}",
+            pool=stats,
+        )
+
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    return ReadinessReport(
+        database_ok=True, latency_ms=round(elapsed_ms, 2), error=None, pool=stats
+    )
 
 
 def describe_database_url(url: str) -> str:
