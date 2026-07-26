@@ -102,11 +102,26 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection) -> None:
+    # ``transaction_per_migration`` bounds lock *lifetime*, which ``lock_timeout``
+    # alone does not. Every ``ALTER TABLE`` takes ACCESS EXCLUSIVE, which blocks even
+    # plain SELECTs, and in a single chain-wide transaction those locks are held until
+    # the last revision commits. The deploy in incident #669 had five revisions
+    # pending: four of them altered ``summer_league_environment_profiles`` -- a table
+    # public routes read (app/routes/summer_league.py:582,631) -- and the fifth then
+    # blocked for 55 minutes on an index build, holding the earlier locks that whole
+    # time. Committing per revision releases each revision's locks as it finishes.
+    #
+    # The trade-off, accepted deliberately: a mid-chain failure leaves earlier
+    # revisions applied rather than rolling the whole chain back. Alembic stamps
+    # ``alembic_version`` as it goes, so the next deploy resumes at the failed
+    # revision. Whole-chain atomicity was already not available here -- migrations
+    # using ``autocommit_block()`` for concurrent index builds commit outside it.
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
         compare_server_default=True,
+        transaction_per_migration=True,
     )
 
     with context.begin_transaction():
