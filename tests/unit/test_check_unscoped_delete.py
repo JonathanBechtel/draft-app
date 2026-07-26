@@ -94,6 +94,80 @@ class TestFlagsUnscopedDeletes:
         assert len(found) == 1
 
 
+class TestRecognizesEveryImportSpelling:
+    """An import alias is not a semantic difference, and must not be an escape route.
+
+    ``app/services/admin_player_service.py`` imports ``delete as sa_delete`` and uses it at
+    sixteen sites, so the aliased spelling is established house style here — an author
+    copying it would otherwise have written code the checker could not see.
+    """
+
+    def test_aliased_import_is_flagged(self):
+        """`from sqlalchemy import delete as sa_delete` then `sa_delete(Model)`."""
+        found = _violations(
+            """
+            from sqlalchemy import delete as sa_delete
+
+            async def rebuild(db):
+                await db.execute(sa_delete(PlayerSeason))
+            """
+        )
+        assert len(found) == 1
+        assert "delete(PlayerSeason) has no .where(...)" in found[0]
+
+    def test_module_qualified_call_is_flagged(self):
+        """`import sqlalchemy as sa` then `sa.delete(Model)`."""
+        found = _violations(
+            """
+            import sqlalchemy as sa
+
+            async def rebuild(db):
+                await db.execute(sa.delete(PlayerSeason))
+            """
+        )
+        assert len(found) == 1
+
+    def test_sqlmodel_import_is_flagged(self):
+        """The construct is re-exported by sqlmodel, which this repo also imports from."""
+        found = _violations(
+            """
+            from sqlmodel import delete as sm_delete
+
+            async def rebuild(db):
+                await db.execute(sm_delete(PlayerSeason))
+            """
+        )
+        assert len(found) == 1
+
+    def test_aliased_import_still_honours_scoping(self):
+        """Alias resolution must not cost the checker its precision about `.where()`."""
+        found = _violations(
+            """
+            from sqlalchemy import delete as sa_delete
+
+            async def rebuild(db):
+                await db.execute(sa_delete(A).where(A.id == 1))
+            """
+        )
+        assert found == []
+
+    def test_session_delete_is_not_confused_with_module_delete(self):
+        """`db.delete(obj)` shares the attribute name but is an instance delete.
+
+        Told apart by resolving which names are bound to SQLAlchemy modules — the reason
+        the checker reads imports rather than pattern-matching the attribute name.
+        """
+        found = _violations(
+            """
+            import sqlalchemy as sa
+
+            async def f(db, instance):
+                await db.delete(instance)
+            """
+        )
+        assert found == []
+
+
 class TestAllowsScopedAndWaivedDeletes:
     """Legitimate forms must stay silent, or the rule trains people to bypass it."""
 
