@@ -319,7 +319,7 @@ the last successful data tick and never fabricate currency.
 
 Relevant implementation paths at the history cutoff:
 
-- [`scripts/sl_desk_tick.py`](../scripts/sl_desk_tick.py)
+- [`app/cli/sl_desk_tick.py`](../app/cli/sl_desk_tick.py)
 - [`app/services/event_desk/controller.py`](../app/services/event_desk/controller.py)
 - [`app/services/summer_league/desk_read.py`](../app/services/summer_league/desk_read.py)
 - [`app/services/summer_league/desk_commentary.py`](../app/services/summer_league/desk_commentary.py)
@@ -427,7 +427,7 @@ At the history cutoff, just six central Desk files total approximately 7,677 lin
 | File | Approximate lines |
 |---|---:|
 | `app/services/summer_league/desk_read.py` | 2,597 |
-| `scripts/sl_desk_tick.py` | 1,404 |
+| `app/cli/sl_desk_tick.py` | 1,404 |
 | `app/services/summer_league/desk_storylines.py` | 1,358 |
 | `app/services/summer_league/desk_commentary.py` | 916 |
 | `app/services/summer_league/desk_facts.py` | 727 |

@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 _BBREF_BASE = "https://www.basketball-reference.com"
 _USER_AGENT = "DraftGuru/1.0 (https://draftguru.dev; contact@draftguru.dev)"
 _DEFAULT_THROTTLE = 3.0
-_DEFAULT_CACHE_DIR = Path("scraper/cache/players")
+_DEFAULT_CACHE_DIR = Path("data/scraper-cache/players")
 
 
 # ---------------------------------------------------------------------------

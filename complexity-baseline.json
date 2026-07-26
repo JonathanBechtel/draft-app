@@ -335,7 +335,7 @@
       "C901": 1,
       "PLR0915": 1
     },
-    "scripts/sl_desk_tick.py": {
+    "app/cli/sl_desk_tick.py": {
       "C901": 2,
       "PLR0913": 2,
       "PLR0915": 2

@@ -8,7 +8,7 @@ def read_sample(path: str) -> str:
 
 
 def test_parse_index_html_extracts_rows_and_active_flag():
-    html = read_sample("scrapers/bbref/index_page_example.html")
+    html = read_sample("tests/fixtures/scrapers/bbref/index_page_example.html")
     rows = parse_index_html("b", html)
     assert rows, "should parse some rows"
     # Find Charles Bassey row
@@ -20,7 +20,7 @@ def test_parse_index_html_extracts_rows_and_active_flag():
 
 
 def test_parse_player_html_core_fields():
-    html = read_sample("scrapers/bbref/player_page_example.html")
+    html = read_sample("tests/fixtures/scrapers/bbref/player_page_example.html")
     bio = parse_player_html(
         letter="b",
         slug="balllo01",

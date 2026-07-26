@@ -825,7 +825,7 @@ async def test_run_scoreboard_ingest_extends_competition_date_window_to_include_
 
     This is what actually lets the Event Desk's opening-morning bootstrap
     (``_needs_scoreboard_bootstrap`` / ``_synthetic_calendar_dates`` in
-    ``scripts/sl_desk_tick.py``) go Active before any game is played --
+    ``app/cli/sl_desk_tick.py``) go Active before any game is played --
     ``starts_on``/``ends_on`` previously stayed null forever because nothing
     ever populated them from a forward-looking schedule fetch. The
     competition starts with no configured window at all; after ingesting the

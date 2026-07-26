@@ -263,6 +263,63 @@ class TestCollectChangesAgainstGit:
         violations, _ = ratchet.evaluate(changes)
         assert violations == []
 
+    def test_rename_into_app_from_outside_is_not_read_as_a_new_file(self, git_repo):
+        """A move *into* `app/` from elsewhere must pair with its source.
+
+        Scoping the git diff to `app` would hide the deletion half of a
+        `scripts/ -> app/cli/` move, leaving an unpaired add that reads as a
+        brand-new oversized file. This is the shape that shipped when
+        `sl_desk_tick.py` was relocated to `app/cli/`.
+        """
+        tmp_path = git_repo
+
+        source = tmp_path / "scripts" / "job.py"
+        source.parent.mkdir(parents=True)
+        body = "\n".join(f"x = {i}" for i in range(900)) + "\n"
+        source.write_text(body)
+        subprocess.run(["git", "add", "-A"], check=True)
+        subprocess.run(["git", "commit", "-qm", "base"], check=True)
+
+        source.unlink()
+        moved_to = tmp_path / "app" / "cli" / "job.py"
+        moved_to.parent.mkdir(parents=True)
+        moved_to.write_text(body)
+        subprocess.run(["git", "add", "-A"], check=True)
+
+        changes = ratchet.collect_changes("HEAD")
+        moved = [c for c in changes if c.path == "app/cli/job.py"]
+        assert len(moved) == 1
+        assert moved[0].old_lines == 900, "rename detection must span directories"
+        assert moved[0].delta == 0
+
+        violations, _ = ratchet.evaluate(changes)
+        assert violations == []
+
+    def test_files_outside_app_are_still_ignored(self, git_repo):
+        """Widening the diff must not widen what the ratchet governs.
+
+        The guard covers `app/` only; a 900-line script added under `scripts/`
+        is not its business, even though the unscoped diff now sees it.
+        """
+        tmp_path = git_repo
+
+        keep = tmp_path / "app" / "svc.py"
+        keep.parent.mkdir(parents=True)
+        keep.write_text("x = 1\n")
+        subprocess.run(["git", "add", "-A"], check=True)
+        subprocess.run(["git", "commit", "-qm", "base"], check=True)
+
+        new_script = tmp_path / "scripts" / "big_tool.py"
+        new_script.parent.mkdir(parents=True)
+        new_script.write_text("\n".join(f"x = {i}" for i in range(900)) + "\n")
+        subprocess.run(["git", "add", "-A"], check=True)
+
+        changes = ratchet.collect_changes("HEAD")
+        assert [c.path for c in changes] == []
+
+        violations, _ = ratchet.evaluate(changes)
+        assert violations == []
+
     def test_split_that_deletes_the_original_is_allowed(self, git_repo):
         """The decomposition shape git does *not* detect as a rename.
 

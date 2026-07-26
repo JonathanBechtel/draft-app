@@ -40,10 +40,10 @@ conda run -n draftguru python scripts/top100/refresh.py --date YYYY-MM-DD
 
 Expected Session 1 artifacts:
 
-- `scraper/output/top100_source_snapshot_YYYY-MM-DD.csv`
-- `scraper/output/school_resolution_review_YYYY-MM-DD.csv`
-- `scraper/output/player_resolution_plan_YYYY-MM-DD.csv`
-- `scraper/output/top100_refresh_run_note_YYYY-MM-DD.md`
+- `data/scraper-output/top100_source_snapshot_YYYY-MM-DD.csv`
+- `data/scraper-output/school_resolution_review_YYYY-MM-DD.csv`
+- `data/scraper-output/player_resolution_plan_YYYY-MM-DD.csv`
+- `data/scraper-output/top100_refresh_run_note_YYYY-MM-DD.md`
 
 The source snapshot is immutable for a run. If a board changes, generate a new
 dated snapshot instead of editing an old one.

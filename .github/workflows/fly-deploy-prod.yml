@@ -267,7 +267,7 @@ jobs:
               --memory 1024 \
               --cpus 1 \
               --entrypoint "/app/.venv/bin/python" \
-              -- scripts/sl_desk_tick.py
+              -- -m app.cli.sl_desk_tick
           fi
 
       # Post-deploy verification (spec: docs/plans/summer-league-cron-desk-starvation-spec.md

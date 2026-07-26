@@ -26,7 +26,7 @@ wipe+rebuild, not scoped to one venue/year).
    ``app.services.summer_league.scoreboard_ingest.run_scoreboard_ingest``)
    so ``summer_league_games.tip_datetime`` stays fresh at this cron's own
    hourly cadence, decoupled from the Summer League Desk tick
-   (``scripts/sl_desk_tick.py``) -- previously the *only* place that feed
+   (``app/cli/sl_desk_tick.py``) -- previously the *only* place that feed
    was ever polled, and only once the Desk itself was already non-dormant.
    That was a chicken-and-egg gap: the Desk can't wake up without tip
    times, and it can't get tip times because it's asleep. This step reuses
@@ -277,7 +277,7 @@ def _full_reconcile_requested() -> bool:
 # last known game, per `post_roll_days` -- games can still slip/reschedule
 # in that window). Dormant (nowhere near the window) and Archived (long
 # over) are excluded so this hourly cron never calls stats.nba.com during
-# the ~11 off-season months. Wider than `scripts/sl_desk_tick.py`'s own
+# the ~11 off-season months. Wider than `app/cli/sl_desk_tick.py`'s own
 # `_BOOTSTRAP_ELIGIBLE_PHASES` (which omits Wind-down) because that bootstrap
 # only exists to escape dormancy -- once awake, the Desk tick's own step 0
 # keeps polling every tick regardless of phase. This cron has no such
@@ -298,7 +298,7 @@ def _synthetic_schedule_dates(
 ) -> tuple[date, ...]:
     """Every day spanned by each target competition's ``starts_on``/``ends_on``.
 
-    Mirrors ``scripts/sl_desk_tick.py``'s ``_synthetic_calendar_dates`` --
+    Mirrors ``app/cli/sl_desk_tick.py``'s ``_synthetic_calendar_dates`` --
     duplicated here (not imported) since that module is a CLI entrypoint
     script, not a shared service, and this runner is itself a separate CLI
     entrypoint; both independently reuse the same two columns
@@ -341,7 +341,7 @@ async def _schedule_pull_in_window(db: AsyncSession, *, now: datetime) -> bool:
     so this cron's notion of "in season" never drifts from the Desk's. Fed
     by each target competition's ``starts_on``/``ends_on`` window spread
     into a synthetic per-day calendar (:func:`_synthetic_schedule_dates`) --
-    mirrors ``scripts/sl_desk_tick.py``'s ``_needs_scoreboard_bootstrap`` /
+    mirrors ``app/cli/sl_desk_tick.py``'s ``_needs_scoreboard_bootstrap`` /
     `_synthetic_calendar_dates`` pattern for the identical "no
     ``summer_league_games`` rows yet to anchor the resolver" gap, since this
     guard runs *before* any schedule ingest this cron might do -- there may

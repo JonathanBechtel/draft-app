@@ -58,7 +58,7 @@ from app.schemas.summer_league_metrics import (
 from app.services.summer_league.audit import audit_summer_league_raw
 from app.services.summer_league.metrics import game_score_line, rebuild
 from app.services.summer_league.nba_stats_client import NBAStatsClient
-from scripts.sl_desk_tick import run_desk_tick
+from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.conftest import make_player
 
 pytestmark = pytest.mark.asyncio
