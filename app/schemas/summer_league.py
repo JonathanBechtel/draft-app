@@ -741,6 +741,28 @@ class SummerLeaguePlayByPlayEvent(SQLModel, table=True):  # type: ignore[call-ar
             "competition_id",
             "game_id",
         ),
+        # Player-leading indexes for the three participant FKs (#681). The merge
+        # path reassigns each column independently and the safe-delete guard
+        # counts each one, so without these every stub deletion and every player
+        # merge sequentially Seq-Scans the whole table three times — and so does
+        # the RESTRICT FK check Postgres runs when the parent row is deleted.
+        # Partial: person2/person3 are NULL on the large majority of events, and
+        # `col = :id` implies `col IS NOT NULL`, so the planner can still use them.
+        Index(
+            "ix_summer_league_pbp_events_person1",
+            "person1_id",
+            postgresql_where=text("person1_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_summer_league_pbp_events_person2",
+            "person2_id",
+            postgresql_where=text("person2_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_summer_league_pbp_events_person3",
+            "person3_id",
+            postgresql_where=text("person3_id IS NOT NULL"),
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)

@@ -402,6 +402,31 @@ would reach for. `tests/unit/test_import_contract_coverage.py` derives the unive
 filesystem and enforces that the contract covers it. **Any hand-maintained list mirroring a
 structure the code already knows gets a reflective test, or it silently rots.**
 
+### 3.4c Registration implies a scan — so registration must imply an index
+
+**Failure:** deriving the safe-delete guard from the registry (§3.4) made a second cost
+visible. Registering a child table is what makes it *scanned*: the merge path's
+`UPDATE ... WHERE col = :discard_id`, `count_inbound_references`, and Postgres's own RESTRICT
+check on the final `players_master` DELETE all address every registered table by its player
+column. A foreign key does not create an index, so a registration without one turns each of
+those into a Seq Scan of the whole child table. Seven registered columns had no index —
+including all three `summer_league_play_by_play_events.person*_id`, so deleting one stub
+Seq-Scanned the fastest-growing table in the schema three times, multiplied by the selection
+size in bulk delete (#681).
+
+**Mechanism:** `tests/unit/test_player_merge_index_coverage.py` walks the registry against
+SQLModel metadata and asserts some index on each table *leads* with the registered column
+(plain `Index`, `UniqueConstraint`, column-level `index=True`, or the PK). Same shape as
+§3.4: the registry supplies the universe, the schema is the evidence, and a new registration
+that would re-open the hole is a red build rather than a slow production merge.
+
+**Shipped (#681)** together with the seven partial indexes and their migration
+(`3f8c1d47a9b2`), and with the guard's per-spec queries collapsed into one `UNION ALL`
+statement — the registry is 30+ entries and bulk deletion runs the guard once per selected
+player, so the round trips multiplied even once every lookup was indexed. The two fixes are
+independent and both were needed: indexes make each branch an Index Scan, batching makes it
+one round trip.
+
 ### 3.5 Browser-execution smoke — "passes every test, dead in the browser"
 
 **Failure:** heat shading shipped with an ES `export` statement in a classic `<script>` tag —

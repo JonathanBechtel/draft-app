@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column, Enum as SAEnum, UniqueConstraint
+from sqlalchemy import Column, Enum as SAEnum, Index, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 
@@ -32,6 +32,15 @@ class PodcastEpisode(SQLModel, table=True):  # type: ignore[call-arg]
     __table_args__ = (
         UniqueConstraint(
             "show_id", "external_id", name="uq_podcast_episodes_show_external"
+        ),
+        # Player-leading index for the merge/safe-delete paths, which look rows
+        # up by player id (#681); an unindexed FK also makes Postgres Seq-Scan
+        # this table on every players_master delete. Partial: most episodes are
+        # not attributed to a single player.
+        Index(
+            "ix_podcast_episodes_player_id",
+            "player_id",
+            postgresql_where=text("player_id IS NOT NULL"),
         ),
     )
 

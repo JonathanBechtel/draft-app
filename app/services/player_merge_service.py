@@ -73,6 +73,34 @@ class MergeReport:
 
 
 # ---------------------------------------------------------------------------
+# Inbound-reference query (safe-delete guard)
+# ---------------------------------------------------------------------------
+
+# Derived from the classified merge specs so the safe-delete guard can never
+# drift from the merge path again (#675): every reassignable (table, column)
+# pair is by construction a non-CASCADE inbound FK.
+_INBOUND_REFERENCE_SPECS: tuple[tuple[str, str], ...] = tuple(
+    (_SPEC_TABLE_ALIASES.get(spec.table, spec.table), spec.player_column)
+    for spec in (*_CHILD_TABLES, _SIMILARITY_ANCHOR, _SIMILARITY_COMPARISON)
+)
+
+_INBOUND_REFERENCE_LABELS: tuple[str, ...] = tuple(
+    f"{table}.{column}" for table, column in _INBOUND_REFERENCE_SPECS
+)
+
+# One statement rather than one per spec (#681): the registry is 30+ entries
+# and bulk stub deletion runs the guard once per selected player, so a query
+# apiece meant hundreds of sequential round trips to Postgres for what is a
+# handful of index lookups. Names come from the registry (trusted constants),
+# and every referenced column carries a player-leading index.
+_INBOUND_REFERENCE_SQL: str = "\nUNION ALL\n".join(
+    f"SELECT '{table}.{column}' AS label, count(*) AS n"
+    f" FROM {table} WHERE {column} = :player_id"
+    for table, column in _INBOUND_REFERENCE_SPECS
+)
+
+
+# ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
@@ -489,24 +517,30 @@ async def count_inbound_references(
     have attached data.  Only counts non-CASCADE tables (CASCADE tables
     drop automatically and are not a deletion blocker).
 
+    Issued as a single ``UNION ALL`` statement over the classified merge
+    specs (:data:`_INBOUND_REFERENCE_SQL`) — one round trip per player rather
+    than one per registered table.
+
     Args:
         db: Active async database session.
         player_id: Player to inspect.
 
     Returns:
         Dict mapping table.column label to row count (only non-zero entries
-        are included).
+        are included), in registry order.
     """
-    # Derived from the classified merge specs so the safe-delete guard can
-    # never drift from the merge path again (#675): every reassignable
-    # (table, column) pair is by construction a non-CASCADE inbound FK.
-    counts: dict[str, int] = {}
-    for spec in (*_CHILD_TABLES, _SIMILARITY_ANCHOR, _SIMILARITY_COMPARISON):
-        table = _SPEC_TABLE_ALIASES.get(spec.table, spec.table)
-        n = await _count_rows(db, table, spec.player_column, player_id)
-        if n:
-            counts[f"{table}.{spec.player_column}"] = n
-    return counts
+    rows = (
+        await db.execute(text(_INBOUND_REFERENCE_SQL), {"player_id": player_id})
+    ).all()
+    counts_by_label = {str(label): int(n or 0) for label, n in rows}
+    # Rebuild in registry order rather than result order: UNION ALL does not
+    # guarantee row order, and the labels end up in delete_stub's user-facing
+    # refusal message.
+    return {
+        label: counts_by_label[label]
+        for label in _INBOUND_REFERENCE_LABELS
+        if counts_by_label.get(label)
+    }
 
 
 async def find_duplicate_candidates(

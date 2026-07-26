@@ -37,7 +37,11 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskStoryline,
     SummerLeagueDeskTriggerType,
 )
-from app.services.player_merge_service import merge_players, preview_merge
+from app.services.player_merge_service import (
+    count_inbound_references,
+    merge_players,
+    preview_merge,
+)
 from tests.integration.conftest import make_player
 
 
@@ -429,3 +433,28 @@ async def test_preview_merge_reports_summer_league_tables(
         )
         == 1
     ), "preview_merge must not reassign rows"
+
+
+@pytest.mark.asyncio
+async def test_safe_delete_guard_counts_every_summer_league_column(
+    db_session: AsyncSession,
+) -> None:
+    """The batched inbound-reference query must count each registered column correctly.
+
+    ``count_inbound_references`` issues one ``UNION ALL`` statement rather than a query
+    per registered table (#681), so a typo in any single branch is invisible until that
+    branch is the one that matters — a stub counted as reference-free and deleted into a
+    raw ``ForeignKeyViolationError``. This runs the real statement against a player
+    holding exactly one row in each Summer League / backbone column.
+    """
+    player = await _make_player(db_session, "Guarded", "Stub")
+    assert player.id is not None
+
+    await _seed_summer_league(db_session, player=player)
+
+    refs = await count_inbound_references(db_session, player.id)
+
+    for table, column in _REASSIGNED:
+        assert refs.get(f"{table}.{column}") == 1, (
+            f"the safe-delete guard missed {table}.{column}: {refs}"
+        )
