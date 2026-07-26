@@ -70,21 +70,34 @@ violation; no behavior change observable in the app.
 **Why second:** this is the live pain, and the most user-visible failure — updates that did not
 land while games were in progress.
 
-**Entry gate — close the remaining diagnosis before building.** Incident **#669** (July 22–23)
-supplies the observed evidence the first draft of this plan lacked, and corrects an attribution:
-a ~96-minute **full-ingestion** transaction held the writer lock (the "96-minute Desk
-transaction" was actually 96 minutes of the Desk *waiting*, after which it resolved dormant and
-exited); the deploy's non-concurrent `CREATE INDEX` migration queued behind that transaction;
-and public routes 500ed on web-pool exhaustion while `/health` stayed green. (The record's
-lock-chain reading for *reads* is imprecise — a bare `CREATE INDEX` requests a `SHARE` lock,
-which blocks writes, not reads — so the exact read-blocking mechanism is one more thing this
-gate confirms; see desk §5a.) The long-transaction/lock class is therefore
-**confirmed live** — Phase 1's position is no longer provisional. What the entry gate still
-resolves is *which path* to convert first: whether the deployed image was missing the shipped
-chunking fixes, and whether the holder was the surviving mega-transaction — noting #669's
-finding that the "scoped" rebuild limits which rows are *persisted* while `compute()` still
-loads and recalculates the full historical dataset, so scoping does not bound transaction
-length.
+**Entry gate — CLOSED.** Incident **#669** (July 22–23) supplied the observed evidence the first
+draft of this plan lacked, and the gate's three questions are now answered (full diagnosis in
+#669). All three answers changed the plan.
+
+1. **Was the deployed image missing the shipped chunking fixes? Yes — and completely.**
+   Production ran `bba2986` (deployed Jul 19 22:39 UTC) until Jul 23 01:52, with no release in
+   between; the chunking work merged Jul 20. Not cron-machine drift — the whole app was 3.5 days
+   stale. The deployed `write_lock.py` was 26 lines with only the *unbounded* acquire, so the
+   Desk's ~95-minute wait was the only behavior that code could produce. **Established.**
+   (The Jul 19 deploy's migration step had already blocked for 72 minutes and passed silently —
+   the hazard fired three days before it caused an outage.)
+2. **Was the holder the mega-transaction? No.** It was `_run_venue`'s whole-venue normalization
+   transaction — the PBP *writer*. A bare `CREATE INDEX` requests `SHARE`, which cannot be blocked
+   by a reader, and the mega-transaction only *reads* the PBP table; it therefore could not have
+   queued the migration. That normalization path is already chunked at HEAD and in production
+   since Jul 23. **Established for the negative, probable for the positive ID.**
+3. **What blocked reads? Three mechanisms, not one** — chain-wide `ACCESS EXCLUSIVE` accumulation
+   from four `ALTER`s on a publicly-read table, pending lock requests queueing later readers, and
+   default-sized pool exhaustion making it site-wide. See the rewritten desk §5a; this spec's own
+   earlier correction was incomplete in a way that could have licensed an unsafe conclusion.
+
+**Consequences for this phase.** The version-flip is **no longer first**: the evidence exonerates
+the path it converts. It stays in Phase 1 for its own reasons — largest surviving critical
+section, P2 compliance, and the time axis Phase 3 consumes — but shipping it first would spend
+the phase's riskiest change on a path #669 does not indict. Migration safety goes first instead.
+The scoping subtlety still holds and is still worth fixing (`compute()` loads and refits the full
+historical dataset regardless of scope, so scoping bounds neither compute cost nor transaction
+length) — but it is a cost finding, not the lock finding.
 
 | Item | Spec |
 |---|---|
@@ -94,16 +107,22 @@ length.
 | Intra-day compaction policy for hourly rebuild versions (retain daily close + current) — lands with the version-flip so retention is bounded from the first event | stat-engine §5 |
 | Stop deleting `SummerLeagueMetricModel` (auditable fit history) | stat-engine §5 |
 | Latency-class partitioning: fast live poller / medium projection builder / slow backbone | desk §2 |
-| **Migration safety** (from #669): short `lock_timeout` in release migrations; `CREATE INDEX CONCURRENTLY` (via `autocommit_block()` — required by this repo's Alembic setup) on large tables; a DB-exercising health signal so `/health` cannot stay green through a database outage | desk §5a, discipline §1.7 |
+| **Migration safety** (from #669) — **ship this first.** Short `lock_timeout`; `transaction_per_migration=True` so a blocked revision cannot hold earlier revisions' `ACCESS EXCLUSIVE` locks chain-wide (the entry gate's mechanism #1 — `lock_timeout` alone does not bound lock *lifetime*); `CREATE INDEX CONCURRENTLY` via `autocommit_block()`; the §1.7 checker enforcing both halves on new revisions; a DB-exercising readiness probe so `/health` cannot stay green through a database outage | desk §5a, discipline §1.7 |
+| **Deploy freshness** (new, from the entry gate) — prod ran 3.5 days behind `main` through the entire Vegas window, and "the chunking fixes shipped" was true of `main` and false of production. The cron-image digest check catches machine drift; nothing catches the whole app being stale. Auto-deploy on merge to `main`, or a staleness alarm | #669 |
 | Ingestion-side identity guard: suffix/diacritic/variant-aware matching **before** a new `players_master` row is created — the Jr./II/accent dup class has been re-fixed downstream at least three times | backlog 4.3 |
 | Import contract 4 (`event_desk` ↛ SL) with its `ignore_imports` baseline — lands here so the list shrinks across Phases 1 and 5 rather than being written after the decoupling | discipline §3.1 |
 
-**Note:** the version-flip lands here, not in Phase 3, because it *is* the transaction fix. It
-simultaneously satisfies P2 and creates the time axis Phase 3 consumes.
+**Note:** the version-flip lands here, not in Phase 3, because it satisfies P2 and creates the
+time axis Phase 3 consumes. It was previously described as "*the* transaction fix" — the entry
+gate retired that framing: the transaction that caused #669 was `_run_venue`'s, already chunked.
+
+**Already true, now verification rather than build work:** bounded Desk lock waits ship in the
+deployed image as of Jul 23 01:52 UTC. Confirm it in a live window; do not rebuild it.
 
 **Exit:** hourly tick completion measured **inside live-game windows** (not daily-averaged) meets
 target across several natural overlapping cycles; no transaction holds a lock across network I/O;
-a rebuild is safely re-runnable.
+a rebuild is safely re-runnable; **a deploy cannot block public reads** (migration lock-safety
+verified against a staging reproduction) and **production is not silently behind `main`**.
 
 ---
 
