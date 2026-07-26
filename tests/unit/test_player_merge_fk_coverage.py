@@ -53,26 +53,14 @@ _SPEC_TABLE_ALIASES = {"source_analytics_outlier": "source_analytics"}
 # a RESTRICT FK. Fixing them means deciding reassign-vs-cascade per edge and, for the
 # reassignment cases, working out the uniqueness/conflict columns — real merge behavior that
 # belongs with integration tests against representative data, not folded into a guardrail.
-_PENDING_CLASSIFICATION: frozenset[tuple[str, str]] = frozenset(
-    {
-        # Canonical assertions about the player — almost certainly reassign.
-        ("draft_results", "player_id"),
-        ("player_affiliations", "player_id"),
-        ("summer_league_participation", "player_id"),
-        ("summer_league_player_game_logs", "player_id"),
-        ("summer_league_shot_events", "player_id"),
-        ("summer_league_play_by_play_events", "person1_id"),
-        ("summer_league_play_by_play_events", "person2_id"),
-        ("summer_league_play_by_play_events", "person3_id"),
-        ("summer_league_source_players", "canonical_player_id"),
-        ("summer_league_player_resolution_reviews", "selected_player_id"),
-        # Desk projections — regenerable, so cascade is plausible, but that needs a
-        # migration to change the FK rather than a merge-service registration.
-        ("summer_league_desk_player_grades", "player_id"),
-        ("summer_league_desk_storylines", "subject_player_id"),
-        ("summer_league_desk_storylines", "subject_player_id_2"),
-    }
-)
+# Edges still awaiting a classification decision. This list is a ratchet: entries may be
+# removed as edges get classified, never added.
+#
+# Currently EMPTY — every FK to players_master is now either registered for reassignment or
+# declared ondelete=CASCADE. The 13 entries that lived here (summer_league_*, shot events,
+# play-by-play, participation, draft_results, player_affiliations) were classified as
+# reassignments once the constraint analysis showed only one of them could collide.
+_PENDING_CLASSIFICATION: frozenset[tuple[str, str]] = frozenset()
 
 
 def _registered_columns() -> set[tuple[str, str]]:

@@ -114,6 +114,38 @@ _CHILD_TABLES: tuple[_ChildTable, ...] = (
     # source_analytics.biggest_outlier_player_id is nullable — just NULL it out
     # for the discard rather than reassigning (it is not the primary FK column).
     _ChildTable("source_analytics_outlier", "biggest_outlier_player_id"),
+    # --- Backbone + Summer League -------------------------------------------------
+    # These FKs accumulated while this list was maintained by hand, so merging a player
+    # holding any of this data hard-failed on a RESTRICT FK. Every one is a canonical
+    # assertion about the player (or a projection keyed on them), so all reassign to the
+    # survivor; none are cascade-delete. Coverage is enforced by
+    # tests/unit/test_player_merge_fk_coverage.py.
+    #
+    # Only desk_player_grades carries a unique constraint containing the player column, so
+    # it is the only one that can collide on reassignment; the rest key on game/event ids.
+    _ChildTable("draft_results", "player_id"),
+    _ChildTable("player_affiliations", "player_id"),
+    _ChildTable("summer_league_participation", "player_id"),
+    _ChildTable("summer_league_player_game_logs", "player_id"),
+    _ChildTable("summer_league_shot_events", "player_id"),
+    _ChildTable("summer_league_source_players", "canonical_player_id"),
+    _ChildTable("summer_league_player_resolution_reviews", "selected_player_id"),
+    # Play-by-play names up to three participants per event; each column is reassigned
+    # independently, and an event naming the discard twice simply lands on the survivor
+    # in both slots.
+    _ChildTable("summer_league_play_by_play_events", "person1_id"),
+    _ChildTable("summer_league_play_by_play_events", "person2_id"),
+    _ChildTable("summer_league_play_by_play_events", "person3_id"),
+    # UNIQUE (player_id, competition_id, baseline_version): if the survivor already holds
+    # a grade for the same competition and baseline, drop the discard's rather than
+    # violating it. Grades are a regenerable projection, so losing the duplicate is fine.
+    _ChildTable(
+        "summer_league_desk_player_grades",
+        "player_id",
+        ("competition_id", "baseline_version"),
+    ),
+    _ChildTable("summer_league_desk_storylines", "subject_player_id"),
+    _ChildTable("summer_league_desk_storylines", "subject_player_id_2"),
 )
 
 # player_similarity is handled separately because it appears on TWO columns.

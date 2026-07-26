@@ -333,8 +333,12 @@ shot events, play-by-play, participation, `draft_results`, `player_affiliations`
 itemized in a `_PENDING_CLASSIFICATION` list that may only shrink: a *new* unclassified FK fails
 the build, and classifying one without removing its entry also fails, so the list cannot go stale
 in either direction. A third assertion catches the reverse drift — a registered spec whose FK no
-longer exists. Actually classifying the 13 is merge-behavior work needing integration tests
-against representative data; the guardrail exists so the count can only go down.
+longer exists.
+
+**All 13 are now classified and the pending list is empty.** The rule earned its keep twice over:
+it found the drift, and the constraint analysis it prompted showed the repair was far smaller than
+feared — only one of the 13 tables has a unique constraint containing the player column, so the
+rest cannot collide on reassignment, and no migration was required.
 
 ### 3.5 Browser-execution smoke — "passes every test, dead in the browser"
 

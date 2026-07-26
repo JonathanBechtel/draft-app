@@ -55,7 +55,7 @@ operational acceptance deferred past merge; a phase is not done because its code
 | Unscoped-`delete()` AST checker — the direct P2 guard | discipline §1.1 |
 | Diff-scoped file-size rule (pre-commit warns, CI enforces; net-change evaluation so it cannot block Phase 5's decomposition) — **here, not later, so no phase grows files unchecked** | discipline §1.4 |
 | Ruff complexity rules (`C901`, `PLR0915`, `PLR0913`) with `per-file-ignores` baseline | discipline §1.6 |
-| Merge-coverage test — every FK to `players_master` must be *classified*: registered for reassignment or intentionally cascade-delete (the manual list has silently drifted as SL tables were added) — **shipped; found 13 unclassified edges, now a shrink-only list** | discipline §3.4, backlog 4.4 |
+| Merge-coverage test — every FK to `players_master` must be *classified*: registered for reassignment or intentionally cascade-delete (the manual list has silently drifted as SL tables were added) — **shipped; found 13 unclassified edges, all now registered for reassignment** | discipline §3.4, backlog 4.4 |
 | Double-uPER compute fix (`metrics.py:728-732`) | backlog 1.4 |
 | Remove dead Explorer branches (`available=False` teams/games subjects) | backlog 5.1 |
 | Naming/layout normalization; document the backfill ordering precondition | backlog 5.4, 6.3 |

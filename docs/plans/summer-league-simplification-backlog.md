@@ -287,12 +287,15 @@ behind it, and a deploy migration queueing public reads into a 500 outage (see d
   list == FK-graph equality would false-fail on the deliberate cascade exemptions, and
   auto-deriving the reassignment list would resurrect rows meant to die; see discipline §3.4).
   🟢 free test; roadmap Phase 0.
-  **Test shipped in Phase 0** (`tests/unit/test_player_merge_fk_coverage.py`) and immediately
-  confirmed the drift: 13 of 36 FKs to `players_master` are unclassified, each a live merge
-  failure. They are itemized in a shrink-only pending list, so no *new* unclassified FK can
-  land. **Still open:** classifying those 13 — reassign vs. cascade per edge, with the
-  uniqueness/conflict columns worked out for the reassignment cases. That is the fix for the
-  known "merge omits `summer_league_*` tables" bug and needs integration tests, not a guardrail.
+  ✅ **DONE in Phase 0.** The test (`tests/unit/test_player_merge_fk_coverage.py`) found 13 of
+  36 FKs unclassified, and all 13 are now registered for reassignment — the pending list is
+  empty. The constraint analysis made this far cheaper than estimated: only
+  `summer_league_desk_player_grades` has a unique constraint containing the player column
+  (`player_id, competition_id, baseline_version`), so it alone needs conflict columns; every
+  other table keys on game/event ids and cannot collide. No migration and no cascade changes
+  were needed. Proven by `tests/integration/test_player_merge_backbone_tables.py`, verified to
+  fail with the original `ForeignKeyViolationError` when the registrations are removed. This
+  also closes the "merge omits `summer_league_*` tables" bug.
 
 ---
 
