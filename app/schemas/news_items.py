@@ -88,6 +88,15 @@ class NewsItem(SQLModel, table=True):  # type: ignore[call-arg]
             unique=True,
             postgresql_where=sa.text("is_sticky = true"),
         ),
+        # Player-leading index for the merge/safe-delete paths, which look rows
+        # up by player id (#681); an unindexed FK also makes Postgres Seq-Scan
+        # this table on every players_master delete. Partial: most items are
+        # unattributed.
+        Index(
+            "ix_news_items_player_id",
+            "player_id",
+            postgresql_where=sa.text("player_id IS NOT NULL"),
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)

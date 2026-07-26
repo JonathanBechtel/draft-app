@@ -273,3 +273,71 @@ def test_child_table_conflict_columns_optional() -> None:
     spec = _ChildTable("foo", "player_id")
     assert spec.conflict_columns is None
     assert not spec.singleton_per_player
+
+
+# ---------------------------------------------------------------------------
+# Batched inbound-reference query (#681)
+# ---------------------------------------------------------------------------
+
+
+def test_inbound_reference_sql_covers_every_registered_spec() -> None:
+    """The batched guard query has one branch per registry entry, labelled to match."""
+    from app.services.player_merge_references import (
+        _INBOUND_REFERENCE_LABELS,
+        _INBOUND_REFERENCE_SPECS,
+        _INBOUND_REFERENCE_SQL,
+    )
+
+    specs = (*_CHILD_TABLES, _SIMILARITY_ANCHOR, _SIMILARITY_COMPARISON)
+    assert len(_INBOUND_REFERENCE_SPECS) == len(specs)
+    # Labels are the guard's public keys — they surface in delete_stub's refusal
+    # message and in the integration assertions.
+    assert len(set(_INBOUND_REFERENCE_LABELS)) == len(specs), "duplicate label"
+    for (table, column), label in zip(
+        _INBOUND_REFERENCE_SPECS, _INBOUND_REFERENCE_LABELS
+    ):
+        assert label == f"{table}.{column}"
+        assert f"FROM {table} WHERE {column} = :player_id" in _INBOUND_REFERENCE_SQL
+    assert _INBOUND_REFERENCE_SQL.count("UNION ALL") == len(specs) - 1
+
+
+def test_inbound_reference_sql_resolves_the_sentinel_table_name() -> None:
+    """The source_analytics sentinel spec must query the real table, not the alias."""
+    from app.services.player_merge_references import (
+        _INBOUND_REFERENCE_LABELS,
+        _INBOUND_REFERENCE_SQL,
+    )
+
+    assert "source_analytics.biggest_outlier_player_id" in _INBOUND_REFERENCE_LABELS
+    assert "source_analytics_outlier" not in _INBOUND_REFERENCE_SQL
+
+
+@pytest.mark.asyncio
+async def test_count_inbound_references_issues_one_round_trip() -> None:
+    """The guard runs a single statement, not one per registered table.
+
+    Bulk stub deletion calls it once per selected player, so a query apiece meant
+    hundreds of sequential round trips (#681).
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.services.player_merge_references import count_inbound_references
+
+    result = MagicMock()
+    result.all.return_value = [
+        ("player_aliases.player_id", 2),
+        ("summer_league_play_by_play_events.person2_id", 0),
+        ("summer_league_play_by_play_events.person3_id", 5),
+    ]
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+
+    refs = await count_inbound_references(db, 99)
+
+    assert db.execute.await_count == 1
+    # Zero-count rows are dropped; survivors keep registry order, which is where
+    # play-by-play sits relative to aliases.
+    assert list(refs.items()) == [
+        ("player_aliases.player_id", 2),
+        ("summer_league_play_by_play_events.person3_id", 5),
+    ]
