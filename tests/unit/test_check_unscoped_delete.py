@@ -318,6 +318,36 @@ class TestLegacyQueryDelete:
         )
         assert found == []
 
+    def test_sibling_function_names_do_not_taint_each_other(self):
+        """An unscoped `q` in one function must not flag a born-scoped `q` elsewhere."""
+        found = _violations(
+            """
+            def build(db):
+                q = db.query(PlayerSeason)
+                return q
+
+            def trim(db, pid):
+                q = db.query(PlayerSeason).filter(PlayerSeason.player_id == pid)
+                q.delete()
+            """
+        )
+        assert found == []
+
+    def test_closure_over_outer_builder_is_still_flagged(self):
+        """A nested function deleting an outer scope's unscoped builder is the same wipe."""
+        found = _violations(
+            """
+            def outer(db):
+                q = db.query(PlayerSeason)
+
+                def wipe():
+                    q.delete()
+
+                return wipe
+            """
+        )
+        assert len(found) == 1
+
 
 class TestAllowsScopedAndWaivedDeletes:
     """Legitimate forms must stay silent, or the rule trains people to bypass it."""
