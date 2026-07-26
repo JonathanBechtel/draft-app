@@ -165,6 +165,62 @@ def test_child_tables_all_have_player_column() -> None:
         assert spec.player_column, f"{spec.table} has empty player_column"
 
 
+def test_desk_player_grades_conflict_columns() -> None:
+    """Grades conflict on (competition_id, baseline_version).
+
+    uq_summer_league_desk_player_grades_player_competition_version includes
+    player_id, so two players graded in the same competition+baseline collide
+    on reassignment; the discard's row must be dropped instead.
+    """
+    spec = next(
+        s for s in _CHILD_TABLES if s.table == "summer_league_desk_player_grades"
+    )
+    assert spec.conflict_columns is not None
+    assert set(spec.conflict_columns) == {"competition_id", "baseline_version"}
+
+
+def test_pbp_person_columns_have_one_spec_each() -> None:
+    """Play-by-play registers person1/2/3_id as three separate specs."""
+    pbp_columns = {
+        s.player_column
+        for s in _CHILD_TABLES
+        if s.table == "summer_league_play_by_play_events"
+    }
+    assert pbp_columns == {"person1_id", "person2_id", "person3_id"}
+
+
+def test_storyline_subject_columns_have_one_spec_each() -> None:
+    """Desk storylines register both subject columns as separate specs."""
+    subject_columns = {
+        s.player_column
+        for s in _CHILD_TABLES
+        if s.table == "summer_league_desk_storylines"
+    }
+    assert subject_columns == {"subject_player_id", "subject_player_id_2"}
+
+
+def test_summer_league_plain_reassign_tables_have_no_conflict_columns() -> None:
+    """Tables whose unique keys exclude the player FK need no conflict columns.
+
+    Participation, game logs, shot events, source players, resolution reviews,
+    draft results and affiliations are all uniquely keyed on game/source/team
+    shaped columns, so reassignment can never violate a unique constraint.
+    """
+    plain = {
+        "draft_results",
+        "player_affiliations",
+        "summer_league_participation",
+        "summer_league_player_game_logs",
+        "summer_league_shot_events",
+        "summer_league_source_players",
+        "summer_league_player_resolution_reviews",
+    }
+    for table in plain:
+        spec = next(s for s in _CHILD_TABLES if s.table == table)
+        assert spec.conflict_columns is None, f"{table} should plain-reassign"
+        assert not spec.singleton_per_player
+
+
 # ---------------------------------------------------------------------------
 # keep_id == discard_id guard (fast path — no DB needed)
 # ---------------------------------------------------------------------------

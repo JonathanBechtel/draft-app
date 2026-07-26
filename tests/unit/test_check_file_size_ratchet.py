@@ -179,6 +179,31 @@ class TestEnforcementModes:
         monkeypatch.setattr(ratchet, "collect_changes", lambda against: [])
         assert ratchet.main(["--enforce"]) == 0
 
+    def test_git_failure_fails_closed_when_enforcing(self, monkeypatch, capsys):
+        """A broken diff in CI must be a red gate, not a silent pass.
+
+        Every other gate in this repo fails closed; a missing base ref waving the
+        changeset through would make the ratchet quietly vacuous in exactly the
+        runs it exists for.
+        """
+
+        def _boom(against):
+            raise subprocess.CalledProcessError(128, ["git", "diff"])
+
+        monkeypatch.setattr(ratchet, "collect_changes", _boom)
+        assert ratchet.main(["--enforce"]) == 1
+        assert "git diff failed" in capsys.readouterr().err
+
+    def test_git_failure_stays_permissive_in_warn_mode(self, monkeypatch, capsys):
+        """A local git hiccup must not block a commit the CI gate will still judge."""
+
+        def _boom(against):
+            raise subprocess.CalledProcessError(128, ["git", "diff"])
+
+        monkeypatch.setattr(ratchet, "collect_changes", _boom)
+        assert ratchet.main([]) == 0
+        assert "git diff failed" in capsys.readouterr().err
+
 
 class TestCollectChangesAgainstGit:
     """The git plumbing must read real diffs, including renames."""

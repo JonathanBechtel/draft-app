@@ -218,7 +218,6 @@
     },
     "app/services/summer_league_explorer_service.py": {
       "C901": 11,
-      "PLR0913": 1,
       "PLR0915": 4
     },
     "app/services/summer_league_games_service.py": {
@@ -319,9 +318,6 @@
       "C901": 2,
       "PLR0913": 1,
       "PLR0915": 1
-    },
-    "scripts/ingest_prospects_concepts_board.py": {
-      "C901": 1
     },
     "scripts/merge_2025_draft_dup_players.py": {
       "C901": 1

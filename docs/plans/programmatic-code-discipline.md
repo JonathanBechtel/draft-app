@@ -69,7 +69,11 @@ only, so `sa_delete(Model)` and `sa.delete(Model)` were invisible — and
 `app/services/admin_player_service.py` already imports `delete as sa_delete` and uses it at
 sixteen sites, making the blind spot the established house style rather than a hypothetical.
 The checker resolves aliases from the file's imports, which is also how it tells
-`sa.delete(Model)` apart from the ORM instance delete `db.delete(obj)`. Raw
+`sa.delete(Model)` apart from the ORM instance delete `db.delete(obj)`. A second audit pass
+found two more spellings the first fix missed, both now covered: the deeper module path
+(`sqlalchemy.sql.delete(Model)` after a plain `import sqlalchemy`) and the legacy ORM bulk
+delete `query(Model).delete()` — no live usage in this async codebase, but the canonical
+spelling in every old SQLAlchemy tutorial, so exactly what a copy-paste would carry in. Raw
 `text("DELETE FROM ...")` stays out of reach — a known gap, covered by Tier 2, not a safe case.
 
 **Allowlist:** test fixtures, explicit `--replace-run` correction paths, seed/demo scripts — each
@@ -152,6 +156,11 @@ naive delta check fails exactly the refactor we want. Design for it:
   file that already existed.
 - Provide an escape hatch (`# discipline: file-size <reason>`) requiring a justification visible
   in review.
+- **Fail closed on git errors when enforcing.** As first shipped, a failed diff (missing base
+  ref, broken fetch) exited 0 with a stderr line — the one gate here that waved the changeset
+  through precisely in the CI runs it exists for. Enforce mode now goes red on a git failure;
+  warn-only mode (pre-commit) stays permissive so a local hiccup cannot block a commit the CI
+  gate will still judge.
 
 Get this wrong and the rule becomes an argument *against* cleaning up god files.
 
@@ -200,6 +209,13 @@ Counts, rather than the inline `# noqa` annotations the review suggested, becaus
 all 265 findings would add a line per offending function across 94 files — many already over
 the file-size threshold, so the annotations would trip §1.4 and need their own waivers. A
 counts file keeps the debt out of the source entirely.
+
+**Stale entries fail (correction, per §3.4b's own rule).** As first shipped, a count that
+dropped below its baseline printed a nudge and passed — leaving the entry as silent headroom
+to regress back up with CI green, and within a day main carried two such entries. The FK and
+import-contract baselines both ship stale-entry tests; this one now does too: an improvement
+must be locked in (`make lint.complexity.update`) in the same change that earned it, enforced
+by the script and by `test_current_tree_matches_baseline_exactly`.
 
 ### 1.7 Migration safety
 
@@ -367,6 +383,14 @@ exists.
 over: it found the drift, and the constraint analysis it prompted showed the repair was far
 smaller than feared — only one of the 13 tables has a unique constraint containing the player
 column, so the rest cannot collide on reassignment, and no migration was required.
+
+**The second copy of the list is now derived, not maintained.** `count_inbound_references`
+(the safe-delete guard behind stub deletion) carried its *own* hand-maintained 19-entry copy
+of the child-table list, which #675 fixed on the merge path but not here — a stub holding only
+Summer League rows counted as reference-free and `delete_stub` proceeded into a raw
+`ForeignKeyViolationError` instead of the designed clean refusal. The guard now iterates the
+classified merge specs directly (recovered from the closed duplicate PR #678), so the two
+paths cannot drift apart again — the same fix §3.4b prescribes for every mirrored list.
 
 ### 3.4b Guard the hand-maintained lists the same way
 

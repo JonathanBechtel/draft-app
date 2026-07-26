@@ -21,10 +21,14 @@ not a semantic difference::
     delete(Model)                                  # from sqlalchemy import delete
     sa_delete(Model)                               # ... import delete as sa_delete
     sa.delete(Model)                               # import sqlalchemy as sa
+    sqlalchemy.sql.delete(Model)                   # import sqlalchemy
+    db.query(Model).delete()                       # legacy ORM bulk delete
 
 The aliased form is not hypothetical: ``app/services/admin_player_service.py`` imports
 ``delete as sa_delete`` and uses it at sixteen sites, so an author copying the established
-house style would have written code this checker could not see.
+house style would have written code this checker could not see. The ``query(...).delete()``
+form has no live usage in this async codebase, but it is the canonical bulk-delete spelling
+in every legacy SQLAlchemy tutorial — exactly what a copy-paste would carry in.
 
 Deliberately *not* flagged:
 
@@ -176,46 +180,115 @@ def _waived(lines: list[str], node: ast.Call, parents: dict[ast.AST, ast.AST]) -
     return False
 
 
-def _resolve_delete_names(tree: ast.AST) -> tuple[set[str], set[str]]:
-    """Return the names that mean ``delete``, as ``(bare_names, module_aliases)``.
+def _resolve_delete_names(tree: ast.AST) -> tuple[set[str], dict[str, str]]:
+    """Return the names that mean ``delete``, as ``(bare_names, alias_to_module)``.
 
-    ``bare_names`` are called directly (``sa_delete(Model)``); ``module_aliases`` are called
-    through an attribute (``sa.delete(Model)``). Resolving module aliases from the imports
-    is what lets ``sa.delete(Model)`` be flagged while ``db.delete(instance)`` — an ORM
-    instance delete on a session object, not a module — is left alone.
+    ``bare_names`` are called directly (``sa_delete(Model)``); ``alias_to_module`` maps a
+    bound name to the module path it stands for (``{"sa": "sqlalchemy"}``), so both
+    ``sa.delete(Model)`` and the deeper ``sqlalchemy.sql.delete(Model)`` resolve. Resolving
+    aliases from the imports is what lets those be flagged while ``db.delete(instance)`` —
+    an ORM instance delete on a session object, not a module — is left alone.
     """
     bare: set[str] = set(_DEFAULT_DELETE_NAMES)
-    modules: set[str] = set()
+    modules: dict[str, str] = {}
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name in _DELETE_MODULES:
-                    # `import sqlalchemy` binds "sqlalchemy"; `as sa` binds "sa".
-                    modules.add(alias.asname or alias.name.split(".")[0])
+            _collect_plain_imports(node, modules)
         elif isinstance(node, ast.ImportFrom):
-            if node.module not in _DELETE_MODULES:
-                continue
-            for alias in node.names:
-                if alias.name == "delete":
-                    bare.add(alias.asname or alias.name)
-                elif f"{node.module}.{alias.name}" in _DELETE_MODULES:
-                    # `from sqlalchemy import sql` — the bound name is still a module
-                    # that exports `delete`.
-                    modules.add(alias.asname or alias.name)
+            _collect_from_imports(node, bare, modules)
 
     return bare, modules
 
 
+def _collect_plain_imports(node: ast.Import, modules: dict[str, str]) -> None:
+    """Record module bindings from ``import ...`` statements into ``modules``."""
+    for alias in node.names:
+        root = alias.name.split(".")[0]
+        if alias.name in _DELETE_MODULES:
+            if alias.asname:
+                # `import sqlalchemy.sql as sa_sql` binds the full path.
+                modules[alias.asname] = alias.name
+            else:
+                # `import sqlalchemy.sql` binds the root package name.
+                modules[root] = root
+        elif root in _DELETE_MODULES and not alias.asname:
+            # `import sqlalchemy.orm` still binds "sqlalchemy" itself.
+            modules[root] = root
+
+
+def _collect_from_imports(
+    node: ast.ImportFrom, bare: set[str], modules: dict[str, str]
+) -> None:
+    """Record delete names and module bindings from ``from ... import ...``."""
+    if node.module not in _DELETE_MODULES:
+        return
+    for alias in node.names:
+        if alias.name == "delete":
+            bare.add(alias.asname or alias.name)
+        elif f"{node.module}.{alias.name}" in _DELETE_MODULES:
+            # `from sqlalchemy import sql` — the bound name is still a module
+            # that exports `delete`.
+            modules[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+
+
+def _dotted_receiver(node: ast.expr) -> str | None:
+    """Return ``node`` as a dotted name string, or None if it is not a plain chain."""
+    parts: list[str] = []
+    current = node
+    while isinstance(current, ast.Attribute):
+        parts.append(current.attr)
+        current = current.value
+    if not isinstance(current, ast.Name):
+        return None
+    parts.append(current.id)
+    return ".".join(reversed(parts))
+
+
 def _is_delete_construct(
-    node: ast.Call, bare_names: set[str], module_aliases: set[str]
+    node: ast.Call, bare_names: set[str], alias_to_module: dict[str, str]
 ) -> bool:
     """Return True if ``node`` calls the SQLAlchemy ``delete()`` construct."""
     func = node.func
     if isinstance(func, ast.Name):
         return func.id in bare_names
     if isinstance(func, ast.Attribute) and func.attr == "delete":
-        return isinstance(func.value, ast.Name) and func.value.id in module_aliases
+        dotted = _dotted_receiver(func.value)
+        if dotted is None:
+            return False
+        head, _, rest = dotted.partition(".")
+        module = alias_to_module.get(head)
+        if module is None:
+            return False
+        full = f"{module}.{rest}" if rest else module
+        return full in _DELETE_MODULES
+    return False
+
+
+def _is_unscoped_query_delete(node: ast.Call) -> bool:
+    """Return True for the legacy ``query(Model).delete()`` bulk delete with no filter.
+
+    ``session.query(Model).delete()`` deletes every row, same as ``delete(Model)`` without
+    ``.where()``. Walking the receiver chain, a ``.filter``/``.filter_by``/``.where`` link
+    scopes it; a chain bottoming out at ``.query(...)`` without one does not.
+    """
+    func = node.func
+    if not (isinstance(func, ast.Attribute) and func.attr == "delete"):
+        return False
+
+    current: ast.expr = func.value
+    while isinstance(current, ast.Call):
+        inner = current.func
+        if isinstance(inner, ast.Attribute):
+            if inner.attr in _SCOPING_METHODS:
+                return False
+            if inner.attr == "query":
+                return True
+            current = inner.value
+        elif isinstance(inner, ast.Name):
+            return inner.id == "query"
+        else:
+            return False
     return False
 
 
@@ -234,6 +307,16 @@ def find_violations(path: Path, source: str) -> list[str]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
+
+        # Legacy ORM bulk delete: query(Model).delete() with no filter in the chain.
+        if _is_unscoped_query_delete(node):
+            if not _waived(lines, node, parents):
+                violations.append(
+                    f"{path}:{node.lineno}: "
+                    f"{ast.unparse(node.func)}() has no .filter(...)"
+                )
+            continue
+
         # Only the SQLAlchemy `delete(Model)` construct, under any of its import
         # spellings. `db.delete(obj)` is an instance delete and is inherently scoped.
         if not _is_delete_construct(node, bare_names, module_aliases):

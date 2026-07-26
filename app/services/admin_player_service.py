@@ -515,7 +515,6 @@ async def delete_stub(
         "player_status.player_id",
         "player_enrichment_jobs.player_id",
     }
-    # PlayerEnrichmentJob is not in count_inbound_references but check anyway
     blocking_refs = {k: v for k, v in refs.items() if k not in non_blocking}
 
     if blocking_refs:

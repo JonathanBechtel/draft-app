@@ -167,6 +167,106 @@ class TestRecognizesEveryImportSpelling:
         )
         assert found == []
 
+    def test_deep_module_path_is_flagged(self):
+        """`import sqlalchemy` then `sqlalchemy.sql.delete(Model)`.
+
+        The attribute chain is two levels deep; a checker that only resolves
+        `Name.delete` receivers misses it.
+        """
+        found = _violations(
+            """
+            import sqlalchemy
+
+            async def rebuild(db):
+                await db.execute(sqlalchemy.sql.delete(PlayerSeason))
+            """
+        )
+        assert len(found) == 1
+
+    def test_aliased_submodule_import_is_flagged(self):
+        """`import sqlalchemy.sql as sa_sql` then `sa_sql.delete(Model)`."""
+        found = _violations(
+            """
+            import sqlalchemy.sql as sa_sql
+
+            async def rebuild(db):
+                await db.execute(sa_sql.delete(PlayerSeason))
+            """
+        )
+        assert len(found) == 1
+
+    def test_unrelated_deep_attribute_delete_is_not_flagged(self):
+        """`client.admin.delete(url)` is somebody's HTTP verb, not the construct."""
+        found = _violations(
+            """
+            import sqlalchemy
+
+            async def f(client, url):
+                await client.admin.delete(url)
+            """
+        )
+        assert found == []
+
+
+class TestLegacyQueryDelete:
+    """`query(Model).delete()` is the canonical legacy bulk delete — same wipe, no import.
+
+    No live usage in this async codebase, but it is what every old SQLAlchemy tutorial
+    teaches, so it is exactly what a copy-paste would carry in.
+    """
+
+    def test_unfiltered_query_delete_is_flagged(self):
+        """`db.query(Model).delete()` deletes every row."""
+        found = _violations(
+            """
+            def wipe(db):
+                db.query(PlayerSeason).delete()
+            """
+        )
+        assert len(found) == 1
+        assert "has no .filter(...)" in found[0]
+
+    def test_filtered_query_delete_passes(self):
+        """A `.filter(...)` in the chain scopes the delete."""
+        found = _violations(
+            """
+            def trim(db, pid):
+                db.query(PlayerSeason).filter(PlayerSeason.player_id == pid).delete()
+            """
+        )
+        assert found == []
+
+    def test_filter_by_in_the_chain_passes(self):
+        """`.filter_by(...)` scopes it just as well."""
+        found = _violations(
+            """
+            def trim(db, pid):
+                db.query(PlayerSeason).filter_by(player_id=pid).delete()
+            """
+        )
+        assert found == []
+
+    def test_waiver_covers_query_delete(self):
+        """The same escape hatch applies as for `delete(Model)`."""
+        found = _violations(
+            """
+            def reset(db):
+                # discipline: unscoped-delete test fixture, table is scratch
+                db.query(PlayerSeason).delete()
+            """
+        )
+        assert found == []
+
+    def test_plain_method_named_delete_is_not_flagged(self):
+        """`cache.delete()` and friends share the name, not the semantics."""
+        found = _violations(
+            """
+            def evict(cache):
+                cache.delete()
+            """
+        )
+        assert found == []
+
 
 class TestAllowsScopedAndWaivedDeletes:
     """Legitimate forms must stay silent, or the rule trains people to bypass it."""
