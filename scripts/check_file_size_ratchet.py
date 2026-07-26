@@ -38,6 +38,12 @@ per-file check fails exactly the refactor we want, which would make the rule an 
 * **Rename/copy detection** (``git diff -M -C``) so moved files are not read as additions.
 * **Net-change evaluation across the whole changeset**: if the touched files collectively did
   not grow, the change is a redistribution and passes regardless of per-file movement.
+* **Deleted files count against the total.** Git only reports a rename when the old and new
+  files are similar enough (~50%); split a 5,000-line service ten ways and it reports a
+  deletion plus ten additions instead. Skipping deletions made that changeset read as +5,000
+  lines of pure growth and fail — blocking the exact decomposition this rule is here to
+  encourage. A deletion contributes its line count as negative delta and raises no finding
+  of its own.
 
 Escape hatch
 ------------
@@ -192,8 +198,6 @@ def collect_changes(against: str) -> list[FileChange]:
             else fields[1]
         )
 
-        if status.startswith("D"):
-            continue
         if not new_path.endswith(".py"):
             continue
 
@@ -201,6 +205,11 @@ def collect_changes(against: str) -> list[FileChange]:
         # old = new - added + deleted. Falling back to (0, 0) leaves old == new,
         # which reads as "unchanged size" — the safe direction if git reported a
         # path here that --numstat did not.
+        #
+        # Deletions fall out of the same arithmetic: nothing on disk, so new_lines is 0
+        # and old_lines is the deleted count, giving the negative delta a decomposition
+        # needs to read as a redistribution. `evaluate` raises no finding for them —
+        # a file of zero lines is neither oversized nor growing.
         added, deleted = deltas.get(new_path, (0, 0))
         new_lines = _count_lines_on_disk(new_path)
 

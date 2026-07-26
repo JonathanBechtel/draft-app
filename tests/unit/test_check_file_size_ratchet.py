@@ -238,6 +238,67 @@ class TestCollectChangesAgainstGit:
         violations, _ = ratchet.evaluate(changes)
         assert violations == []
 
+    def test_split_that_deletes_the_original_is_allowed(self, git_repo):
+        """The decomposition shape git does *not* detect as a rename.
+
+        A 5,000-line service split ten ways shares too little with any one output for
+        rename detection to fire, so git reports a deletion plus ten additions. Skipping
+        deletions made that read as +5,000 lines of pure growth and fail — the rule
+        blocking the work it exists to encourage. The sibling rename test above covers
+        only the shape where detection *does* fire, which is why this one was missed.
+        """
+        tmp_path = git_repo
+
+        source = tmp_path / "app" / "svc.py"
+        source.parent.mkdir(parents=True)
+        source.write_text("\n".join(f"x = {i}" for i in range(5000)) + "\n")
+        subprocess.run(["git", "add", "-A"], check=True)
+        subprocess.run(["git", "commit", "-qm", "base"], check=True)
+
+        # Ten distinct 500-line modules; no single one resembles the 5,000-line original.
+        source.unlink()
+        for part in range(10):
+            body = "\n".join(f"y{part} = {i}" for i in range(500)) + "\n"
+            (tmp_path / "app" / f"part{part}.py").write_text(body)
+        subprocess.run(["git", "add", "-A"], check=True)
+
+        changes = ratchet.collect_changes("HEAD")
+        deleted = [c for c in changes if c.path == "app/svc.py"]
+        assert len(deleted) == 1, "the deleted original must appear in the changeset"
+        assert deleted[0].old_lines == 5000
+        assert deleted[0].new_lines == 0
+
+        violations, net_delta = ratchet.evaluate(changes)
+        assert net_delta <= 0, f"a pure split must not read as growth (got {net_delta:+d})"
+        assert ratchet.main(["--against", "HEAD", "--enforce"]) == 0
+
+        # The deletion itself must not be reported as a finding.
+        assert not any("app/svc.py" in violation for violation in violations)
+
+    def test_deleting_a_file_does_not_license_growing_a_god_file(self, git_repo):
+        """Counting deletions must not become a way to buy growth elsewhere.
+
+        The net-delta allowance is deliberately generous, but a changeset whose *only*
+        shrinkage is an unrelated deletion should still be judged on what it grew.
+        """
+        tmp_path = git_repo
+        (tmp_path / "app").mkdir()
+        god = tmp_path / "app" / "god.py"
+        spare = tmp_path / "app" / "spare.py"
+        god.write_text("\n".join(f"x = {i}" for i in range(900)) + "\n")
+        spare.write_text("\n".join(f"y = {i}" for i in range(100)) + "\n")
+        subprocess.run(["git", "add", "-A"], check=True)
+        subprocess.run(["git", "commit", "-qm", "base"], check=True)
+
+        god.write_text("\n".join(f"x = {i}" for i in range(1100)) + "\n")
+        spare.unlink()
+        subprocess.run(["git", "add", "-A"], check=True)
+
+        violations, net_delta = ratchet.evaluate(ratchet.collect_changes("HEAD"))
+        assert any("god.py" in violation for violation in violations)
+        assert net_delta > 0, "+200 grown against -100 deleted is still net growth"
+        assert ratchet.main(["--against", "HEAD", "--enforce"]) == 1
+
     def test_measures_from_the_merge_base_not_the_base_branch_tip(self, git_repo):
         """Growth on the base branch after divergence must not be attributed here.
 
