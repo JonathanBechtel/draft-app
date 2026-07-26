@@ -64,6 +64,14 @@ history.
 
 **Rule:** flag `delete(Model)` calls with no `.where(...)` clause.
 
+**Match every import spelling.** As first shipped the checker matched the bare name `delete`
+only, so `sa_delete(Model)` and `sa.delete(Model)` were invisible — and
+`app/services/admin_player_service.py` already imports `delete as sa_delete` and uses it at
+sixteen sites, making the blind spot the established house style rather than a hypothetical.
+The checker resolves aliases from the file's imports, which is also how it tells
+`sa.delete(Model)` apart from the ORM instance delete `db.delete(obj)`. Raw
+`text("DELETE FROM ...")` stays out of reach — a known gap, covered by Tier 2, not a safe case.
+
 **Allowlist:** test fixtures, explicit `--replace-run` correction paths, seed/demo scripts — each
 requiring an inline `# discipline: unscoped-delete <reason>` comment so exceptions are visible in
 review rather than silent.
@@ -132,6 +140,16 @@ naive delta check fails exactly the refactor we want. Design for it:
 - **Evaluate net change across the whole changeset**, not per-file in isolation — a pure split is
   net-neutral and must pass.
 - **Enable git rename/copy detection** so moves are not counted as additions.
+- **Count deleted files in that net total.** Rename detection only fires above a similarity
+  threshold, so a ten-way split of a 5,000-line service reports a *deletion plus ten
+  additions*, not a rename. The first implementation skipped deletions, which made that
+  changeset read as +5,000 lines of pure growth and fail — the rule blocking the decomposition
+  it exists to encourage, via the one split shape rename detection cannot see.
+  **Cap that credit at the lines added in new files.** Uncapped, a deletion feeds the
+  net-change allowance with lines that went nowhere: deleting an obsolete 1,200-line module
+  while growing a 900-line service to 1,400 nets -700 and suppresses a real violation. A
+  deletion may offset *creation* — which is what a decomposition does — never the growth of a
+  file that already existed.
 - Provide an escape hatch (`# discipline: file-size <reason>`) requiring a justification visible
   in review.
 
@@ -306,6 +324,27 @@ time-sensitive merge. Do **not** auto-derive the reassignment list from metadata
 reflective reassignment would resurrect rows the cascade semantics intend to delete. The FK graph
 supplies the *audit universe*; a human classifies each edge once, and the test enforces that the
 classification stays total.
+
+**Built, with two corrections from contact with the code** (`tests/unit/test_player_merge_fk_coverage.py`):
+
+1. **There is a third class: *null-out*.** `source_analytics.biggest_outlier_player_id` is a
+   nullable back-reference the merge blanks rather than repoints, registered under a sentinel
+   spec name (`source_analytics_outlier`) that `_merge_child_table` special-cases. Reading the
+   FK graph against the reassignment list alone reports it as unclassified. A reflective test
+   has to know the sentinel mapping or it produces a false finding on day one.
+2. **Thirteen columns are unclassified today**, so the test ships with a shrink-only baseline
+   like every other guardrail here rather than as a red build. The drift 4.4 predicted is
+   real and now enumerated; closing it is a separate change.
+
+### 3.4b Guard the hand-maintained lists the same way
+
+The same drift class applies to import contract 3, whose `forbidden_modules` is enumerated
+because import-linter module expressions match whole dotted segments (`app.services.summer_league*`
+is not expressible). As shipped it named 11 of 11 service modules but 2 of 5 schema modules —
+omitting `app.schemas.summer_league_metrics`, which holds the very tables a lifted stat engine
+would reach for. `tests/unit/test_import_contract_coverage.py` derives the universe from the
+filesystem and enforces that the contract covers it. **Any hand-maintained list mirroring a
+structure the code already knows gets a reflective test, or it silently rots.**
 
 ### 3.5 Browser-execution smoke — "passes every test, dead in the browser"
 

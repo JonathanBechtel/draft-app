@@ -38,6 +38,14 @@ per-file check fails exactly the refactor we want, which would make the rule an 
 * **Rename/copy detection** (``git diff -M -C``) so moved files are not read as additions.
 * **Net-change evaluation across the whole changeset**: if the touched files collectively did
   not grow, the change is a redistribution and passes regardless of per-file movement.
+* **Deleted files count against the total, but only up to what the change created.** Git
+  only reports a rename when the old and new files are similar enough (~50%); split a
+  5,000-line service ten ways and it reports a deletion plus ten additions instead. Skipping
+  deletions made that changeset read as +5,000 lines of pure growth and fail — blocking the
+  exact decomposition this rule is here to encourage. A deletion contributes its line count
+  as negative delta and raises no finding of its own. Credit is capped at the lines added in
+  *new files*, so a deletion can offset creation but never the growth of a file that already
+  existed; see ``_net_delta``.
 
 Escape hatch
 ------------
@@ -192,8 +200,6 @@ def collect_changes(against: str) -> list[FileChange]:
             else fields[1]
         )
 
-        if status.startswith("D"):
-            continue
         if not new_path.endswith(".py"):
             continue
 
@@ -201,6 +207,11 @@ def collect_changes(against: str) -> list[FileChange]:
         # old = new - added + deleted. Falling back to (0, 0) leaves old == new,
         # which reads as "unchanged size" — the safe direction if git reported a
         # path here that --numstat did not.
+        #
+        # Deletions fall out of the same arithmetic: nothing on disk, so new_lines is 0
+        # and old_lines is the deleted count, giving the negative delta a decomposition
+        # needs to read as a redistribution. `evaluate` raises no finding for them —
+        # a file of zero lines is neither oversized nor growing.
         added, deleted = deltas.get(new_path, (0, 0))
         new_lines = _count_lines_on_disk(new_path)
 
@@ -214,9 +225,32 @@ def collect_changes(against: str) -> list[FileChange]:
     return changes
 
 
+def _net_delta(changes: list[FileChange]) -> int:
+    """Return the changeset's net line delta, with deletion credit bounded.
+
+    Deletions count toward the total so a split that git does not detect as a rename
+    reads as a redistribution rather than pure growth. Left unbounded, though, that
+    feeds the ``net_delta <= 0`` allowance below with lines that went nowhere: deleting
+    an obsolete 1,200-line module while growing a 900-line service to 1,400 would net
+    -700 and suppress a real violation.
+
+    So deletion credit is capped at the lines added in **new files**. A deletion can
+    offset *creation* — which is what a decomposition does — but never growth of a file
+    that already existed. A genuine ten-way split still nets zero; an unrelated deletion
+    buys nothing.
+    """
+    deleted = [c for c in changes if c.new_lines == 0 and c.old_lines > 0]
+    surviving = [c for c in changes if not (c.new_lines == 0 and c.old_lines > 0)]
+
+    created_lines = sum(c.new_lines for c in surviving if c.old_lines == 0)
+    deletion_credit = min(sum(c.old_lines for c in deleted), created_lines)
+
+    return sum(c.delta for c in surviving) - deletion_credit
+
+
 def evaluate(changes: list[FileChange]) -> tuple[list[str], int]:
     """Return (violation messages, net line delta across the changeset)."""
-    net_delta = sum(change.delta for change in changes)
+    net_delta = _net_delta(changes)
     violations: list[str] = []
 
     def report(message: str) -> None:

@@ -287,6 +287,22 @@ behind it, and a deploy migration queueing public reads into a 500 outage (see d
   list == FK-graph equality would false-fail on the deliberate cascade exemptions, and
   auto-deriving the reassignment list would resurrect rows meant to die; see discipline §3.4).
   🟢 free test; roadmap Phase 0.
+  - 🟡 **Guard done; the underlying gap is now measured, not closed.**
+    `tests/unit/test_player_merge_fk_coverage.py` walks SQLModel metadata and enforces that
+    every FK to `players_master` is classified. A **third** class turned up that §3.4 did not
+    anticipate: *null-out*, for `source_analytics.biggest_outlier_player_id` — spelled with a
+    sentinel spec name (`source_analytics_outlier`) that `_merge_child_table` special-cases.
+    Reading the FK graph alone would have called it unclassified.
+  - ⏸️ **13 columns are unclassified today** and sit in a shrink-only baseline, matching the
+    shape of the repo's other guardrail ratchets: `draft_results.player_id`,
+    `player_affiliations.player_id`, and 11 `summer_league_*` columns (participation, game
+    logs, shot events, source players, PBP `person1/2/3_id`, desk grades/storylines,
+    resolution reviews). Each is a merge that RESTRICT-fails today if the discarded player
+    holds rows there — the live bug 4.4 describes, now enumerated. Registering them needs
+    per-table conflict semantics and integration coverage, so it is its own change:
+    **#675**, which carries the per-table conflict triage (only
+    `summer_league_desk_player_grades` has a unique constraint including `player_id`, so
+    only it can collide on reassignment).
 
 ---
 
