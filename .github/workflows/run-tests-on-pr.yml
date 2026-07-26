@@ -80,6 +80,12 @@ jobs:
         # warn mode. See docs/plans/programmatic-code-discipline.md §1.4.
         run: python scripts/check_file_size_ratchet.py --against origin/${{ github.base_ref }} --enforce
 
+      - name: Migration safety
+        # Diff-scoped against the PR merge base: only revisions this PR adds or edits
+        # are evaluated, since the existing ones have already run in production.
+        # See docs/plans/programmatic-code-discipline.md §1.7 and incident #669.
+        run: python scripts/check_migration_safety.py --against origin/${{ github.base_ref }}
+
       - name: Cache mypy incremental state
         uses: actions/cache@v4
         with:
@@ -199,6 +205,12 @@ jobs:
         # diff-scoped tooling already lives in. Pre-commit runs the same script in
         # warn mode. See docs/plans/programmatic-code-discipline.md §1.4.
         run: python scripts/check_file_size_ratchet.py --against origin/${{ github.base_ref }} --enforce
+
+      - name: Migration safety
+        # Diff-scoped against the PR merge base: only revisions this PR adds or edits
+        # are evaluated, since the existing ones have already run in production.
+        # See docs/plans/programmatic-code-discipline.md §1.7 and incident #669.
+        run: python scripts/check_migration_safety.py --against origin/${{ github.base_ref }}
 
       - name: Cache mypy incremental state
         uses: actions/cache@v4
