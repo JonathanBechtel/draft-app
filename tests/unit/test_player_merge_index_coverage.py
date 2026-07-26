@@ -38,7 +38,7 @@ from __future__ import annotations
 import importlib
 import pkgutil
 
-from sqlalchemy import Table, UniqueConstraint
+from sqlalchemy import Column, Index, Integer, MetaData, Table, UniqueConstraint, text
 from sqlmodel import SQLModel
 
 from app import schemas as schemas_pkg
@@ -70,13 +70,38 @@ def _registered_columns() -> list[tuple[str, str]]:
     ]
 
 
+def _supports_unrestricted_lookup(index: Index, column: str) -> bool:
+    """True if *index* can serve a bare ``WHERE column = :player_id`` lookup.
+
+    A non-partial index always can. A partial one can only when the planner can prove
+    its predicate from the lookup clause — which for `col = :param` (a strict operator,
+    so it implies `col IS NOT NULL`) means exactly the ``col IS NOT NULL`` predicate the
+    #681 indexes use.
+
+    Without this check, leading-column position alone would be enough: a partial index
+    like ``ix_player_affiliations_active`` (led by ``player_id``, but excluding
+    superseded and retracted rows) would keep the guard below green while the guard's
+    unrestricted lookup fell back to a Seq Scan.
+    """
+    predicate = index.dialect_kwargs.get("postgresql_where")
+    if predicate is None:
+        return True
+    normalized = " ".join(str(predicate).split()).lower()
+    return normalized == f"{column.lower()} is not null"
+
+
 def _leading_indexes(table: Table, column: str) -> list[str]:
-    """Return the names of indexes/constraints on *table* led by *column*."""
+    """Return the names of indexes/constraints on *table* usable for the guard's lookup."""
     leading: list[str] = []
     for index in table.indexes:
         columns = list(index.columns)
-        if columns and columns[0].name == column:
-            leading.append(index.name or "<unnamed index>")
+        if not columns or columns[0].name != column:
+            continue
+        if not _supports_unrestricted_lookup(index, column):
+            continue
+        leading.append(index.name or "<unnamed index>")
+    # Unique constraints and primary keys are never partial, so a leading position is
+    # enough for them.
     for constraint in table.constraints:
         if not isinstance(constraint, UniqueConstraint):
             continue
@@ -87,6 +112,37 @@ def _leading_indexes(table: Table, column: str) -> list[str]:
     if target is not None and target.primary_key:
         leading.append(f"{table.name}_pkey")
     return leading
+
+
+def test_partial_index_with_an_unrelated_predicate_does_not_count() -> None:
+    """Leading position alone must not satisfy the guard — the predicate has to fit.
+
+    ``player_affiliations`` really does carry both shapes: a plain ``player_id`` index and
+    ``ix_player_affiliations_active``, partial on ``superseded_at IS NULL AND retracted_at
+    IS NULL``. If the plain one were ever dropped, crediting the partial one would leave
+    this file green while the guard's unrestricted lookup Seq-Scanned the table.
+    """
+    metadata = MetaData()
+    table = Table(
+        "scratch_affiliations",
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("player_id", Integer),
+        Column("superseded_at", Integer),
+        Index(
+            "ix_scratch_active",
+            "player_id",
+            postgresql_where=text("superseded_at IS NULL"),
+        ),
+    )
+    assert _leading_indexes(table, "player_id") == []
+
+    Index(
+        "ix_scratch_player_id",
+        table.c.player_id,
+        postgresql_where=text("player_id IS NOT NULL"),
+    )
+    assert _leading_indexes(table, "player_id") == ["ix_scratch_player_id"]
 
 
 def test_every_registered_player_column_has_a_leading_index() -> None:
