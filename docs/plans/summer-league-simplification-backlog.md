@@ -299,7 +299,10 @@ behind it, and a deploy migration queueing public reads into a 500 outage (see d
     logs, shot events, source players, PBP `person1/2/3_id`, desk grades/storylines,
     resolution reviews). Each is a merge that RESTRICT-fails today if the discarded player
     holds rows there — the live bug 4.4 describes, now enumerated. Registering them needs
-    per-table conflict semantics and integration coverage, so it is its own change.
+    per-table conflict semantics and integration coverage, so it is its own change:
+    **#675**, which carries the per-table conflict triage (only
+    `summer_league_desk_player_grades` has a unique constraint including `player_id`, so
+    only it can collide on reassignment).
 
 ---
 
