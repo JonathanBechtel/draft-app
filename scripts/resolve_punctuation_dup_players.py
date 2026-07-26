@@ -32,8 +32,8 @@ The safe pattern
 A group is auto-merged only when all of these hold:
 
 1. exactly two rows;
-2. one is ``is_stub`` with **no external ids and no child rows anywhere** — it carries no
-   information that could be lost;
+2. one is ``is_stub`` with **no external ids and nothing in a table the merge service cannot
+   reassign** — it carries no identity of its own, and nothing that would strand mid-merge;
 3. the other is a non-stub with at least one external id — a real, identified player;
 4. their ``draft_year`` values do not disagree.
 
@@ -337,9 +337,9 @@ async def run(*, dry_run: bool, database_url: str) -> int:
                 print("Nothing to do.")
                 return 0
 
-            for group in safe:
-                assert group.keep_id is not None and group.discard_id is not None
-                if dry_run:
+            if dry_run:
+                for group in safe:
+                    assert group.keep_id is not None and group.discard_id is not None
                     report = await preview_merge(
                         conn, keep_id=group.keep_id, discard_id=group.discard_id
                     )
@@ -350,17 +350,49 @@ async def run(*, dry_run: bool, database_url: str) -> int:
                         f"  [dry run] {group.discard_id} -> {group.keep_id} "
                         f"({group.key}): {touched or 'no child rows to move'}"
                     )
-                else:
-                    report = await merge_players(
+                print("\nRe-run with --execute to apply.")
+                return 0
+
+        # Each merge gets its own transaction, so one failure cannot undo the merges that
+        # already succeeded. `engine.begin()` is what actually commits: the merge service
+        # deliberately leaves commits to its caller (see CLAUDE.md, service-layer patterns),
+        # so running it on a plain `connect()` silently rolls everything back on close.
+        failures = 0
+        for group in safe:
+            assert group.keep_id is not None and group.discard_id is not None
+            try:
+                async with engine.begin() as conn:
+                    await merge_players(
                         conn, keep_id=group.keep_id, discard_id=group.discard_id
                     )
-                    print(
-                        f"  merged {group.discard_id} -> {group.keep_id} ({group.key})"
-                    )
+            except Exception as exc:  # noqa: BLE001 - report and continue to the next pair
+                failures += 1
+                print(
+                    f"  FAILED {group.discard_id} -> {group.keep_id} ({group.key}): {exc}"
+                )
+                continue
 
-            if dry_run:
-                print("\nRe-run with --execute to apply.")
-        return 0
+            # Confirm the write actually landed. Without this the script would report
+            # success for a transaction that never committed — which is exactly what an
+            # earlier version of it did.
+            async with engine.connect() as conn:
+                still_there = (
+                    await conn.execute(
+                        text("SELECT count(*) FROM players_master WHERE id = :pid"),
+                        {"pid": group.discard_id},
+                    )
+                ).scalar()
+            if still_there:
+                failures += 1
+                print(
+                    f"  FAILED {group.discard_id} -> {group.keep_id} ({group.key}): "
+                    "discard row still present after commit"
+                )
+            else:
+                print(f"  merged {group.discard_id} -> {group.keep_id} ({group.key})")
+
+        print(f"\n{len(safe) - failures} merged, {failures} failed.")
+        return 1 if failures else 0
     finally:
         await engine.dispose()
 
