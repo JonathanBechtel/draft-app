@@ -19,6 +19,7 @@ from sqlalchemy import (
     Index,
     Integer,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -172,6 +173,15 @@ class SourceAnalytics(SQLModel, table=True):  # type: ignore[call-arg]
         Index(
             "ix_source_analytics_snapshot",
             "snapshot_id",
+        ),
+        # Player-leading index for the merge/safe-delete paths, which look rows
+        # up by this back-reference (the merge blanks it rather than repointing
+        # it) (#681); an unindexed FK also makes Postgres Seq-Scan this table on
+        # every players_master delete.
+        Index(
+            "ix_source_analytics_biggest_outlier_player_id",
+            "biggest_outlier_player_id",
+            postgresql_where=text("biggest_outlier_player_id IS NOT NULL"),
         ),
     )
 

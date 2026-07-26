@@ -9,10 +9,12 @@ Public API
 * :func:`preview_merge` — dry-run count of rows affected per table.
 * :func:`merge_players` — atomic reassignment of all FK references from the
   discarded player to the survivor, plus alias creation and row deletion.
-* :func:`count_inbound_references` — per-table inbound FK count, used by the
-  safe-delete guard.
 * :func:`find_duplicate_candidates` — near-duplicate candidates (excludes
   the player itself).
+
+The safe-delete guard's counterpart, :func:`~app.services.player_merge_references
+.count_inbound_references`, lives in its own module — it is derived from the same
+child-table registry but asks a read-only question and needs none of this machinery.
 """
 
 from __future__ import annotations
@@ -29,7 +31,6 @@ from app.services.player_merge_tables import (
     _CHILD_TABLES,
     _SIMILARITY_ANCHOR,
     _SIMILARITY_COMPARISON,
-    _SPEC_TABLE_ALIASES,
     _ChildTable,
 )
 
@@ -477,36 +478,6 @@ async def merge_players(
         performed_by,
     )
     return await _run_merge(db, keep_id=keep_id, discard_id=discard_id, dry_run=False)
-
-
-async def count_inbound_references(
-    db: AsyncSession,
-    player_id: int,
-) -> dict[str, int]:
-    """Return a per-table count of all inbound FK references for a player.
-
-    Used by the safe-delete guard to block deletion of players that still
-    have attached data.  Only counts non-CASCADE tables (CASCADE tables
-    drop automatically and are not a deletion blocker).
-
-    Args:
-        db: Active async database session.
-        player_id: Player to inspect.
-
-    Returns:
-        Dict mapping table.column label to row count (only non-zero entries
-        are included).
-    """
-    # Derived from the classified merge specs so the safe-delete guard can
-    # never drift from the merge path again (#675): every reassignable
-    # (table, column) pair is by construction a non-CASCADE inbound FK.
-    counts: dict[str, int] = {}
-    for spec in (*_CHILD_TABLES, _SIMILARITY_ANCHOR, _SIMILARITY_COMPARISON):
-        table = _SPEC_TABLE_ALIASES.get(spec.table, spec.table)
-        n = await _count_rows(db, table, spec.player_column, player_id)
-        if n:
-            counts[f"{table}.{spec.player_column}"] = n
-    return counts
 
 
 async def find_duplicate_candidates(

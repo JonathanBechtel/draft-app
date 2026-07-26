@@ -57,6 +57,10 @@ prevent. Proving otherwise needs control-flow analysis, which is beyond an AST c
 the rule fails closed. Genuinely-safe builder code takes the escape hatch below, where the
 argument is visible in review.
 
+The stored query builder gets the same treatment: once ``q = session.query(Model)`` binds an
+unscoped chain, ``q.delete()`` is flagged even if a ``q = q.filter(...)`` rebinding sits in
+between — that narrowing may equally be conditional, and the waiver is the honest way out.
+
 Escape hatch
 ------------
 Some full-table deletes are legitimate: test fixtures, explicit ``--replace-run`` correction
@@ -265,18 +269,13 @@ def _is_delete_construct(
     return False
 
 
-def _is_unscoped_query_delete(node: ast.Call) -> bool:
-    """Return True for the legacy ``query(Model).delete()`` bulk delete with no filter.
+def _is_query_chain_unscoped(expr: ast.expr) -> bool:
+    """Return True if ``expr`` is a call chain bottoming at ``query(...)`` with no filter.
 
-    ``session.query(Model).delete()`` deletes every row, same as ``delete(Model)`` without
-    ``.where()``. Walking the receiver chain, a ``.filter``/``.filter_by``/``.where`` link
-    scopes it; a chain bottoming out at ``.query(...)`` without one does not.
+    Walking the chain, a ``.filter``/``.filter_by``/``.where`` link scopes it; a chain
+    reaching ``.query(...)`` without one does not.
     """
-    func = node.func
-    if not (isinstance(func, ast.Attribute) and func.attr == "delete"):
-        return False
-
-    current: ast.expr = func.value
+    current = expr
     while isinstance(current, ast.Call):
         inner = current.func
         if isinstance(inner, ast.Attribute):
@@ -292,6 +291,90 @@ def _is_unscoped_query_delete(node: ast.Call) -> bool:
     return False
 
 
+_SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def _enclosing_scope(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> ast.AST | None:
+    """Return the nearest enclosing function of ``node``, or None for module level."""
+    found = _find_ancestor(
+        node, parents, lambda n: isinstance(n, _SCOPE_NODES), include_self=False
+    )
+    return found
+
+
+def _unscoped_query_names_by_scope(
+    tree: ast.AST, parents: dict[ast.AST, ast.AST]
+) -> dict[ast.AST | None, set[str]]:
+    """Map each lexical scope to the names it assigns an unscoped ``query(...)`` chain.
+
+    ``q = session.query(Model)`` then ``q.delete()`` is the stored-builder spelling of the
+    same wipe. Names are collected per enclosing function (module level under ``None``) so
+    an unscoped ``q`` in one function cannot taint an unrelated, born-scoped ``q`` in
+    another. Within a scope, a name is deliberately *not* cleared by a later
+    ``q = q.filter(...)`` rebinding: the narrowing may be conditional, and proving
+    otherwise needs control-flow analysis this checker does not do — the same fail-closed
+    stance the ``delete(Model)`` builder form takes. Genuinely-safe builder code carries
+    the waiver.
+    """
+    by_scope: dict[ast.AST | None, set[str]] = {}
+    for node in ast.walk(tree):
+        targets: list[ast.expr]
+        value: ast.expr | None
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        if value is not None and _is_query_chain_unscoped(value):
+            scope = _enclosing_scope(node, parents)
+            names = by_scope.setdefault(scope, set())
+            names.update(t.id for t in targets if isinstance(t, ast.Name))
+    return by_scope
+
+
+def _name_is_unscoped_query(
+    name: str,
+    site: ast.AST,
+    parents: dict[ast.AST, ast.AST],
+    by_scope: dict[ast.AST | None, set[str]],
+) -> bool:
+    """Return True if ``name`` at ``site`` resolves to an unscoped query builder.
+
+    Walks the scope chain outward (function → enclosing function → module) so a closure
+    over an outer builder is still seen, while sibling functions stay isolated.
+    """
+    scope: ast.AST | None = _enclosing_scope(site, parents)
+    while True:
+        if name in by_scope.get(scope, ()):
+            return True
+        if scope is None:
+            return False
+        scope = _enclosing_scope(scope, parents)
+
+
+def _is_unscoped_query_delete(
+    node: ast.Call,
+    parents: dict[ast.AST, ast.AST],
+    by_scope: dict[ast.AST | None, set[str]],
+) -> bool:
+    """Return True for the legacy ``query(Model).delete()`` bulk delete with no filter.
+
+    Covers both the direct chain (``db.query(Model).delete()``) and the stored builder
+    (``q = db.query(Model)`` … ``q.delete()``) via the per-scope name map.
+    """
+    func = node.func
+    if not (isinstance(func, ast.Attribute) and func.attr == "delete"):
+        return False
+    if isinstance(func.value, ast.Name) and _name_is_unscoped_query(
+        func.value.id, node, parents, by_scope
+    ):
+        return True
+    return _is_query_chain_unscoped(func.value)
+
+
 def find_violations(path: Path, source: str) -> list[str]:
     """Return formatted violation strings for one file's source text."""
     try:
@@ -302,14 +385,16 @@ def find_violations(path: Path, source: str) -> list[str]:
     parents = _parent_map(tree)
     lines = source.splitlines()
     bare_names, module_aliases = _resolve_delete_names(tree)
+    query_names_by_scope = _unscoped_query_names_by_scope(tree, parents)
     violations: list[str] = []
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
 
-        # Legacy ORM bulk delete: query(Model).delete() with no filter in the chain.
-        if _is_unscoped_query_delete(node):
+        # Legacy ORM bulk delete: query(Model).delete() with no filter, whether
+        # chained directly or stored in a builder name first.
+        if _is_unscoped_query_delete(node, parents, query_names_by_scope):
             if not _waived(lines, node, parents):
                 violations.append(
                     f"{path}:{node.lineno}: "
