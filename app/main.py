@@ -27,6 +27,7 @@ from app.routes import (
     videos,
 )
 from app.utils.db_async import (
+    check_database_readiness,
     init_db,
     dispose_engine,
     describe_database_url,
@@ -87,9 +88,10 @@ if settings.log_requests:
 
     @app.middleware("http")
     async def log_request_metadata(request: Request, call_next) -> Response:  # type: ignore[no-untyped-def]
-        # Skip noisy paths so the bot signal isn't drowned out.
+        # Skip noisy paths so the bot signal isn't drowned out. Covers both health
+        # probes, which monitoring polls on a fixed interval.
         path = request.url.path
-        if path == "/health" or path.startswith("/static/"):
+        if path == "/health" or path.startswith(("/health/", "/static/")):
             return await call_next(request)
 
         # Fly populates Fly-Client-IP with the real client; X-Forwarded-For is
@@ -154,8 +156,36 @@ async def handle_dbapi_errors(request, exc: DBAPIError):  # type: ignore[no-unty
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Liveness probe — process is up and serving.
+
+    Deliberately touches no database. This is what an orchestrator should restart a
+    machine on, and a database outage is not a reason to cycle every web machine.
+    Use ``/health/db`` to answer "is this instance actually able to serve traffic".
+    """
     return {"status": "ok"}
+
+
+@app.get("/health/db")
+async def database_health_check():
+    """Readiness probe — the instance can reach the database and get a connection.
+
+    Incident #669 ran for ~96 minutes with DB-backed public routes returning 500 while
+    ``/health`` stayed green the entire time, because it exercises no query. This probe
+    is the operational signal that could have gone red: it runs a bounded ``SELECT 1``
+    through the application's own pool and reports 503 when that fails, so a saturated
+    pool or an unreachable database is visible to monitoring rather than inferred from
+    user reports.
+    """
+    report = await check_database_readiness()
+    payload = {
+        "status": "ok" if report.database_ok else "unavailable",
+        "database_ok": report.database_ok,
+        "latency_ms": report.latency_ms,
+        "pool": report.pool,
+    }
+    if report.error:
+        payload["error"] = report.error
+    return JSONResponse(status_code=200 if report.database_ok else 503, content=payload)
 
 
 if __name__ == "__main__":

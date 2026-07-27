@@ -250,13 +250,48 @@ resolved dormant and exited normally); the deploy's **non-concurrent `CREATE IND
 queued behind the ingestion transaction; and DB-backed public routes 500ed on web-pool
 exhaustion. `/health` stayed green throughout because it exercises no database query.
 
-**One mechanism claim needs correction before it hardens into lore.** The incident record
-attributes the read outage to reads queuing behind the migration's "requested exclusive lock,"
-but a bare `CREATE INDEX` requests a `SHARE` lock — it blocks *writes*, not ordinary reads
-(`ACCESS SHARE` is compatible) — and the migration in question (`2c78f642217c`) executes exactly
-one `op.create_index`. The observed facts stand (the blocked deploy, the pool exhaustion, the
-500s); the precise mechanism by which *reads* backed up is **not established**, and confirming
-it is part of the roadmap Phase 1 entry gate.
+**The read-blocking mechanism — resolved by the Phase 1 entry gate, and not what either the
+incident record or this spec's first correction said.** Both earlier readings were wrong in
+different directions, so the resolved version is worth stating carefully.
+
+The incident record attributed the outage to reads queuing behind the migration's "requested
+exclusive lock." This spec then corrected that to "a bare `CREATE INDEX` requests `SHARE`, which
+blocks writes not reads, so the read-blocking mechanism is not established." **That correction is
+itself incomplete**, and left standing it would license a genuinely unsafe conclusion — that a
+non-concurrent index build on a table only the web *reads* is harmless. Three mechanisms
+operated together (#669 entry-gate diagnosis):
+
+1. **Lock accumulation across the revision chain — the likely primary.** `alembic/env.py` ran
+   every pending revision in a *single* transaction. Five were pending; four `ALTER`ed
+   `summer_league_environment_profiles`. `ALTER TABLE` takes `ACCESS EXCLUSIVE`, which blocks
+   plain `SELECT`s, and one chain-wide transaction holds those locks until the last revision
+   commits — so the deploy held them across the full 55 minutes it spent blocked on the *fifth*
+   revision's index build. Those tables are on public read paths
+   (`get_current_profile_by_scope_key`, from `app/routes/summer_league.py:582,631`). This is a
+   textbook read block and needs no subtlety; the earlier correction missed it by reasoning about
+   the `CREATE INDEX` in isolation rather than about the transaction it ran inside. **Fixed** by
+   `transaction_per_migration=True` plus a short `lock_timeout`.
+2. **Pending lock requests block later arrivals.** `SHARE` and `ACCESS SHARE` are indeed
+   compatible — but compatibility is evaluated against *granted* locks. An ungrantable pending
+   request queues every later arrival behind it; PostgreSQL does not let compatible requests jump
+   the queue. So once the `CREATE INDEX`'s `SHARE` parked behind the ingestion's `ROW EXCLUSIVE`,
+   ordinary `SELECT`s on `summer_league_play_by_play_events` queued behind *it* — and that table
+   is read on the public game page (`summer_league_games_service.py:968-975`). The record's
+   "reads queued behind the migration" was mechanically right; only its lock-mode label was wrong.
+3. **Pool exhaustion made it site-wide.** The engine uses SQLAlchemy defaults — `pool_size=5`,
+   `max_overflow=10`, `pool_timeout=30`, matching the record's numbers exactly — and no
+   `statement_timeout` is set for the web app. Once ~15 requests park on (1) or (2), every
+   DB-backed route 500s, including routes touching none of the locked tables.
+
+Confidence: (3)'s parameters and (1)'s lock-acquisition order are established from code; the
+composite ordering is probable. A `pg_locks` capture or path-grouped web logs from the incident
+window would settle it, as would a cheap staging reproduction.
+
+**And the lock holder was not the mega-transaction.** The entry gate also established that the
+~96-minute holder was `_run_venue`'s whole-venue normalization transaction — the PBP *writer* —
+not the §5 mega-transaction, which only reads that table and therefore cannot block a `SHARE`
+request at all. That path is already chunked at HEAD. The §5 conversion remains the right work
+for the reasons below, but it should not be sold as the fix for #669.
 
 Three contributing details from the incident record are new obligations for this spec:
 
