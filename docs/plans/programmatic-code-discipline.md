@@ -346,12 +346,25 @@ independence.
 | 1 | `app.routes` → `app.services` → `app.schemas` → `app.domain` | layers | **needs measuring** — likely near-passing; run before enabling |
 | 2 | `app.domain` ↛ `app.schemas`, `app.services`, `app.routes` | forbidden | **green** (package not yet created) — keeps the vocabulary ORM-free, doc #4 §5b rule 3 |
 | 3 | `app.services.stats` ↛ `app.services.summer_league*`, `app.schemas.summer_league*` | forbidden | **green** (package not yet created) — the engine stays source-agnostic |
-| 4 | `app.services.event_desk` ↛ `app.schemas.summer_league*`, `app.services.summer_league*` | forbidden | **fails broadly** — adopt with `ignore_imports` baseline; shrink as doc #3 decouples |
+| 4 | `app.services.event_desk` ↛ `app.schemas.summer_league*`, `app.services.summer_league*` | forbidden | **shipped (Phase 1)** — 4 `ignore_imports` entries, not the predicted wall; shrink as doc #3 decouples |
 | 5 | `app.services.sources.*` mutually independent | independence | **vacuous at one spoke** — pre-install so spoke #2 inherits it |
 
 Contract 4 is the one that matters most: it converts *"this framework is secretly coupled to one
 spoke"* from an archaeological discovery into a failing build. Contract 5 is vacuous today and
 that is precisely why to add it now — spoke #2 inherits the constraint instead of discovering it.
+
+**Shipped (Phase 1), and the debt was smaller than this document claimed.** The prediction above
+was that contract 4 "fails broadly", with every module in `app/services/event_desk/` importing
+Summer League. Measured: **3 of 9 modules, 4 imports** — `registry` (schemas + `scoreboard_ingest`),
+`render_snapshots` and `snapshot_materialization` (both `desk_read`). The rest name Summer League
+in strings and docstrings, which is not coupling. The retrospective read prose as dependency and
+over-estimated the decoupling work; Phase 5 starts from four entries, not dozens.
+
+Two details worth keeping. `unmatched_ignore_imports_alerting = "error"` makes a stale baseline
+entry a failure rather than a shrug — without it the list could quietly claim more debt than
+exists, which is the same rot the §3.4b reflective tests exist to prevent, just in the opposite
+direction. And the ratchet was verified by introducing a deliberate violation: the contract breaks
+and returns to KEPT when reverted. A guardrail nobody has watched fail is an assumption.
 
 ### Honest scope — what import contracts do and don't prevent
 
