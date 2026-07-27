@@ -32,8 +32,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import case, delete, func, select, update
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.services.summer_league.metric_publish import publish_metric_model
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
@@ -1389,69 +1391,6 @@ async def _active_or_fresh_model_version(db: AsyncSession) -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
 
-async def _publish_metric_model(
-    db: AsyncSession, *, version: str, result: "ComputeResult"
-) -> None:
-    """Make ``version`` the active fit, retaining every prior fit as history.
-
-    Replaces the full-table wipe this function used to perform. The model table is the
-    *auditable record of how the numbers were derived* — the Pythagorean exponent, the BPM
-    regression and its R², the coefficient vector — and deleting it on every rebuild made
-    each hour's fit unreproducible the moment the next hour ran. That is the one standing
-    violation of P2 (retain history by default) in an otherwise longitudinal-first
-    codebase; see ``docs/plans/north-star-architecture.md`` and stat-engine §5.
-
-    Retention is cheap: one row per unscoped rebuild, so hourly ticks add ~24 rows a day.
-
-    Publishing is an upsert on ``model_version`` because that column is UNIQUE. Re-running
-    a rebuild under a version that already exists refits that row in place rather than
-    raising, which keeps a rebuild safely re-runnable — a Phase 1 exit criterion. Note the
-    auto-minted version is second-granularity, so two rebuilds inside the same second are
-    genuinely the same version and correctly collapse to one row.
-
-    Args:
-        db: Active session; the caller owns the transaction.
-        version: Version stamp to publish as active.
-        result: The freshly computed fit whose coefficients are being recorded.
-    """
-    # Deactivate every prior fit first, so exactly one row is active at any instant even
-    # if the publish below updates an existing row rather than inserting one.
-    await db.execute(
-        update(SummerLeagueMetricModel)
-        .where(SummerLeagueMetricModel.is_active.is_(True))  # type: ignore[attr-defined]
-        .values(is_active=False)
-    )
-
-    fit = {
-        "pyth_exponent": result.pyth_exponent,
-        "ws_ppw_coeff": result.ws_ppw_coeff,
-        "pyth_n_teams": result.pyth_n,
-        "bpm_intercept": result.bpm_intercept,
-        "bpm_r2": result.bpm_r2,
-        "bpm_n_fit": result.bpm_n_fit,
-        "bpm_replacement": VORP_REPLACEMENT,
-        "bpm_coefficients": result.bpm_coef or {},
-    }
-
-    existing = (
-        await db.execute(
-            select(SummerLeagueMetricModel).where(
-                SummerLeagueMetricModel.model_version == version  # type: ignore[arg-type]
-            )
-        )
-    ).scalar_one_or_none()
-
-    if existing is None:
-        db.add(SummerLeagueMetricModel(model_version=version, is_active=True, **fit))
-        return
-
-    for column, value in fit.items():
-        setattr(existing, column, value)
-    existing.is_active = True
-    # Naive UTC to match the column's own ``default_factory=datetime.utcnow``.
-    existing.fitted_at = datetime.now(timezone.utc).replace(tzinfo=None)
-
-
 async def rebuild(
     db: AsyncSession,
     *,
@@ -1465,7 +1404,7 @@ async def rebuild(
     * **Unscoped** (default, ``competition_ids=None``) -- a full rebuild: every
       ``summer_league_player_seasons`` / ``_metric_contexts`` row is deleted and
       replaced. ``_metric_models`` is **not** deleted; the new fit is published
-      via :func:`_publish_metric_model`, which deactivates prior fits and retains
+      via :func:`~app.services.summer_league.metric_publish.publish_metric_model`, which deactivates prior fits and retains
       them as auditable history (P2). This is what
       ``scripts/rebuild_sl_metrics.py`` (the offline full recompute) calls.
     * **Scoped** (``competition_ids`` a sequence of competition ids) -- only
@@ -1507,7 +1446,7 @@ async def rebuild(
         await db.execute(delete(SummerLeagueMetricContext))
 
         version = model_version or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        await _publish_metric_model(db, version=version, result=result)
+        await publish_metric_model(db, version=version, result=result)
         contexts_to_write = list(result.contexts.values())
         seasons_to_write = result.seasons
     else:
