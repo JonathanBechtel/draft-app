@@ -71,6 +71,49 @@ def test_reports_current_when_deployed_matches_target(fake_git) -> None:
     assert report.commits_behind is None or report.commits_behind == 0
 
 
+def test_a_current_deployment_is_never_stale_however_old_the_commit(fake_git) -> None:
+    """A quiet repository must not trip the alarm.
+
+    Testing age alone made two days without a merge produce "status: CURRENT" followed
+    by exit 1 -- and no redeploy could clear it, because redeploying the same commit
+    does not make it younger. Age answers "how long has production been behind", which
+    is only a question when it is behind.
+    """
+    fake_git(
+        {
+            ("rev-parse", "origin/main"): "abc123",
+            ("cat-file", "-e", "abc123^{commit}"): "",
+            ("rev-list", "--count", "abc123..abc123"): "0",
+            ("show", "-s", "--format=%cI", "abc123"): "2026-01-01T00:00:00+00:00",
+        }
+    )
+
+    report = build_report("app", [_app_machine("abc123")], target_ref="origin/main")
+
+    assert report.is_current is True
+    assert is_stale(report, max_age_hours=48) is False
+
+
+def test_a_partially_unlabelled_fleet_is_flagged(fake_git) -> None:
+    """One labelled machine on main beside an unlabelled one is not "CURRENT".
+
+    Silently dropping the unlabelled machine let a mixed fleet -- a current machine
+    next to a legacy or half-rolled-out one -- report healthy. Only a *fully*
+    unlabelled fleet was noticed before, which is the less dangerous case.
+    """
+    fake_git({("rev-parse", "origin/main"): "abc123"})
+
+    report = build_report(
+        "app",
+        [_app_machine("abc123"), _app_machine(None)],
+        target_ref="origin/main",
+    )
+
+    assert report.is_current is False
+    assert "unlabelled" in report.divergent_shas
+    assert is_stale(report, max_age_hours=99999) is True
+
+
 def test_measures_distance_from_the_branch(fake_git) -> None:
     """The #669 shape: production behind main, with the gap quantified."""
     fake_git(

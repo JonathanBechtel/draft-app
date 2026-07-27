@@ -119,14 +119,24 @@ def _git(*args: str) -> str:
     return result.stdout.strip()
 
 
-def _app_machine_shas(machines: list[dict[str, Any]]) -> list[str]:
-    """Return the GH_SHA label of every app-process-group machine that carries one.
+def _app_machine_shas(machines: list[dict[str, Any]]) -> tuple[list[str], int]:
+    """Return app machines' GH_SHA labels and how many app machines lack one.
 
     Cron machines are excluded on purpose: they are updated on a separate path and
     ``verify_cron_image_digests.py`` already owns that comparison. Mixing them in here
     would report cron lag as app staleness.
+
+    The unlabelled count is returned rather than discarded because dropping those
+    machines silently is a way to report CURRENT while part of the fleet runs something
+    unknown -- one current machine beside a legacy or half-rolled-out one would pass.
+    Only a *fully* unlabelled fleet used to be noticed; a mixed fleet is the dangerous
+    case precisely because it looks healthy.
+
+    Returns:
+        ``(shas, unlabelled_count)`` over app-process-group machines only.
     """
     shas: list[str] = []
+    unlabelled = 0
     for machine in machines:
         config = machine.get("config") or {}
         metadata = config.get("metadata") or {}
@@ -136,7 +146,9 @@ def _app_machine_shas(machines: list[dict[str, Any]]) -> list[str]:
         sha = labels.get(_SHA_LABEL)
         if isinstance(sha, str) and sha:
             shas.append(sha)
-    return shas
+        else:
+            unlabelled += 1
+    return shas, unlabelled
 
 
 def build_report(
@@ -149,7 +161,7 @@ def build_report(
     same silence it exists to break.
     """
     notes: list[str] = []
-    shas = _app_machine_shas(machines)
+    shas, unlabelled = _app_machine_shas(machines)
     distinct = sorted(set(shas))
 
     if not shas:
@@ -165,6 +177,16 @@ def build_report(
     divergent = tuple(distinct) if len(distinct) > 1 else ()
     if divergent:
         notes.append(f"app machines disagree: {', '.join(s[:8] for s in divergent)}")
+
+    # A mixed fleet is treated as divergent, not ignored: an unlabelled machine is
+    # running *something*, and "we cannot tell what" is a deployment state to flag
+    # rather than to drop on the floor.
+    if unlabelled and shas:
+        divergent = tuple(sorted({*distinct, "unlabelled"}))
+        notes.append(
+            f"{unlabelled} app machine(s) carry no {_SHA_LABEL} label while others do; "
+            "the fleet is not uniformly identifiable"
+        )
 
     try:
         target: Optional[str] = _git("rev-parse", target_ref)
@@ -232,6 +254,13 @@ def is_stale(report: FreshnessReport, *, max_age_hours: float) -> bool:
     """
     if report.divergent_shas:
         return True
+    # A deployment that *is* the target is never stale, however old the commit. Testing
+    # age alone made a quiet repository trip the alarm: two days without a merge produced
+    # "status: CURRENT" followed by exit 1, and no redeploy could clear it because
+    # redeploying the same commit does not make it younger. Age answers "how long has
+    # production been behind", which is only a question when it is behind.
+    if report.is_current:
+        return False
     if report.age_hours is None:
         return False
     return report.age_hours > max_age_hours

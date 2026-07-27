@@ -1148,3 +1148,39 @@ async def test_rerunning_the_same_version_refits_in_place(db_session):
     assert len(models) == 1
     assert models[0].model_version == "same"
     assert models[0].is_active is True
+
+
+@pytest.mark.asyncio
+async def test_database_rejects_a_second_active_fit(db_session):
+    """The single-active invariant is enforced by the database, not by callers.
+
+    Publication deactivates prior fits and then writes the new one, which is sound
+    inside one transaction -- but the hourly ingestion holds the Summer League writer
+    lock while ``scripts/rebuild_sl_metrics.py`` takes no lock at all, so two overlapping
+    unscoped rebuilds are not serialized against each other. Without the partial unique
+    index, that race leaves two active rows and ``_active_or_fresh_model_version()``
+    picks one arbitrarily by id.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    def _fit(version: str) -> SummerLeagueMetricModel:
+        return SummerLeagueMetricModel(
+            model_version=version,
+            pyth_exponent=10.0,
+            ws_ppw_coeff=0.4,
+            pyth_n_teams=1,
+            bpm_intercept=0.0,
+            bpm_r2=0.5,
+            bpm_n_fit=10,
+            bpm_replacement=-2.0,
+            bpm_coefficients={},
+            is_active=True,
+        )
+
+    db_session.add(_fit("race-a"))
+    await db_session.commit()
+
+    db_session.add(_fit("race-b"))
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
