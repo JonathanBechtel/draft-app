@@ -14,7 +14,6 @@ import asyncio
 import json
 import os
 import sys
-from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import text
@@ -24,9 +23,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.services.canonical_resolution_service import DEFAULT_SCHOOL_MAPPING_PATH
+
 load_dotenv()
 
-MAPPING_PATH = Path(__file__).parent / "data" / "school_mapping.json"
+MAPPING_PATH = DEFAULT_SCHOOL_MAPPING_PATH
 
 
 async def backfill_school_names(*, dry_run: bool = False) -> None:

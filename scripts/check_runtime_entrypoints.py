@@ -19,6 +19,14 @@ Rules enforced (each violation emits `path:line: [CODE] message`):
       `_KNOWN_APP_IMPORTS_SCRIPTS` so this check ratchets: the known set may
       shrink, but any *new* violation fails. It is currently empty.
 
+  E3  Nothing under `app/` may reference a path that `.dockerignore` keeps out
+      of the image. E2 covers imports; this covers the other half, which is how
+      the boundary actually leaked: `canonical_resolution_service` read its
+      school-mapping JSON out of `scripts/data/`, so excluding `scripts/` would
+      have killed the roster cron at runtime behind a green deploy, a green CI
+      run, and a green digest verifier. The excluded set is read from
+      `.dockerignore` itself so the two cannot drift.
+
 Not an import-linter contract (`[tool.importlinter]` in pyproject.toml): E1 is
 about Fly tomls and workflow YAML, which import-linter cannot see at all, and
 expressing E2 there would mean adding `scripts` to `root_packages`, pulling
@@ -39,6 +47,7 @@ from __future__ import annotations
 import ast
 import re
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,6 +68,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # dict stays so a future violation has a documented (and reviewable) shape to
 # be argued into rather than a new mechanism to invent.
 _KNOWN_APP_IMPORTS_SCRIPTS: dict[str, frozenset[str]] = {}
+
+# Directories `.dockerignore` excludes that `app/` may still name, because
+# nothing is ever *read* from them in the image -- they are runtime scratch
+# trees the code creates on demand (`mkdir(parents=True, exist_ok=True)`) and
+# then writes into. `data/` holds the raw NBA.com snapshots, the bbref page
+# cache, and the scraped-bio CSVs, all produced by the cron itself. Excluding
+# it from the image is correct *and* referencing it from `app/` is correct;
+# E3 would otherwise report five false positives and get switched off.
+_RUNTIME_WRITABLE_DIRS = frozenset({"data"})
 
 
 @dataclass(frozen=True)
@@ -262,8 +280,144 @@ def check_app_imports() -> list[Violation]:
     return violations
 
 
+def dockerignored_dirs() -> set[str]:
+    """Return the top-level directories `.dockerignore` keeps out of the image.
+
+    Only plain directory entries count. Negations (`!foo`), globs, and dotted
+    entries are skipped: a dotted directory cannot be a Python package `app/`
+    would read from, and a glob is not a directory name to match segments
+    against.
+    """
+    ignore_path = REPO_ROOT / ".dockerignore"
+    if not ignore_path.exists():  # pragma: no cover - defensive
+        return set()
+
+    excluded: set[str] = set()
+    for raw in ignore_path.read_text(encoding="utf-8").splitlines():
+        entry = raw.strip()
+        if not entry or entry.startswith(("#", "!", ".")):
+            continue
+        if any(ch in entry for ch in "*?["):
+            continue
+        name = entry.rstrip("/")
+        if "/" in name:  # a nested path, not a top-level directory
+            continue
+        excluded.add(name)
+    return excluded - _RUNTIME_WRITABLE_DIRS
+
+
+def _docstring_nodes(tree: ast.AST) -> set[int]:
+    """Return `id()` of every string constant that is a docstring.
+
+    Docstrings routinely name `scripts/...` and `docs/...` as prose ("mirrors
+    scripts/foo.py"). Those are documentation, not a runtime read, and flagging
+    them would make E3 unusable.
+    """
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            continue
+        body = getattr(node, "body", [])
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            docstrings.add(id(body[0].value))
+    return docstrings
+
+
+# Calls whose string arguments are path segments rather than ordinary strings.
+_PATH_BUILDERS = frozenset({"Path", "PurePath", "join"})
+
+
+def _called_name(func: ast.expr) -> str:
+    """Return the bare name of a call target (`os.path.join` -> `join`)."""
+    if isinstance(func, ast.Attribute):
+        return func.attr
+    if isinstance(func, ast.Name):
+        return func.id
+    return ""
+
+
+def _path_candidate_nodes(tree: ast.AST) -> Iterator[ast.AST]:
+    """Yield every AST node that could be a path segment.
+
+    Two shapes, because a path is assembled either as one string or one
+    segment at a time:
+
+    * an operand of `/`, or an argument to `Path()` / `os.path.join()` -- the
+      `"scripts"` in `REPO_ROOT / "scripts" / "data"`, which a substring search
+      for `"scripts/"` would never have caught. That is the exact shape that
+      made this rule necessary;
+    * a bare literal containing `/` -- `Path("data/scraper-cache")`.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            yield node.left
+            yield node.right
+        elif isinstance(node, ast.Call):
+            if _called_name(node.func) in _PATH_BUILDERS:
+                yield from node.args
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if "/" in node.value:
+                yield node
+
+
+def _path_literals(tree: ast.AST) -> list[tuple[int, str]]:
+    """Return `(lineno, literal)` for every string constant used as a path."""
+    docstrings = _docstring_nodes(tree)
+    found: list[tuple[int, str]] = []
+    seen: set[int] = set()
+
+    for node in _path_candidate_nodes(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        if id(node) in docstrings or id(node) in seen:
+            continue
+        seen.add(id(node))
+        found.append((node.lineno, node.value))
+
+    return found
+
+
+def check_app_path_references() -> list[Violation]:
+    """E3 -- nothing under `app/` may reference a `.dockerignore`d path."""
+    excluded = dockerignored_dirs()
+    if not excluded:  # pragma: no cover - defensive
+        return []
+
+    violations: list[Violation] = []
+    for py_path in sorted((REPO_ROOT / "app").rglob("*.py")):
+        rel = _rel(py_path)
+        try:
+            tree = ast.parse(py_path.read_text(encoding="utf-8"), filename=str(py_path))
+        except SyntaxError:  # pragma: no cover - E2 already reports this
+            continue
+
+        for lineno, literal in _path_literals(tree):
+            segment = literal.strip("/").split("/")[0]
+            if segment not in excluded:
+                continue
+            violations.append(
+                Violation(
+                    rel,
+                    lineno,
+                    "E3",
+                    f"references `{literal}`, but `.dockerignore` excludes "
+                    f"`{segment}/` from the image -- this path does not exist at "
+                    "runtime. Move the file into the `app` package (see "
+                    "`app/data/`) or stop reading it from shipped code.",
+                )
+            )
+    return violations
+
+
 def main() -> int:
-    violations = check_entrypoints() + check_app_imports()
+    violations = check_entrypoints() + check_app_imports() + check_app_path_references()
     if not violations:
         print("check_runtime_entrypoints: OK (app/cli <-> scripts boundary intact)")
         return 0

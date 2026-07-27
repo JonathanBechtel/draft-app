@@ -6,18 +6,22 @@ and resolves ESPN team metadata via their public API.
 
 Usage:
     python scripts/generate_school_seed_data.py
-    # Then review scripts/data/college_schools.json
+    # Then review app/data/college_schools.json
 """
 
 import json
 import re
 import time
-from pathlib import Path
 
 import httpx
 
-MAPPING_PATH = Path(__file__).parent / "data" / "school_mapping.json"
-OUTPUT_PATH = Path(__file__).parent / "data" / "college_schools.json"
+from app.services.canonical_resolution_service import (
+    DEFAULT_COLLEGE_SCHOOLS_PATH,
+    DEFAULT_SCHOOL_MAPPING_PATH,
+)
+
+MAPPING_PATH = DEFAULT_SCHOOL_MAPPING_PATH
+OUTPUT_PATH = DEFAULT_COLLEGE_SCHOOLS_PATH
 
 # ESPN API endpoints
 ESPN_TEAMS_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams"
