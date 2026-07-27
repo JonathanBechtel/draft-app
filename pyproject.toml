@@ -50,6 +50,16 @@ dev = [
 where = ["."]
 include = ["app*"]
 
+# Runtime assets the shipped package reads, not just imports. Without this,
+# `pip install .` produces a wheel whose `app/data/` is empty and
+# `load_school_mapping()` raises FileNotFoundError. The Docker image happens to
+# mask that -- its `COPY . .` restores the source tree, and `-m app.cli.<mod>`
+# resolves `/app/app` ahead of site-packages -- so the wheel being incomplete
+# would only surface somewhere else, later. Declared here so the package is
+# correct on its own terms rather than correct by accident of the image layout.
+[tool.setuptools.package-data]
+"app" = ["data/*.json"]
+
 [tool.mypy]
 ignore_missing_imports = true
 
