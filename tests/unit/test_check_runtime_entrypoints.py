@@ -200,12 +200,27 @@ class TestRepoState:
             assert allowed, "an empty allowlist entry exempts the whole file"
             assert all(m.startswith("scripts") for m in allowed)
 
-    def test_a_new_import_in_an_allowlisted_file_is_still_a_violation(self, tmp_path):
-        """The regression codex caught: baseline by import, not by file."""
-        target = next(iter(guard._KNOWN_APP_IMPORTS_SCRIPTS))
-        allowed = guard._KNOWN_APP_IMPORTS_SCRIPTS[target]
-        source = (guard.REPO_ROOT / target).read_text(encoding="utf-8")
-        tree = ast.parse("from scripts.some_new_tool import thing\n" + source)
+    def test_allowlist_is_empty(self):
+        """The boundary is fully closed; re-opening it must be a deliberate change.
+
+        #688 lifted the roster cron's last three `scripts.*` imports into
+        `app/services/`. The ratchet may only shrink, so a future entry here is a
+        decision to argue for in review -- not something that lands quietly.
+        """
+        assert guard._KNOWN_APP_IMPORTS_SCRIPTS == {}
+
+    def test_a_new_import_in_an_allowlisted_file_is_still_a_violation(self):
+        """The regression codex caught: baseline by import, not by file.
+
+        Exercised against a synthetic allowlist rather than the live one, which is
+        empty now that the boundary is closed. The rule has to keep holding for
+        whatever entry is baselined next, so the test cannot depend on one existing.
+        """
+        allowed = frozenset({"scripts.already_baselined"})
+        tree = ast.parse(
+            "from scripts.already_baselined import thing\n"
+            "from scripts.some_new_tool import other\n"
+        )
 
         offenders = {
             name for _, name in guard._imports_scripts(tree) if name not in allowed

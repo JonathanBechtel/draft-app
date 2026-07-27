@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from app.services.summer_league.roster_fetch import RosterFetcher
 from app.services.summer_league.roster_parse import (
     RosterEntry,
     parse_roster,
@@ -232,7 +233,7 @@ def test_partial_failure_continues(tmp_path: Path) -> None:
         # Landing page
         return landing_html
 
-    fetcher = fetch_summer_league_rosters.RosterFetcher(
+    fetcher = RosterFetcher(
         timeout=5.0,
         delay_seconds=0.0,
         sleep=lambda _: None,
@@ -309,7 +310,7 @@ def test_player_count_dedupes_person_appearing_on_two_team_subpages(
             return warriors_html
         return landing_html
 
-    fetcher = fetch_summer_league_rosters.RosterFetcher(
+    fetcher = RosterFetcher(
         delay_seconds=0.0,
         sleep=lambda _: None,
         fetch_fn=fake_fetch,
@@ -360,7 +361,7 @@ def test_partial_failure_error_count(tmp_path: Path) -> None:
             "</script></html>"
         )
 
-    fetcher = fetch_summer_league_rosters.RosterFetcher(
+    fetcher = RosterFetcher(
         delay_seconds=0.0,
         sleep=lambda _: None,
         fetch_fn=fake_fetch,
@@ -406,7 +407,7 @@ def test_main_exits_non_zero_when_all_runs_fail(
     monkeypatch.setattr(
         fetch_summer_league_rosters,
         "build_fetcher",
-        lambda **kwargs: fetch_summer_league_rosters.RosterFetcher(
+        lambda **kwargs: RosterFetcher(
             delay_seconds=0.0,
             sleep=lambda _: None,
             fetch_fn=bad_fetch,

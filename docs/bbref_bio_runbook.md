@@ -10,6 +10,11 @@ This document summarizes the bio enrichment implementation, how to run it, and h
 
 ## Components
 
+Both scripts below are argument-parsing CLIs; the scraping, parsing, and ingest
+logic lives in `app/services/player_bio/` so the shipped Summer League roster
+cron (`app/cli/summer_league_roster_runner.py`) runs the same code. Change
+behaviour in the service, not in the CLI.
+
 - Scraper: `scripts/bbref_bio_scraper.py`
   - Produces CSV: `data/scraper-output/bbio_<scope>_<YYYYMMDD>.csv`
   - Caches HTML to `data/scraper-cache/players_{letter}.html` and `data/scraper-cache/players/{slug}.html`

@@ -10,7 +10,7 @@ matches and otherwise return ``None`` (unmatched).
 from collections import defaultdict
 from typing import Dict, List
 
-from scripts.ingest_player_bios import _deterministic_match, _norm
+from app.services.player_bio.matching import _deterministic_match, _norm
 from app.schemas.players_master import PlayerMaster
 
 

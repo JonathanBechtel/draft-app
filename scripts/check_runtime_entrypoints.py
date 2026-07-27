@@ -15,16 +15,17 @@ Rules enforced (each violation emits `path:line: [CODE] message`):
       `python -m app.cli.<module>` form.
 
   E2  Nothing under `app/` may `import scripts.*`. The shipped package must
-      not depend on operator tooling. Pre-existing violations are listed in
+      not depend on operator tooling. Violations may be baselined in
       `_KNOWN_APP_IMPORTS_SCRIPTS` so this check ratchets: the known set may
-      shrink, but any *new* violation fails.
+      shrink, but any *new* violation fails. It is currently empty.
 
 Not an import-linter contract (`[tool.importlinter]` in pyproject.toml): E1 is
 about Fly tomls and workflow YAML, which import-linter cannot see at all, and
 expressing E2 there would mean adding `scripts` to `root_packages`, pulling
 ~110 operator scripts into the import graph that every other contract is then
-evaluated against. The ratcheted allowlist below also lets the one pre-existing
-violation stay green, which a plain `forbidden` contract could not.
+evaluated against. The ratcheted allowlist below also lets a pre-existing
+violation stay green while it is being unwound, which a plain `forbidden`
+contract could not.
 
 Usage::
 
@@ -52,15 +53,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 # Baselined per *imported module*, not per file. Exempting a whole file would
 # let a fourth `scripts.*` import appear inside an already-listed runtime job
 # with the check staying silent -- the exact rot this guard exists to catch.
-_KNOWN_APP_IMPORTS_SCRIPTS: dict[str, frozenset[str]] = {
-    "app/cli/summer_league_roster_runner.py": frozenset(
-        {
-            "scripts.bbref_bio_scraper",
-            "scripts.fetch_summer_league_rosters",
-            "scripts.ingest_player_bios",
-        }
-    ),
-}
+#
+# Empty since #688 lifted the roster cron's bio scrape/ingest and roster fetch
+# into `app/services/`. Nothing under `app/` imports `scripts/` any more; the
+# dict stays so a future violation has a documented (and reviewable) shape to
+# be argued into rather than a new mechanism to invent.
+_KNOWN_APP_IMPORTS_SCRIPTS: dict[str, frozenset[str]] = {}
 
 
 @dataclass(frozen=True)

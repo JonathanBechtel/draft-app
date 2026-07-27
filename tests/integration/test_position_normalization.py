@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import select
 from app.schemas.positions import Position
 from app.schemas.player_status import PlayerStatus
-from scripts.ingest_player_bios import _upsert_status
+from app.services.player_bio.persistence import _upsert_status
 from scripts.ingest_combine import get_or_create_position_id
 from app.models.position_taxonomy import derive_position_tags
 

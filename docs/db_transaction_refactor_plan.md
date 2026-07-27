@@ -89,7 +89,7 @@ CLI:
 Scripts:
 
 - `scripts/seed_news_sources.py:128` (commit)
-- `scripts/ingest_player_bios.py:484` (rollback), `scripts/ingest_player_bios.py:487` (commit), `scripts/ingest_player_bios.py:489` (rollback)
+- ~~`scripts/ingest_player_bios.py` (commit/rollback around the bio ingest)~~ — done (#688). The ingest moved to `app/services/player_bio/ingest.py`, which put it inside the request-bounded scope the checkers police, so it now uses `async with db.begin()` and a bare session close for the dry-run path.
 - `scripts/generate_player_images.py:447`, `scripts/generate_player_images.py:771` (commit + refresh), plus multiple per-loop commits/rollbacks
 
 ---
