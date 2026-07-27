@@ -80,9 +80,27 @@ def test_migrations_run_one_transaction_per_revision(env_tree: ast.Module) -> No
     assert isinstance(value, ast.Constant) and value.value is True
 
 
-def test_a_lock_timeout_is_configured(env_source: str) -> None:
-    """A migration that cannot get its lock fails the deploy, not production."""
-    assert "lock_timeout" in env_source.lower()
+def test_a_lock_timeout_is_actually_executed(env_tree: ast.Module) -> None:
+    """A migration that cannot get its lock fails the deploy, not production.
+
+    Asserts the setting is *sent to PostgreSQL*, not merely mentioned. ``lock_timeout``
+    appears in this file's comments and in an ``ALEMBIC_LOCK_TIMEOUT`` constant, so a
+    substring check would still pass after someone deleted the call that applies it --
+    which is exactly how this protection would realistically be lost.
+    """
+    executed_sql = [
+        argument.value
+        for node in ast.walk(env_tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, (ast.Attribute, ast.Name))
+        for argument in node.args
+        if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+    ]
+
+    assert any("lock_timeout" in sql.lower() for sql in executed_sql), (
+        "alembic/env.py must execute a statement setting lock_timeout, not just "
+        "mention it in a comment or constant"
+    )
 
 
 def test_the_lock_timeout_is_short_and_overridable(env_source: str) -> None:

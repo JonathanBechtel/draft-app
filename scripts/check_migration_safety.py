@@ -66,6 +66,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -81,6 +82,28 @@ _INDEX_OPERATIONS = frozenset({"create_index", "drop_index"})
 # Only `create_index` is required to be concurrent. A `drop_index` is brief, and
 # demanding CONCURRENTLY there would force an autocommit block around a cheap statement.
 _MUST_BE_CONCURRENT = frozenset({"create_index"})
+
+# Raw SQL is a live bypass, not a hypothetical one: five existing revisions build
+# indexes through `op.execute("CREATE INDEX ...")` rather than `op.create_index`
+# (e.g. `bb20c6f83560`, `w2x3y4z5a6b7`). A checker that recognized only the Alembic
+# operation would let a new migration copy the established house pattern straight past
+# the guard and re-create the production lock failure.
+_RAW_CREATE_INDEX = re.compile(r"\bCREATE\s+(?:UNIQUE\s+)?INDEX\b", re.IGNORECASE)
+_RAW_DROP_INDEX = re.compile(r"\bDROP\s+INDEX\b", re.IGNORECASE)
+_RAW_CONCURRENTLY = re.compile(r"\bCONCURRENTLY\b", re.IGNORECASE)
+
+# Calls whose string arguments are SQL that actually executes. Restricting the raw-SQL
+# scan to these -- rather than to every string literal in the file -- keeps prose out of
+# it: several migration docstrings discuss `CREATE INDEX` precisely because of this rule,
+# and flagging the documentation of a hazard as the hazard would be self-defeating.
+_SQL_SINKS = frozenset({"execute", "exec_driver_sql", "text"})
+
+# `lock_timeout` must be *executed*, not merely mentioned. Matches the `set_config(...)`
+# form this repo uses and the plain `SET lock_timeout` spelling.
+_LOCK_TIMEOUT_STATEMENT = re.compile(
+    r"""set_config\s*\(\s*['"]lock_timeout|\bSET\s+(?:LOCAL\s+)?lock_timeout""",
+    re.IGNORECASE,
+)
 
 MIGRATIONS_DIR = "alembic/versions"
 ENV_PATH = "alembic/env.py"
@@ -179,7 +202,7 @@ def _in_autocommit_block(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool
     return False
 
 
-def _waived(lines: list[str], node: ast.Call, parents: dict[ast.AST, ast.AST]) -> bool:
+def _waived(lines: list[str], node: ast.AST, parents: dict[ast.AST, ast.AST]) -> bool:
     """True if a justified waiver comment covers the statement containing ``node``."""
     statement: ast.AST | None = node
     while statement is not None and not isinstance(statement, ast.stmt):
@@ -187,8 +210,8 @@ def _waived(lines: list[str], node: ast.Call, parents: dict[ast.AST, ast.AST]) -
 
     if isinstance(statement, ast.stmt):
         first, last = statement.lineno, statement.end_lineno or statement.lineno
-    else:  # pragma: no cover - a Call always sits under some statement
-        first = last = node.lineno
+    else:  # pragma: no cover - an expression always sits under some statement
+        first = last = getattr(node, "lineno", 1)
 
     # `first - 1` lets the justification sit on the line above the statement.
     for candidate in range(first - 1, last + 1):
@@ -199,19 +222,73 @@ def _waived(lines: list[str], node: ast.Call, parents: dict[ast.AST, ast.AST]) -
     return False
 
 
-def _check_lock_timeout(path: Path, source: str) -> list[str]:
-    """Return a finding if ``alembic/env.py`` no longer configures a ``lock_timeout``.
+def _string_literal(node: ast.AST) -> str | None:
+    """Return the text of a string literal, or None if ``node`` is not one.
 
-    Matched case-insensitively: the setting reaches PostgreSQL as lowercase
-    ``set_config('lock_timeout', ...)``, but it is just as likely to be routed through
-    an ``ALEMBIC_LOCK_TIMEOUT`` constant, and a case-sensitive substring test would
-    report that perfectly good code as missing.
+    Adjacent literals are already merged by the parser, so the multi-line
+    ``"CREATE INDEX ..." " ON tbl (col)"`` form arrives here as one constant. f-strings
+    contribute their literal segments, which is enough to see the DDL verb even when
+    the table or index name is interpolated.
     """
-    if "lock_timeout" in source.lower():
-        return []
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return " ".join(
+            part.value
+            for part in node.values
+            if isinstance(part, ast.Constant) and isinstance(part.value, str)
+        )
+    return None
+
+
+def _executed_sql(tree: ast.AST) -> list[tuple[ast.AST, str]]:
+    """Return ``(node, sql)`` for every string handed to an executing call.
+
+    Nested forms resolve too: ``op.execute(text("..."))`` reaches the literal through
+    the inner ``text(...)`` sink.
+    """
+    found: list[tuple[ast.AST, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        name = (
+            func.attr
+            if isinstance(func, ast.Attribute)
+            else func.id
+            if isinstance(func, ast.Name)
+            else None
+        )
+        if name not in _SQL_SINKS:
+            continue
+        for argument in node.args:
+            sql = _string_literal(argument)
+            if sql:
+                found.append((argument, sql))
+    return found
+
+
+def _check_lock_timeout(path: Path, source: str) -> list[str]:
+    """Return a finding if ``alembic/env.py`` does not *execute* a ``lock_timeout`` set.
+
+    Deliberately not a substring test. `lock_timeout` appears in this file's comments
+    and in an `ALEMBIC_LOCK_TIMEOUT` constant, so "the text is present somewhere" is
+    satisfied by a version that never sends the setting to PostgreSQL — deleting the
+    `connection.execute(set_config(...))` call while leaving the constant and the
+    explanatory comment intact would pass a substring check and silently restore the
+    deploy-blocking behavior this rule exists to prevent.
+    """
+    try:
+        tree = ast.parse(source, filename=str(path))
+    except SyntaxError as exc:  # pragma: no cover - pre-commit runs ruff first
+        return [f"{path}:{exc.lineno}: could not parse ({exc.msg})"]
+
+    for _node, sql in _executed_sql(tree):
+        if _LOCK_TIMEOUT_STATEMENT.search(sql):
+            return []
     return [
-        f"{path}: no lock_timeout configured; a blocked migration will camp in the "
-        "lock queue ahead of production traffic"
+        f"{path}: no executed lock_timeout statement; a blocked migration will camp "
+        "in the lock queue ahead of production traffic"
     ]
 
 
@@ -252,6 +329,49 @@ def find_violations(path: Path, source: str) -> list[str]:
         if concurrent and not _in_autocommit_block(node, parents):
             violations.append(
                 f"{path}:{node.lineno}: concurrent {operation}() outside "
+                "op.get_context().autocommit_block(); PostgreSQL rejects CONCURRENTLY "
+                "inside a transaction block, so this release would fail"
+            )
+
+    violations.extend(_raw_sql_violations(path, tree, parents, lines))
+    return violations
+
+
+def _raw_sql_violations(
+    path: Path,
+    tree: ast.AST,
+    parents: dict[ast.AST, ast.AST],
+    lines: list[str],
+) -> list[str]:
+    """Apply the same two rules to index DDL written as raw SQL.
+
+    ``op.execute("CREATE INDEX ...")`` takes exactly the same lock as
+    ``op.create_index``; only the checker's view of it differs. Five existing revisions
+    already use this spelling, so leaving it unhandled would mean the established house
+    pattern is also the one that bypasses the guard.
+    """
+    violations: list[str] = []
+
+    for node, sql in _executed_sql(tree):
+        creates = bool(_RAW_CREATE_INDEX.search(sql))
+        drops = bool(_RAW_DROP_INDEX.search(sql))
+        if not (creates or drops):
+            continue
+
+        concurrent = bool(_RAW_CONCURRENTLY.search(sql))
+        lineno = getattr(node, "lineno", 0)
+
+        if creates and not concurrent:
+            if not _waived(lines, node, parents):
+                violations.append(
+                    f"{path}:{lineno}: raw SQL CREATE INDEX without CONCURRENTLY "
+                    "holds a table lock for the whole build"
+                )
+            continue
+
+        if concurrent and not _in_autocommit_block(node, parents):
+            violations.append(
+                f"{path}:{lineno}: raw SQL CONCURRENTLY outside "
                 "op.get_context().autocommit_block(); PostgreSQL rejects CONCURRENTLY "
                 "inside a transaction block, so this release would fail"
             )

@@ -211,6 +211,128 @@ class TestAcceptsSafeForms:
         )
 
 
+class TestRawSqlIndexBuilds:
+    """`op.execute("CREATE INDEX ...")` takes the same lock as `op.create_index`.
+
+    This spelling is not hypothetical — five existing revisions use it, so it is the
+    pattern a new migration is most likely to copy. A checker blind to it would leave
+    the house style as the bypass.
+    """
+
+    def test_raw_create_index_without_concurrently_is_flagged(self):
+        found = _violations(
+            """
+            def upgrade():
+                op.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_games_round_label"
+                    " ON summer_league_games (round_label)"
+                )
+            """
+        )
+        assert len(found) == 1
+        assert "raw SQL CREATE INDEX without CONCURRENTLY" in found[0]
+
+    def test_implicitly_concatenated_sql_is_read_as_one_statement(self):
+        """The real migrations split this DDL across adjacent literals."""
+        found = _violations(
+            """
+            def upgrade():
+                op.execute(
+                    "CREATE INDEX IF NOT EXISTS ix_a "
+                    "ON players_master USING GIN (display_name gin_trgm_ops)"
+                )
+            """
+        )
+        assert len(found) == 1
+
+    def test_raw_unique_index_is_flagged(self):
+        found = _violations(
+            """
+            def upgrade():
+                op.execute("CREATE UNIQUE INDEX ix_a ON t (a)")
+            """
+        )
+        assert len(found) == 1
+
+    def test_raw_concurrent_index_outside_block_is_flagged(self):
+        found = _violations(
+            """
+            def upgrade():
+                op.execute("CREATE INDEX CONCURRENTLY ix_a ON t (a)")
+            """
+        )
+        assert len(found) == 1
+        assert "autocommit_block" in found[0]
+
+    def test_raw_concurrent_index_inside_block_passes(self):
+        assert (
+            _violations(
+                """
+                def upgrade():
+                    with op.get_context().autocommit_block():
+                        op.execute("CREATE INDEX CONCURRENTLY ix_a ON t (a)")
+                """
+            )
+            == []
+        )
+
+    def test_sql_wrapped_in_text_is_still_seen(self):
+        """``op.execute(text("..."))`` must not slip past the sink detection."""
+        found = _violations(
+            """
+            def upgrade():
+                op.execute(text("CREATE INDEX ix_a ON t (a)"))
+            """
+        )
+        assert len(found) == 1
+
+    def test_raw_create_index_can_be_waived_for_a_small_table(self):
+        assert (
+            _violations(
+                """
+                def upgrade():
+                    # discipline: migration-safety new table, empty at deploy time
+                    op.execute("CREATE INDEX ix_widgets ON widgets (name)")
+                """
+            )
+            == []
+        )
+
+    def test_prose_about_create_index_is_not_flagged(self):
+        """Docstrings explaining this very rule must not trip it.
+
+        `2c78f642217c`'s docstring discusses `CREATE INDEX` precisely because of this
+        guard; flagging the documentation of a hazard as the hazard would be
+        self-defeating and would teach authors to stop explaining themselves.
+        """
+        assert (
+            _violations(
+                '''
+                """Concurrent DDL matters: a regular CREATE INDEX queues a lock."""
+
+                def upgrade():
+                    with op.get_context().autocommit_block():
+                        op.create_index(
+                            "ix_a", "t", ["a"], postgresql_concurrently=True
+                        )
+                '''
+            )
+            == []
+        )
+
+    def test_non_index_sql_is_ignored(self):
+        assert (
+            _violations(
+                """
+                def upgrade():
+                    op.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+                    op.execute("UPDATE t SET a = 1")
+                """
+            )
+            == []
+        )
+
+
 class TestEnvLockTimeout:
     """The third rule: the deploy must fail fast rather than camp in the lock queue."""
 
@@ -226,11 +348,52 @@ class TestEnvLockTimeout:
         assert len(found) == 1
         assert "lock_timeout" in found[0]
 
-    def test_env_with_lock_timeout_passes(self):
+    def test_a_mentioned_but_unexecuted_lock_timeout_is_flagged(self):
+        """The regression this rule actually has to catch.
+
+        Deleting the ``execute(set_config(...))`` call while leaving the constant and
+        the explanatory comment behind is the realistic way this protection dies — and
+        a substring test would wave it straight through.
+        """
+        found = _violations(
+            """
+            # A migration waiting forever for a lock can queue ahead of public reads,
+            # so bound it with lock_timeout.
+            MIGRATION_LOCK_TIMEOUT = os.getenv("ALEMBIC_LOCK_TIMEOUT", "10s")
+
+            async def run_migrations_online():
+                async with connectable.connect() as connection:
+                    await connection.run_sync(do_run_migrations)
+            """,
+            name="alembic/env.py",
+        )
+        assert len(found) == 1
+        assert "no executed lock_timeout statement" in found[0]
+
+    def test_env_executing_set_config_passes(self):
         assert (
             _violations(
                 """
                 MIGRATION_LOCK_TIMEOUT = os.getenv("ALEMBIC_LOCK_TIMEOUT", "10s")
+
+                async def run_migrations_online():
+                    await connection.execute(
+                        text("SELECT set_config('lock_timeout', :timeout, false)"),
+                        {"timeout": MIGRATION_LOCK_TIMEOUT},
+                    )
+                """,
+                name="alembic/env.py",
+            )
+            == []
+        )
+
+    def test_env_executing_a_plain_set_statement_passes(self):
+        """The other spelling someone could reasonably reach for."""
+        assert (
+            _violations(
+                """
+                async def run_migrations_online():
+                    await connection.execute(text("SET lock_timeout = '10s'"))
                 """,
                 name="alembic/env.py",
             )
