@@ -32,7 +32,7 @@ if str(REPO_ROOT) not in sys.path:
 from app.services.player_mention_service import parse_player_name  # noqa: E402
 
 
-OUTPUT_DIR = Path("scraper/output")
+OUTPUT_DIR = Path("data/scraper-output")
 
 
 @dataclass(frozen=True, slots=True)

@@ -83,6 +83,24 @@ Do not ask if the user wants you to run these checks — run them proactively af
 - `tests/` is split into `unit/` (no DB required) and `integration/` (hits Postgres); mirror the `app/` layout so fixtures and helpers stay close to the code they cover.
 - `alembic/` holds migration scripts; use it when schema changes extend beyond SQLModel auto-creation.
 - `docs/` stores project notes such as `v_1_roadmap.md`; add any architecture decisions here.
+- `data/` holds generated run artifacts and caches (gitignored except a few checked-in audit trails); never source code.
+
+## Executable code lives in two places
+Every runnable `.py` in this repo belongs to exactly one of two homes. The split is by **who executes it**, not by what it does — a scraper is just a script, and lives in `scripts/` like anything else.
+
+- **`app/cli/` — shipped runtime jobs.** Entrypoints that run *inside the deployed container*, executed by Fly cron machines. They are part of the `app` package, ship in the Docker image, and are invoked as modules: `python -m app.cli.<module>` (see `deploy/fly/fly.cron*.toml`). Examples: `cron_runner.py`, `sl_desk_tick.py`, `summer_league_ingest_runner.py`.
+- **`scripts/` — operator tooling.** Everything a human or a CI runner invokes from a checkout: scrapers, ingests, backfills, audits, one-off data fixes, and the CI guard scripts themselves. Invoked by path: `python scripts/<name>.py`. Use a subpackage (`scripts/top100/`, `scripts/big_boards/`) when a workflow has several steps.
+
+**The rule: if a Fly machine runs it, it belongs in `app/cli/`; otherwise it belongs in `scripts/`.** Two corollaries follow, both enforced by `make lint.entrypoints` (`scripts/check_runtime_entrypoints.py`, also a CI step):
+
+1. No Fly cron entrypoint may reference a `scripts/` path — runtime jobs are invoked as `-m app.cli.<module>`.
+2. Nothing under `app/` may `import scripts.*`. The shipped package must not depend on operator tooling; if it does, tightening `.dockerignore` breaks production. Shared logic belongs in `app/services/`, imported by both sides. Pre-existing violations sit in a ratcheted allowlist that may shrink but never grow.
+
+Data directories are named for what they hold, never for the code that wrote them:
+
+- `data/scraper-output/` — run artifacts (CSVs, logs, run notes); the Makefile's `OUT` default.
+- `data/scraper-cache/` — cached source HTML that keeps re-runs deterministic and offline. Gitignored.
+- `tests/fixtures/scrapers/` — checked-in sample pages plus `robots.txt`/policy notes that parser unit tests read.
 
 ## Tech Stack
 - Backend: FastAPI with SQLModel/async SQLAlchemy targeting Postgres (asyncpg driver); Alembic for migrations.

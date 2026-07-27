@@ -1,6 +1,6 @@
 """Integration tests for the Summer League Desk hourly tick orchestrator (#516).
 
-`scripts/sl_desk_tick.py` wires scoreboard ingest -> targeted live raw
+`app/cli/sl_desk_tick.py` wires scoreboard ingest -> targeted live raw
 refresh -> normalize -> grades -> storylines -> commentary -> render/state
 freshness (``event_desk_state`` upsert) into one call (``run_desk_tick``).
 These tests don't re-verify any individual step's algorithm (that's each
@@ -64,8 +64,8 @@ from app.services.summer_league.write_lock import (
     SummerLeagueWriterLockTimeout,
     acquire_summer_league_writer_lock,
 )
-import scripts.sl_desk_tick as desk_tick_module
-from scripts.sl_desk_tick import run_desk_tick
+import app.cli.sl_desk_tick as desk_tick_module
+from app.cli.sl_desk_tick import run_desk_tick
 
 _FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "summer_league"
 _REAL_LIVE_FIXTURE = _FIXTURE_ROOT / "scheduleleaguev2_15_2026_live_pretip.json"
@@ -864,7 +864,7 @@ async def test_desk_tick_two_sequential_ticks_over_real_schedule_never_finalize_
 
     No genuinely in-progress (``gameStatus == 2``) capture exists anywhere on
     this branch -- checked the SL fixtures dir, #529/#531's own captured
-    assets, and `scraper/output/` before writing this test; NBA's real
+    assets, and `data/scraper-output/` before writing this test; NBA's real
     ``leaguegamelog``/per-game boxscore endpoints also have no captured 2026
     response in this repo (this sandbox has no live network access to fetch
     one). Per the ticket's guardrail, this test therefore proves the

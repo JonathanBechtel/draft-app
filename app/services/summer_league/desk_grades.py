@@ -389,7 +389,7 @@ async def grade_players_bulk(
     the same reasons :func:`grade_player_event` raises for a single player --
     no ``players_master`` row, no Summer League game data this competition's
     year, or no active T1 baseline for their cohort -- mirroring the
-    try/except-per-player skip `scripts/sl_desk_tick.py` used to perform
+    try/except-per-player skip `app/cli/sl_desk_tick.py` used to perform
     around the old per-player loop, just logged in aggregate here since a
     batched fetch has no natural per-player failure point to catch.
 

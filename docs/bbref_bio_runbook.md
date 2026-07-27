@@ -11,9 +11,9 @@ This document summarizes the bio enrichment implementation, how to run it, and h
 ## Components
 
 - Scraper: `scripts/bbref_bio_scraper.py`
-  - Produces CSV: `scraper/output/bbio_<scope>_<YYYYMMDD>.csv`
-  - Caches HTML to `scraper/cache/players_{letter}.html` and `scraper/cache/players/{slug}.html`
-  - Supports offline parsing from sample HTML in `scrapers/bbref/`
+  - Produces CSV: `data/scraper-output/bbio_<scope>_<YYYYMMDD>.csv`
+  - Caches HTML to `data/scraper-cache/players_{letter}.html` and `data/scraper-cache/players/{slug}.html`
+  - Supports offline parsing from sample HTML in `tests/fixtures/scrapers/bbref/`
 - Ingestor: `scripts/ingest_player_bios.py`
   - Resolves to `players_master.id` using external IDs, aliases, or deterministic name rules
   - Upserts `player_external_ids` (systems: `bbr`, `x`, `instagram`)
@@ -49,21 +49,21 @@ Generate the Alembic migration and apply it before first ingest:
 ## Scraping (Live and Offline)
 
 - Live (one letter):
-  - `make bio.scrape LETTERS=b OUT=scraper/output THROTTLE=4`
+  - `make bio.scrape LETTERS=b OUT=data/scraper-output THROTTLE=4`
 - Live (multiple):
-  - `make bio.scrape LETTERS=a,b,c OUT=scraper/output THROTTLE=4`
+  - `make bio.scrape LETTERS=a,b,c OUT=data/scraper-output THROTTLE=4`
 - Live (all letters; long-running):
-  - `make bio.scrape ALL=1 OUT=scraper/output THROTTLE=4`
+  - `make bio.scrape ALL=1 OUT=data/scraper-output THROTTLE=4`
 - Force fetch slugs the index is missing (prospects, renamed players):
-  - `make bio.scrape OUT=scraper/output EXTRA_SLUGS=zikarro01,maluakh01`
+  - `make bio.scrape OUT=data/scraper-output EXTRA_SLUGS=zikarro01,maluakh01`
   - Or provide a newline-delimited file: `make bio.scrape EXTRA_SLUGS_FILE=config/missing_bbr_slugs.txt`
-- Offline (use samples in `scrapers/bbref/`):
-  - `make bio.scrape LETTERS=b FROM_INDEX_FILE=scrapers/bbref/index_page_example.html FROM_PLAYER_FILE=scrapers/bbref/player_page_example.html OUT=scraper/output`
+- Offline (use samples in `tests/fixtures/scrapers/bbref/`):
+  - `make bio.scrape LETTERS=b FROM_INDEX_FILE=tests/fixtures/scrapers/bbref/index_page_example.html FROM_PLAYER_FILE=tests/fixtures/scrapers/bbref/player_page_example.html OUT=data/scraper-output`
 
 Notes
 - Throttling: a sleep between requests is built in; set `THROTTLE` to `>=3` seconds to honor BRef guidance. Default is 3s.
 - User-Agent: `draftguru-bio-scraper/0.1`.
-- Caching: pages are stored under `scraper/cache/` to keep reruns deterministic and reduce network load.
+- Caching: pages are stored under `data/scraper-cache/` to keep reruns deterministic and reduce network load.
 - Player page URL derivation now uses the slug's leading letter instead of the index letter, so name-change edge cases (e.g., `artesro01` listed under "W") resolve correctly. When a player is entirely absent from the index pages you scrape, add the slug via `EXTRA_SLUGS` so we still hit the detail page and persist the bio.
 
 ## CSV Schema (Export)
@@ -103,7 +103,7 @@ What is written
 
 ## Troubleshooting
 
-- Missing CSV: ensure `bbio_<scope>_<YYYYMMDD>.csv` exists in `scraper/output/`.
+- Missing CSV: ensure `bbio_<scope>_<YYYYMMDD>.csv` exists in `data/scraper-output/`.
 - Migration errors (relation does not exist): run `make mig.up`.
 - Rate limiting: increase `THROTTLE` (e.g., `THROTTLE=5`) or run in smaller letter batches.
 - Wrong birthplace formatting (older CSVs): ingestion normalizes `birth_state_province` and `birth_country`. Re-scrape to fix values in CSV too.

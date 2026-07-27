@@ -54,7 +54,7 @@ from app.services.summer_league.desk_read import (
     get_desk_view_context,
 )
 from app.services.summer_league.nba_stats_client import NBAStatsClient
-from scripts.sl_desk_tick import run_desk_tick
+from app.cli.sl_desk_tick import run_desk_tick
 
 pytestmark = pytest.mark.asyncio
 

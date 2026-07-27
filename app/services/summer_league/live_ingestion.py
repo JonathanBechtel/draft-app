@@ -260,7 +260,7 @@ def refresh_selected_games(
     :func:`~app.services.summer_league.raw_ingestion.is_required_game_endpoint`)
     is folded into ``required_errors`` but does not stop this function from
     processing the rest of the group or sibling groups -- it is the caller
-    (`scripts/sl_desk_tick.py`'s ``run_desk_tick``) that inspects
+    (`app/cli/sl_desk_tick.py`'s ``run_desk_tick``) that inspects
     ``required_errors`` afterward and aborts the whole tick before claiming
     fresh state.
 

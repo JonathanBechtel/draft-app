@@ -31,16 +31,16 @@ You can use either the Make target or call the script directly.
 Direct calls:
 - `python scripts/nba_draft_scraper.py --year 2024-25 --source all`
 
-Outputs are written to `scraper/output/{season}_{source}.csv`. The output folder is ignored by git.
+Outputs are written to `data/scraper-output/{season}_{source}.csv`. The output folder is ignored by git.
 
 ### Basketball-Reference Bios (one-time enrichment)
 
 - Scrape index + player pages (respecting robots throttling):
-  - `make bio.scrape LETTERS=a,b OUT=scraper/output THROTTLE=3`
-  - Offline with local samples: `make bio.scrape LETTERS=b FROM_INDEX_DIR=scrapers/bbref FROM_PLAYER_DIR=scrapers/bbref`
+  - `make bio.scrape LETTERS=a,b OUT=data/scraper-output THROTTLE=3`
+  - Offline with local samples: `make bio.scrape LETTERS=b FROM_INDEX_DIR=tests/fixtures/scrapers/bbref FROM_PLAYER_DIR=tests/fixtures/scrapers/bbref`
 - Ingest CSV into DB (idempotent):
-  - `make bio.ingest BBIO=scraper/output/bbio_b_YYYYMMDD.csv DRY=1 VERBOSE=1`
-  - Commit updates: `make bio.ingest BBIO=scraper/output/bbio_b_YYYYMMDD.csv VERBOSE=1`
+  - `make bio.ingest BBIO=data/scraper-output/bbio_b_YYYYMMDD.csv DRY=1 VERBOSE=1`
+  - Commit updates: `make bio.ingest BBIO=data/scraper-output/bbio_b_YYYYMMDD.csv VERBOSE=1`
   - Overwrite immutable conflicts (explicit): `make bio.ingest BBIO=... OVERWRITE_MASTER=1`
   - By default CREATE_MISSING is enabled (creates players_master rows for unmatched bios). To disable for a run, pass `CREATE_MISSING=`.
 
@@ -50,7 +50,7 @@ CSV fields include immutable facts (birthplace, school, shoots, draft info, debu
 
 - `--year` Optional season in `YYYY-YY`. Default scrapes all seasons.
 - `--source` Data source: `all` (default), `shooting`, `anthro`, or `agility`.
-- `--out-dir` Output directory (default: `scraper/output`).
+- `--out-dir` Output directory (default: `data/scraper-output`).
 - `--timeout` Per-request timeout in seconds (default: 30). Increase if pages render slowly.
 - `--verbose` Print progress logs and row counts.
 - `--no-headless` Disable headless rendering and use raw HTML fetch (useful with local files).

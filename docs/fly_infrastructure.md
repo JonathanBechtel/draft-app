@@ -49,11 +49,11 @@ The cron runner (`app/cli/cron_runner.py`) executes the news ingestion service, 
 
 ### Cron Machine (summer-league-desk-cron)
 
-- **Purpose**: Run the Summer League Desk hourly tick (`scripts/sl_desk_tick.py`):
+- **Purpose**: Run the Summer League Desk hourly tick (`app/cli/sl_desk_tick.py`):
   scoreboard ingest -> targeted live raw refresh -> normalize -> scoped metrics
   rebuild -> grades -> storylines -> commentary -> `event_desk_state` upsert.
 - **Resources**: 1 shared CPU, 1GB RAM
-- **Entrypoint**: `/app/.venv/bin/python scripts/sl_desk_tick.py`
+- **Entrypoint**: `/app/.venv/bin/python -m app.cli.sl_desk_tick`
 - **Region**: `ewr` (Newark)
 - **Writer priority**: the Desk takes a transaction-scoped PostgreSQL advisory lock
   before its pipeline starts. The full Summer League ingestion cron uses the same
@@ -279,6 +279,14 @@ flyctl machine run $IMAGE \
 
 ### Updating Cron Machine Image
 
+**Always pass `--command` alongside `--image`.** A machine's argv is frozen when
+`flyctl machine run` created it, so an image-only update can land a new image on
+a machine still pointing at an entrypoint that image no longer contains. The cron
+then dies every tick while `verify_cron_image_digests.py` stays green, because the
+*image* is current — this is exactly how #685 broke the stage Desk cron behind a
+fully successful deploy. The deploy workflows re-declare the command on every
+update for this reason; manual updates must too.
+
 ```bash
 # Get current app image
 IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
@@ -286,8 +294,27 @@ IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.
 # Get cron machine ID
 CRON_ID=$(flyctl machine list --app draft-app-prod --json | jq -r '.[] | select(.name == "news-ingestion-cron") | .id')
 
-# Update cron machine with new image
-flyctl machine update $CRON_ID --app draft-app-prod --image $IMAGE --yes
+# Update cron machine with the new image AND its declared command
+flyctl machine update $CRON_ID --app draft-app-prod \
+  --image $IMAGE \
+  --command "-m app.cli.cron_runner" \
+  --yes
+```
+
+The command per machine, matching the `cron =` lines in `deploy/fly/*.toml`:
+
+| Machine | `--command` |
+|---|---|
+| `news-ingestion-cron` | `-m app.cli.cron_runner` |
+| `summer-league-ingestion-cron` | `-m app.cli.summer_league_ingest_runner` |
+| `summer-league-roster-cron` | `-m app.cli.summer_league_roster_runner` |
+| `summer-league-desk-cron` | `-m app.cli.sl_desk_tick` |
+
+Verify afterwards — a green `machine update` does not mean the cron runs:
+
+```bash
+flyctl machine list --app draft-app-prod --json \
+  | jq -r '.[] | select(.config.schedule) | {name, schedule: .config.schedule, cmd: .config.init.cmd}'
 ```
 
 ---

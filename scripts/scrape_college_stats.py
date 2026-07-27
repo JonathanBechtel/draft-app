@@ -107,7 +107,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--cache-dir",
         type=str,
-        default="scraper/cache/players",
+        default="data/scraper-cache/players",
         help="Cache directory for HTML files",
     )
     parser.add_argument(

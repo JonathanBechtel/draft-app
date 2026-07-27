@@ -40,7 +40,7 @@ Context: Build the FastAPI + Jinja + vanilla CSS/JS app to match the `mockups/` 
 - **Tests**: Unit: comparison service handles missing metrics gracefully; Integration: HTTPX call asserts merged payload, correct 404 on unknown player.
 
 ### Home: Live Feed / News
-- **Data**: Initial source: RSS feeds from targeted Substacks. Build `scrapers/rss.py` to poll feed URLs, normalize entries, and map to players by alias. Plan to store in `news_items` table; until migration lands, expose placeholder API backed by mock JSON. Include tags (riser/faller).
+- **Data**: Initial source: RSS feeds from targeted Substacks. Poll feed URLs, normalize entries, and map to players by alias. Plan to store in `news_items` table; until migration lands, expose placeholder API backed by mock JSON. Include tags (riser/faller). *(Shipped as `app/services/news_ingestion_service.py`, driven by `app/cli/cron_runner.py` — the originally-planned `scrapers/rss.py` module was never built.)*
 - **UI**: Feed list with badges. CTA to player pages.
 - **Tests**: Unit: feed serializer truncates title and maps tag colors; Integration: placeholder endpoint returns bounded list.
 
@@ -85,7 +85,7 @@ Context: Build the FastAPI + Jinja + vanilla CSS/JS app to match the `mockups/` 
 - **Admin toggle readiness**: Keep flags centralized so admin UI can flip them later; ensure idempotent cache invalidation when toggled.
 
 ## Integrations & Placeholders
-- **RSS/News**: New ingestion module (`scrapers/rss.py`) seeded with Substack feed URLs; normalize to `news_items` table (migration needed). Until then, seed with mock JSON file for local.
+- **RSS/News**: New ingestion module seeded with Substack feed URLs; normalize to `news_items` table (migration needed). Until then, seed with mock JSON file for local. *(Shipped as `app/services/news_ingestion_service.py`.)*
 - **Affiliate Offers**: Configurable promotions file; link to sportsbook UTMs. Guard by feature flag.
 - **Images**: Placeholder CDN path or `/static/img/placeholder-player.png`. Template accepts `photo_url` and falls back to placeholder.
 - **Share Rendering**: Stub only; mark TODO for headless browser-based PNG export.

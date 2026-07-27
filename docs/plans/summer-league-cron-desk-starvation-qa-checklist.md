@@ -10,17 +10,17 @@ This checklist defines product- and operator-level behaviors QA should verify be
 ## Core User Behaviors
 
 - A Desk page visitor should see live scores update promptly even while full ingestion is running.
-  - Verify: with a full-ingestion run artificially held open (long-running venue phase, e.g. a test double that sleeps mid-normalization), trigger a Desk tick (`scripts/sl_desk_tick.py`) concurrently.
+  - Verify: with a full-ingestion run artificially held open (long-running venue phase, e.g. a test double that sleeps mid-normalization), trigger a Desk tick (`app/cli/sl_desk_tick.py`) concurrently.
   - Expected: the Desk tick does not block for the full ingestion duration; it either acquires the lock within its bounded wait and completes, or cleanly yields/retries within that bound rather than hanging.
   - Evidence: Desk tick log shows `writer_lock_wait` step duration ≤ the documented bound; Desk-visible snapshot (`materialize_desk_render_snapshots` output / `/summer-league` page) reflects current scores after the tick completes.
 
 - A Desk tick should never wait indefinitely for the writer lock.
-  - Verify: inspect `scripts/sl_desk_tick.py`'s lock-acquisition call (currently `acquire_summer_league_writer_lock`, a blocking `pg_advisory_xact_lock`) after the fix.
+  - Verify: inspect `app/cli/sl_desk_tick.py`'s lock-acquisition call (currently `acquire_summer_league_writer_lock`, a blocking `pg_advisory_xact_lock`) after the fix.
   - Expected: acquisition uses a bounded-wait primitive (e.g. `pg_try_advisory_xact_lock` retried within a timeout, or `SET LOCAL lock_timeout`) with an explicit maximum wait, not an unbounded blocking wait.
   - Evidence: code path plus a concurrency integration test asserting the Desk tick returns/logs within the bound when the lock is held by a long-running competitor.
 
 - A normal Desk tick completes quickly when providers are healthy.
-  - Verify: run `scripts/sl_desk_tick.py` end-to-end against fixture data with mocked NBA Stats responses and no lock contention.
+  - Verify: run `app/cli/sl_desk_tick.py` end-to-end against fixture data with mocked NBA Stats responses and no lock contention.
   - Expected: total tick duration stays under two minutes (spec's stated budget); comparable to the observed ~38s uncontended baseline.
   - Evidence: `pipeline_telemetry` run-level log line (`summer_league_pipeline_run ... duration_ms=...`) under the two-minute threshold.
 

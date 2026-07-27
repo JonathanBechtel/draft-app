@@ -25,6 +25,11 @@ many of which are already over the file-size threshold, so the annotations would
 sibling file-size ratchet and need their own waivers. A counts file keeps the debt out of the
 source entirely.
 
+Stale entries fail too. A count that has *dropped* below its baseline is not a free pass —
+it is silent regression headroom: the file could climb back to its old allowance with CI
+green. Like the FK-coverage and import-contract baselines, an improvement must be locked in
+(``make lint.complexity.update``) in the same change that earned it.
+
 Known limit, stated plainly: swapping one violation for another within the same
 ``(file, rule)`` keeps the count level and passes. The count can never *grow*, which is what
 the ratchet is for.
@@ -167,32 +172,46 @@ def main(argv: list[str] | None = None) -> int:
 
     regressions, improvements = compare(current, _load_baseline())
 
-    if improvements and not regressions:
-        print(
-            f"complexity ratchet: {len(improvements)} improvement(s) — "
-            "run `make lint.complexity.update` to lock them in."
+    if regressions:
+        sys.stderr.write(
+            "\n".join(
+                [
+                    "ERROR: complexity ratchet — new findings beyond the baseline.",
+                    "",
+                    "Ruff's per-file-ignores would let these through because the file is already",
+                    "baselined for the rule; this check exists so it cannot.",
+                    "",
+                    *regressions,
+                    "",
+                    "Simplify the new code, or — if the growth is genuinely warranted — run",
+                    "`make lint.complexity.update` and explain the increase in the PR.",
+                    "",
+                ]
+            )
         )
+        return 1
 
-    if not regressions:
-        return 0
-
-    sys.stderr.write(
-        "\n".join(
-            [
-                "ERROR: complexity ratchet — new findings beyond the baseline.",
-                "",
-                "Ruff's per-file-ignores would let these through because the file is already",
-                "baselined for the rule; this check exists so it cannot.",
-                "",
-                *regressions,
-                "",
-                "Simplify the new code, or — if the growth is genuinely warranted — run",
-                "`make lint.complexity.update` and explain the increase in the PR.",
-                "",
-            ]
+    if improvements:
+        sys.stderr.write(
+            "\n".join(
+                [
+                    "ERROR: complexity ratchet — the baseline is stale.",
+                    "",
+                    "These counts have dropped below their baseline entries. Left as-is, the",
+                    "entries grant silent headroom to regress; the ratchet only ratchets if",
+                    "improvements are locked in when they land.",
+                    "",
+                    *improvements,
+                    "",
+                    "Run `make lint.complexity.update` and commit complexity-baseline.json",
+                    "with this change.",
+                    "",
+                ]
+            )
         )
-    )
-    return 1
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":

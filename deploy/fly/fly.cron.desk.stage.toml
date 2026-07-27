@@ -1,7 +1,7 @@
 # fly.cron.desk.stage.toml - Configuration for the staging Summer League Desk cron machine
 #
 # This defines a scheduled machine that runs the Summer League Desk hourly
-# tick (scripts/sl_desk_tick.py): scoreboard ingest -> normalize -> scoped
+# tick (app/cli/sl_desk_tick.py): scoreboard ingest -> normalize -> scoped
 # metrics rebuild -> grades -> storylines -> commentary -> event_desk_state
 # upsert. It shares the same Docker image as the main app but runs a
 # different command. Cloned from fly.cron.roster.stage.toml (the Summer
@@ -70,7 +70,7 @@
 #        else
 #          flyctl machine run "$IMAGE" --app draft-app --schedule hourly \
 #            --name summer-league-desk-cron --region ewr --memory 1024 --cpus 1 \
-#            --entrypoint "/app/.venv/bin/python" -- scripts/sl_desk_tick.py
+#            --entrypoint "/app/.venv/bin/python" -- -m app.cli.sl_desk_tick
 #        fi
 #
 #   4. First tick after creating the machine is manual and deliberate (do not wait for the
@@ -90,7 +90,7 @@ primary_region = 'ewr'
 
 # Override the default command to run the Summer League Desk tick script
 [processes]
-  cron = "/app/.venv/bin/python scripts/sl_desk_tick.py"
+  cron = "/app/.venv/bin/python -m app.cli.sl_desk_tick"
 
 [[vm]]
   memory = '1024mb'

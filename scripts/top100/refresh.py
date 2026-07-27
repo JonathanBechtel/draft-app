@@ -46,7 +46,7 @@ SECONDARY_SOURCES = (
     "Basketball Reference is the preferred downstream player-data source whenever a "
     "prospect has an available BBRef player page."
 )
-OUTPUT_DIR = Path("scraper/output")
+OUTPUT_DIR = Path("data/scraper-output")
 
 
 @dataclass(frozen=True)

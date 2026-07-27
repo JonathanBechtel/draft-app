@@ -516,7 +516,7 @@ async def upsert_scoreboard_games(
     if created or updated:
         # #529 forward-scheduled games are how the Desk's opening-morning
         # bootstrap (#527's `_needs_scoreboard_bootstrap` in
-        # `scripts/sl_desk_tick.py`) is actually meant to escape dormancy --
+        # `app/cli/sl_desk_tick.py`) is actually meant to escape dormancy --
         # extending `starts_on`/`ends_on` here (not just on the normalize
         # path) lets a schedule ingest widen the window *before* any game has
         # been played.

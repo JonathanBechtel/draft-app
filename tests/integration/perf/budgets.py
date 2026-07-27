@@ -158,7 +158,7 @@ ROUTE_BUDGETS: dict[str, int] = {
 # summer-league-cron-desk-starvation-spec.md): the tick must stay well inside
 # that window even under writer-lock contention (bounded to
 # DEFAULT_WRITER_LOCK_MAX_WAIT_SECONDS=30s per wait, see
-# scripts/sl_desk_tick.py). Asserted by
+# app/cli/sl_desk_tick.py). Asserted by
 # tests/integration/perf/test_desk_tick_query_growth.py against a
 # synthetic/no-network fixture, so this is a CI-hardware regression ratchet
 # (catches an accidentally-reintroduced per-player/per-slot loop turning into
