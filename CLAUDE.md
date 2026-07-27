@@ -91,10 +91,13 @@ Every runnable `.py` in this repo belongs to exactly one of two homes. The split
 - **`app/cli/` — shipped runtime jobs.** Entrypoints that run *inside the deployed container*, executed by Fly cron machines. They are part of the `app` package, ship in the Docker image, and are invoked as modules: `python -m app.cli.<module>` (see `deploy/fly/fly.cron*.toml`). Examples: `cron_runner.py`, `sl_desk_tick.py`, `summer_league_ingest_runner.py`.
 - **`scripts/` — operator tooling.** Everything a human or a CI runner invokes from a checkout: scrapers, ingests, backfills, audits, one-off data fixes, and the CI guard scripts themselves. Invoked by path: `python scripts/<name>.py`. Use a subpackage (`scripts/top100/`, `scripts/big_boards/`) when a workflow has several steps.
 
-**The rule: if a Fly machine runs it, it belongs in `app/cli/`; otherwise it belongs in `scripts/`.** Two corollaries follow, both enforced by `make lint.entrypoints` (`scripts/check_runtime_entrypoints.py`, also a CI step):
+**The rule: if a Fly machine runs it, it belongs in `app/cli/`; otherwise it belongs in `scripts/`.** Three corollaries follow, all enforced by `make lint.entrypoints` (`scripts/check_runtime_entrypoints.py`, also a CI step):
 
 1. No Fly cron entrypoint may reference a `scripts/` path — runtime jobs are invoked as `-m app.cli.<module>`.
-2. Nothing under `app/` may `import scripts.*`. The shipped package must not depend on operator tooling; if it does, tightening `.dockerignore` breaks production. Shared logic belongs in `app/services/`, imported by both sides. Pre-existing violations sit in a ratcheted allowlist that may shrink but never grow.
+2. Nothing under `app/` may `import scripts.*`. The shipped package must not depend on operator tooling. Shared logic belongs in `app/services/`, imported by both sides. Violations may sit in a ratcheted allowlist that may shrink but never grow; it is currently empty.
+3. Nothing under `app/` may **read a file** from a directory `.dockerignore` excludes. The image ships `app/`, `alembic/`, and packaging metadata — nothing else. A shipped module reading from `scripts/`, `tests/`, `docs/`, `mockups/`, or `deploy/` breaks at runtime while CI, the deploy, and the cron digest verifier all stay green. Data the deployed app reads lives in **`app/data/`** (e.g. `school_mapping.json`); operator-only data stays in `scripts/data/`.
+
+The distinction that matters for #3 is *read* vs *write*: `data/` is excluded from the image but freely referenced from `app/`, because the crons create it on demand and only write into it.
 
 Data directories are named for what they hold, never for the code that wrote them:
 
