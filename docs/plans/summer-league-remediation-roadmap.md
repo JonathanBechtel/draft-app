@@ -206,7 +206,7 @@ The live issue queue and this plan describe the same work; keep them pointing at
 
 | Ticket(s) | Relationship |
 |---|---|
-| **#669** (incident record) | The observed evidence behind Phase 1's entry gate, and the source of the migration-safety items |
+| **#669** (incident record) | The observed evidence behind Phase 1's entry gate, and the source of the migration-safety items. **Entry gate closed** — the diagnosis is a comment on the issue; migration safety shipped as the phase's first change. Remaining open follow-ups on the issue: genuinely scoping the metrics compute, a maximum transaction/writer-lock lifetime per cron phase, alerting on old transactions and pool saturation, and per-stage cron telemetry that survives machine restarts |
 | **#661** (scheduler success ≠ data refresh) | Implements the operational half of desk §1's watermark contract — scheduler / source / projection / snapshot signals kept distinct. Complements Phase 5's user-facing contract; ship whenever ready |
 | **#662–#667** (Desk decomposition) | Phase 5 material. **Sequencing guard:** execute after Phase 2's stat consolidation, or restrict each ticket to pure moves — otherwise duplicated math gets scattered into more files (sequencing rule 3) |
 | **#645, #646, #648** (Explorer/environment modularization) | Same Phase 5 guard applies |
