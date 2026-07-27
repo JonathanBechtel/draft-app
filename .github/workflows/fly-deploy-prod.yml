@@ -120,9 +120,15 @@ jobs:
           CRON_MACHINE_ID=$(flyctl machine list --app draft-app-prod --json | jq -r '.[] | select(.name == "news-ingestion-cron") | .id')
           if [ -n "$CRON_MACHINE_ID" ] && [ -n "$APP_IMAGE" ] && [ "$APP_IMAGE" != "null" ]; then
             echo "Updating cron machine $CRON_MACHINE_ID with image: $APP_IMAGE"
+            # --command is set on every update, not just at creation: a machine's argv is
+            # frozen when `machine run` creates it, so an image-only update happily ships
+            # a new image that no longer contains the old entrypoint path. That is exactly
+            # how #685 broke this cron on stage -- the deploy went green while every tick
+            # died on "can't open file". Re-declaring it here makes the machine converge.
             flyctl machine update "$CRON_MACHINE_ID" \
               --app draft-app-prod \
               --image "$APP_IMAGE" \
+              --command "-m app.cli.cron_runner" \
               --yes
           else
             echo "No cron machine found or could not determine app image"
@@ -140,6 +146,7 @@ jobs:
             flyctl machine update "$CRON_MACHINE_ID" \
               --app draft-app-prod \
               --image "$APP_IMAGE" \
+              --command "-m app.cli.summer_league_ingest_runner" \
               --yes
           else
             echo "No cron machine found or could not determine app image"
@@ -157,6 +164,7 @@ jobs:
             flyctl machine update "$CRON_MACHINE_ID" \
               --app draft-app-prod \
               --image "$APP_IMAGE" \
+              --command "-m app.cli.summer_league_roster_runner" \
               --yes
           else
             echo "No cron machine found or could not determine app image"
@@ -186,6 +194,7 @@ jobs:
               flyctl machine update "$CRON_MACHINE_ID" \
                 --app draft-app-prod \
                 --image "$APP_IMAGE" \
+                --command "-m app.cli.sl_desk_tick" \
                 --skip-start \
                 --yes
               # `machine update` does not reliably re-arm Fly's hourly schedule for a
@@ -217,6 +226,7 @@ jobs:
           python scripts/reconcile_cron_image.py \
             --app draft-app-prod \
             --machine summer-league-desk-cron \
+            --command "-m app.cli.sl_desk_tick" \
             --wait-timeout-s 600 || \
             echo "::warning::Desk cron reconciliation retry did not land; the post-deploy verification step will fail the check if it is still drifted."
 
@@ -267,7 +277,7 @@ jobs:
               --memory 1024 \
               --cpus 1 \
               --entrypoint "/app/.venv/bin/python" \
-              -- scripts/sl_desk_tick.py
+              -- -m app.cli.sl_desk_tick
           fi
 
       # Post-deploy verification (spec: docs/plans/summer-league-cron-desk-starvation-spec.md

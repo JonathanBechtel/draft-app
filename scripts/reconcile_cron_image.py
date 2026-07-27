@@ -101,6 +101,7 @@ def reconcile_cron_machine_image(
     machine_name: str,
     *,
     wait_timeout_s: int = 600,
+    command: Optional[str] = None,
     run: Optional[RunFn] = None,
 ) -> ReconcileResult:
     """Wait for a stopped-scheduled cron machine, then update+re-arm its image.
@@ -117,6 +118,13 @@ def reconcile_cron_machine_image(
             before giving up on this retry. Deliberately short relative to the
             deploy-time 30-minute wait -- this is a follow-up chance, not
             another full wait.
+        command: Machine argv to re-declare alongside the image, e.g.
+            ``"-m app.cli.sl_desk_tick"``. A machine's argv is frozen at
+            ``flyctl machine run`` time, so an image-only update ships a new
+            image that may no longer contain the old entrypoint path -- the
+            cron then dies every tick while the digest verifier stays green,
+            because the *image* is current. Omit only when the caller knows the
+            argv is already correct.
         run: Injectable subprocess runner (tests pass a fake).
 
     Returns:
@@ -176,20 +184,24 @@ def reconcile_cron_machine_image(
             ),
         )
 
-    update_result = run(
-        [
-            "flyctl",
-            "machine",
-            "update",
-            str(machine_id),
-            "--app",
-            app,
-            "--image",
-            str(app_image),
-            "--skip-start",
-            "--yes",
-        ]
-    )
+    update_args = [
+        "flyctl",
+        "machine",
+        "update",
+        str(machine_id),
+        "--app",
+        app,
+        "--image",
+        str(app_image),
+    ]
+    # Re-declare argv with the image so this retry path cannot leave a machine
+    # on the current image with a stale command -- the failure mode that broke
+    # the stage Desk cron after #685 while every deploy step reported success.
+    if command:
+        update_args += ["--command", command]
+    update_args += ["--skip-start", "--yes"]
+
+    update_result = run(update_args)
     if update_result.returncode != 0:
         return ReconcileResult(
             outcome=ReconcileOutcome.UPDATE_FAILED,
@@ -237,6 +249,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=600,
         help="Bounded wait (seconds) for the machine to stop before giving up (default: 600).",
     )
+    parser.add_argument(
+        "--command",
+        default=None,
+        help=(
+            "Machine argv to re-declare alongside the image, e.g. "
+            '"-m app.cli.sl_desk_tick". Without it the machine keeps whatever '
+            "argv it was created with, which an image change can invalidate."
+        ),
+    )
     return parser
 
 
@@ -247,7 +268,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     try:
         result = reconcile_cron_machine_image(
-            args.app, args.machine, wait_timeout_s=args.wait_timeout_s
+            args.app,
+            args.machine,
+            wait_timeout_s=args.wait_timeout_s,
+            command=args.command,
         )
     except FlyctlError as exc:
         print(f"::error::{exc}", flush=True)

@@ -26,11 +26,19 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
+    SummerLeaguePlayerResolutionReview,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
     SummerLeagueShotEvent,
 )
-from app.services.player_merge_service import merge_players
+from app.schemas.summer_league_desk import (
+    SummerLeagueDeskGrade,
+    SummerLeagueDeskPlayerGrade,
+    SummerLeagueDeskStoryline,
+    SummerLeagueDeskTriggerType,
+)
+from app.services.player_merge_references import count_inbound_references
+from app.services.player_merge_service import merge_players, preview_merge
 from tests.integration.conftest import make_player
 
 
@@ -132,15 +140,42 @@ async def _seed_summer_league(
             player_id=player.id,
         )
     )
+    # One PBP event per person column, so the report discriminates per spec
+    # rather than one row satisfying all three at once.
+    for event_num, person_column in (
+        (1, "person1_id"),
+        (2, "person2_id"),
+        (3, "person3_id"),
+    ):
+        db.add(
+            SummerLeaguePlayByPlayEvent(
+                game_id=game.id,
+                competition_id=comp.id,
+                nba_stats_game_id=game.nba_stats_game_id,
+                event_num=event_num,
+                **{person_column: player.id},
+            )
+        )
     db.add(
-        SummerLeaguePlayByPlayEvent(
-            game_id=game.id,
+        SummerLeaguePlayerResolutionReview(
+            source_player_id=source_player.id,
+            raw_player_name=source_player.raw_player_name,
+            nba_stats_person_id=source_player.nba_stats_person_id,
+            selected_player_id=player.id,
+        )
+    )
+    # A duel storyline referencing the player on both subject columns.
+    db.add(
+        SummerLeagueDeskStoryline(
+            game_date=game.game_date,
             competition_id=comp.id,
-            nba_stats_game_id=game.nba_stats_game_id,
-            event_num=1,
-            person1_id=player.id,
-            person2_id=player.id,
-            person3_id=player.id,
+            game_id=game.id,
+            trigger_type=SummerLeagueDeskTriggerType.DUEL,
+            subject_player_id=player.id,
+            subject_player_id_2=player.id,
+            base_weight=1.0,
+            magnitude=1.0,
+            weight=1.0,
         )
     )
     await db.flush()
@@ -199,6 +234,9 @@ _REASSIGNED = (
     ("summer_league_play_by_play_events", "person3_id"),
     ("summer_league_source_players", "canonical_player_id"),
     ("summer_league_participation", "player_id"),
+    ("summer_league_player_resolution_reviews", "selected_player_id"),
+    ("summer_league_desk_storylines", "subject_player_id"),
+    ("summer_league_desk_storylines", "subject_player_id_2"),
     ("draft_results", "player_id"),
     ("player_affiliations", "player_id"),
 )
@@ -223,15 +261,20 @@ async def test_merge_relocates_summer_league_data_instead_of_failing(
     before = {ref: await _count(db_session, *ref, discard.id) for ref in _REASSIGNED}
     assert all(n > 0 for n in before.values()), f"seeding incomplete: {before}"
 
-    await merge_players(db_session, keep_id=keep.id, discard_id=discard.id)
+    report = await merge_players(db_session, keep_id=keep.id, discard_id=discard.id)
 
     for table, column in _REASSIGNED:
         remaining = await _count(db_session, table, column, discard.id)
         moved = await _count(db_session, table, column, keep.id)
         assert remaining == 0, f"{table}.{column} still points at the discarded player"
-        assert moved >= before[(table, column)], (
-            f"{table}.{column} lost rows: expected at least "
-            f"{before[(table, column)]} on the survivor, found {moved}"
+        # The survivor held nothing, so every seeded row must arrive — exactly.
+        assert moved == before[(table, column)], (
+            f"{table}.{column}: expected {before[(table, column)]} rows on the "
+            f"survivor, found {moved}"
+        )
+        stats = report.per_table.get(f"{table}.{column}", {})
+        assert stats.get("reassigned", 0) == before[(table, column)], (
+            f"report undercounts {table}.{column}: {stats}"
         )
 
     survivors = int(
@@ -282,3 +325,133 @@ async def test_merge_still_works_when_the_survivor_also_holds_data(
         await _count(db_session, "summer_league_player_game_logs", "player_id", keep.id)
         == keep_before + discard_before
     ), "both sides' game logs should survive on the keeper"
+
+
+@pytest.mark.asyncio
+async def test_merge_desk_grades_conflict(db_session: AsyncSession) -> None:
+    """Desk grade rows collide on (competition_id, baseline_version).
+
+    ``uq_summer_league_desk_player_grades_player_competition_version`` includes
+    ``player_id``, so summer_league_desk_player_grades is the one #675 table where
+    reassignment can violate a unique constraint. When both players are graded in
+    the same competition and baseline, the discard's row must be dropped — the
+    survivor's own grade wins — while a discard-only baseline is reassigned.
+    """
+    keep = await _make_player(db_session, "Graded", "Keeper")
+    discard = await _make_player(db_session, "Graded", "Discard")
+    assert keep.id is not None and discard.id is not None
+
+    comp = SummerLeagueCompetition(
+        year=2026,
+        league_id=f"15-{_uid()}",
+        venue_slug="las_vegas",
+        display_name="2026 Las Vegas Summer League",
+    )
+    db_session.add(comp)
+    await db_session.flush()
+    assert comp.id is not None
+
+    def _grade(player_id: int, version: str, pctl: float) -> SummerLeagueDeskPlayerGrade:
+        return SummerLeagueDeskPlayerGrade(
+            player_id=player_id,
+            competition_id=comp.id,
+            baseline_version=version,
+            cohort_key="all",
+            subject_value=10.0,
+            pctl=pctl,
+            grade=SummerLeagueDeskGrade.WARM,
+        )
+
+    # Same competition + baseline for both players — unique conflict.
+    db_session.add(_grade(keep.id, "v1", 80.0))
+    db_session.add(_grade(discard.id, "v1", 40.0))
+    # Discard-only baseline — reassigned.
+    db_session.add(_grade(discard.id, "v2", 55.0))
+    await db_session.flush()
+
+    report = await merge_players(db_session, keep_id=keep.id, discard_id=discard.id)
+
+    assert (
+        await _count(
+            db_session, "summer_league_desk_player_grades", "player_id", discard.id
+        )
+        == 0
+    )
+
+    # Survivor keeps its own v1 grade (pctl 80, not the discard's 40) and gains
+    # the discard's v2 grade.
+    rows = (
+        await db_session.execute(
+            text(
+                "SELECT baseline_version, pctl "
+                "FROM summer_league_desk_player_grades "
+                "WHERE player_id = :pid ORDER BY baseline_version"
+            ),
+            {"pid": keep.id},
+        )
+    ).all()
+    assert [(r[0], r[1]) for r in rows] == [("v1", 80.0), ("v2", 55.0)]
+
+    stats = report.per_table["summer_league_desk_player_grades.player_id"]
+    assert stats["deleted_conflict"] == 1
+    assert stats["reassigned"] == 1
+
+
+@pytest.mark.asyncio
+async def test_preview_merge_reports_summer_league_tables(
+    db_session: AsyncSession,
+) -> None:
+    """preview_merge reports the pending #675 reassignments without writing.
+
+    The admin merge UI shows this dry run before the operator commits; it must
+    surface the Summer League rows a merge would move, and must not move them.
+    """
+    keep = await _make_player(db_session, "Preview", "Keeper")
+    discard = await _make_player(db_session, "Preview", "Discard")
+    assert keep.id is not None and discard.id is not None
+
+    await _seed_summer_league(db_session, player=discard)
+
+    preview = await preview_merge(db_session, keep_id=keep.id, discard_id=discard.id)
+
+    for table, column in _REASSIGNED:
+        key = f"{table}.{column}"
+        assert preview.per_table.get(key, {}).get("reassigned", 0) >= 1, (
+            f"preview_merge must report the pending reassignment for {key}"
+        )
+
+    # Dry run: the discard player and its rows are untouched.
+    assert (
+        await _count(db_session, "players_master", "id", discard.id) == 1
+    ), "preview_merge must not delete the discard player"
+    assert (
+        await _count(
+            db_session, "summer_league_player_game_logs", "player_id", discard.id
+        )
+        == 1
+    ), "preview_merge must not reassign rows"
+
+
+@pytest.mark.asyncio
+async def test_safe_delete_guard_counts_every_summer_league_column(
+    db_session: AsyncSession,
+) -> None:
+    """The batched inbound-reference query must count each registered column correctly.
+
+    ``count_inbound_references`` issues one ``UNION ALL`` statement rather than a query
+    per registered table (#681), so a typo in any single branch is invisible until that
+    branch is the one that matters — a stub counted as reference-free and deleted into a
+    raw ``ForeignKeyViolationError``. This runs the real statement against a player
+    holding exactly one row in each Summer League / backbone column.
+    """
+    player = await _make_player(db_session, "Guarded", "Stub")
+    assert player.id is not None
+
+    await _seed_summer_league(db_session, player=player)
+
+    refs = await count_inbound_references(db_session, player.id)
+
+    for table, column in _REASSIGNED:
+        assert refs.get(f"{table}.{column}") == 1, (
+            f"the safe-delete guard missed {table}.{column}: {refs}"
+        )

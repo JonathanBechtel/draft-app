@@ -4,7 +4,7 @@ Launch-readiness item 10 builds on #546's persistence layer
 (`app.schemas.event_desk_render_snapshot`, `app.services.event_desk.render_snapshots`)
 and #544's request-time state resolution (`_resolve_window_state`/`_effective_now`/
 `_freshness_for`) to close the loop: the hourly tick
-(`scripts/sl_desk_tick.py::run_desk_tick`) materializes the COMPLETE Preview/Live/
+(`app/cli/sl_desk_tick.py::run_desk_tick`) materializes the COMPLETE Preview/Live/
 Recap x Tracker cohort/stat-view variant matrix as its final step
 (`app.services.summer_league.desk_read.build_desk_render_variants`), and the
 homepage reads exactly one matching snapshot at request time
@@ -58,7 +58,7 @@ from app.services.summer_league.desk_read import (
     get_desk_view_from_snapshot,
 )
 from app.services.summer_league.nba_stats_client import NBAStatsClient
-from scripts.sl_desk_tick import run_desk_tick
+from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.perf._capture import count_queries
 
 pytestmark = pytest.mark.asyncio
@@ -504,7 +504,7 @@ async def test_upstream_failure_preserves_prior_render_snapshots(
 
     # Tick #1 succeeds and is committed (the prior good state). `run_desk_tick`
     # never commits itself -- the caller does -- so this test owns the
-    # transaction boundary the way `scripts/sl_desk_tick.py::main` does.
+    # transaction boundary the way `app/cli/sl_desk_tick.py::main` does.
     client1 = NBAStatsClient(session=_FakeSession())
     result1 = await run_desk_tick(
         db_session, now=now1, raw_root=tmp_path, client=client1

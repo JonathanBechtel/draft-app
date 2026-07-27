@@ -517,7 +517,7 @@ async def refresh_competition_date_window(
     ``game_date`` are excluded from the aggregate. This is what unblocks the
     Event Desk's opening-morning bootstrap (#527's
     ``_needs_scoreboard_bootstrap`` / ``_synthetic_calendar_dates`` in
-    ``scripts/sl_desk_tick.py``), which derives its synthetic event window
+    ``app/cli/sl_desk_tick.py``), which derives its synthetic event window
     from these two fields and was previously permanently inert because
     nothing ever populated them.
 

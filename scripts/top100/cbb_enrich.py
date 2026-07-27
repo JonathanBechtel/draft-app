@@ -50,7 +50,7 @@ from scripts.top100.refresh import OUTPUT_DIR, TOP100_ROWS, _prepare_connection 
 
 CBB_BASE_URL = "https://www.sports-reference.com"
 CBB_SOURCE = "sports_reference_cbb"
-CBB_CACHE_DIR = Path("scraper/cache/cbb")
+CBB_CACHE_DIR = Path("data/scraper-cache/cbb")
 CURRENT_SEASON = "2025-26"
 USER_AGENT = "DraftGuru/1.0 (https://draftguru.app; contact@draftguru.app)"
 

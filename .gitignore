@@ -202,22 +202,22 @@ cython_debug/
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
 #  refer to https://docs.cursor.com/context/ignore-files
 
-# Scraper outputs
-scrapers/nba_draft_combine/output
-scraper/output/*
-!scraper/output/top100_source_snapshot_*.csv
-!scraper/output/school_resolution_review_*.csv
-!scraper/output/player_resolution_plan_*.csv
-!scraper/output/top100_refresh_run_note_*.md
-!scraper/output/top100_dev_merge_plan_*.csv
-!scraper/output/top100_dev_merge_dry_run_*.log
-!scraper/output/top100_dev_merge_execute_*.log
-!scraper/output/top100_dev_merge_log_*.md
-!scraper/output/top100_dev_audit_*.csv
-!scraper/output/top100_stats_review_*.csv
-!scraper/output/top100_cbb_enrichment_*.csv
-!scraper/output/image_candidates_*.csv
-scraper/cache/
+# Scraper outputs (run artifacts -- see CLAUDE.md "Executable code lives in two places")
+tests/fixtures/scrapers/nba_draft_combine/output
+data/scraper-output/*
+!data/scraper-output/top100_source_snapshot_*.csv
+!data/scraper-output/school_resolution_review_*.csv
+!data/scraper-output/player_resolution_plan_*.csv
+!data/scraper-output/top100_refresh_run_note_*.md
+!data/scraper-output/top100_dev_merge_plan_*.csv
+!data/scraper-output/top100_dev_merge_dry_run_*.log
+!data/scraper-output/top100_dev_merge_execute_*.log
+!data/scraper-output/top100_dev_merge_log_*.md
+!data/scraper-output/top100_dev_audit_*.csv
+!data/scraper-output/top100_stats_review_*.csv
+!data/scraper-output/top100_cbb_enrichment_*.csv
+!data/scraper-output/image_candidates_*.csv
+data/scraper-cache/
 
 # Local raw API snapshots
 data/raw/

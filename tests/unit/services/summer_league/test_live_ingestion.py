@@ -248,7 +248,7 @@ def test_refresh_selected_games_critical_box_score_failure_increments_required_e
     These three endpoints are (or directly feed) the player line the Desk
     renders; `force=True` leaves the OLD on-disk snapshot in place on a
     fetch failure, so a failure here must count toward `required_errors` so
-    the tick (#530's gate in `scripts/sl_desk_tick.py`) aborts before
+    the tick (#530's gate in `app/cli/sl_desk_tick.py`) aborts before
     stamping fresh state on a stale line.
     """
     client = FakeNBAStatsClient(failures={(endpoint, "live-1")})

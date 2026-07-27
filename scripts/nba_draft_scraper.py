@@ -785,7 +785,7 @@ def main() -> None:
     parser.add_argument(
         "--out-dir",
         type=str,
-        default="scraper/output",
+        default="data/scraper-output",
         help="Directory to write CSV files",
     )
     # Optional local HTML overrides

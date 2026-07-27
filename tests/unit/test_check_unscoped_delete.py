@@ -167,6 +167,187 @@ class TestRecognizesEveryImportSpelling:
         )
         assert found == []
 
+    def test_deep_module_path_is_flagged(self):
+        """`import sqlalchemy` then `sqlalchemy.sql.delete(Model)`.
+
+        The attribute chain is two levels deep; a checker that only resolves
+        `Name.delete` receivers misses it.
+        """
+        found = _violations(
+            """
+            import sqlalchemy
+
+            async def rebuild(db):
+                await db.execute(sqlalchemy.sql.delete(PlayerSeason))
+            """
+        )
+        assert len(found) == 1
+
+    def test_aliased_submodule_import_is_flagged(self):
+        """`import sqlalchemy.sql as sa_sql` then `sa_sql.delete(Model)`."""
+        found = _violations(
+            """
+            import sqlalchemy.sql as sa_sql
+
+            async def rebuild(db):
+                await db.execute(sa_sql.delete(PlayerSeason))
+            """
+        )
+        assert len(found) == 1
+
+    def test_unrelated_deep_attribute_delete_is_not_flagged(self):
+        """`client.admin.delete(url)` is somebody's HTTP verb, not the construct."""
+        found = _violations(
+            """
+            import sqlalchemy
+
+            async def f(client, url):
+                await client.admin.delete(url)
+            """
+        )
+        assert found == []
+
+
+class TestLegacyQueryDelete:
+    """`query(Model).delete()` is the canonical legacy bulk delete — same wipe, no import.
+
+    No live usage in this async codebase, but it is what every old SQLAlchemy tutorial
+    teaches, so it is exactly what a copy-paste would carry in.
+    """
+
+    def test_unfiltered_query_delete_is_flagged(self):
+        """`db.query(Model).delete()` deletes every row."""
+        found = _violations(
+            """
+            def wipe(db):
+                db.query(PlayerSeason).delete()
+            """
+        )
+        assert len(found) == 1
+        assert "has no .filter(...)" in found[0]
+
+    def test_filtered_query_delete_passes(self):
+        """A `.filter(...)` in the chain scopes the delete."""
+        found = _violations(
+            """
+            def trim(db, pid):
+                db.query(PlayerSeason).filter(PlayerSeason.player_id == pid).delete()
+            """
+        )
+        assert found == []
+
+    def test_filter_by_in_the_chain_passes(self):
+        """`.filter_by(...)` scopes it just as well."""
+        found = _violations(
+            """
+            def trim(db, pid):
+                db.query(PlayerSeason).filter_by(player_id=pid).delete()
+            """
+        )
+        assert found == []
+
+    def test_waiver_covers_query_delete(self):
+        """The same escape hatch applies as for `delete(Model)`."""
+        found = _violations(
+            """
+            def reset(db):
+                # discipline: unscoped-delete test fixture, table is scratch
+                db.query(PlayerSeason).delete()
+            """
+        )
+        assert found == []
+
+    def test_plain_method_named_delete_is_not_flagged(self):
+        """`cache.delete()` and friends share the name, not the semantics."""
+        found = _violations(
+            """
+            def evict(cache):
+                cache.delete()
+            """
+        )
+        assert found == []
+
+    def test_stored_builder_is_flagged(self):
+        """`q = db.query(Model)` then `q.delete()` is the same wipe, stored first."""
+        found = _violations(
+            """
+            def wipe(db):
+                q = db.query(PlayerSeason)
+                q.delete()
+            """
+        )
+        assert len(found) == 1
+
+    def test_conditionally_filtered_builder_is_flagged(self):
+        """A rebinding that only narrows on some paths must not launder the wipe.
+
+        Same fail-closed stance as the `delete(Model)` builder form: proving the
+        narrowing unconditional needs control-flow analysis, so the checker doesn't try.
+        """
+        found = _violations(
+            """
+            def wipe(db, scope):
+                q = db.query(PlayerSeason)
+                if scope:
+                    q = q.filter(PlayerSeason.player_id.in_(scope))
+                q.delete()
+            """
+        )
+        assert len(found) == 1
+
+    def test_builder_assigned_from_filtered_chain_passes(self):
+        """A builder born scoped (`db.query(A).filter(...)`) is not the construct."""
+        found = _violations(
+            """
+            def trim(db, pid):
+                q = db.query(PlayerSeason).filter(PlayerSeason.player_id == pid)
+                q.delete()
+            """
+        )
+        assert found == []
+
+    def test_waiver_covers_stored_builder(self):
+        """The escape hatch works at the delete site, where the argument is reviewed."""
+        found = _violations(
+            """
+            def reset(db):
+                q = db.query(PlayerSeason)
+                # discipline: unscoped-delete test fixture, table is scratch
+                q.delete()
+            """
+        )
+        assert found == []
+
+    def test_sibling_function_names_do_not_taint_each_other(self):
+        """An unscoped `q` in one function must not flag a born-scoped `q` elsewhere."""
+        found = _violations(
+            """
+            def build(db):
+                q = db.query(PlayerSeason)
+                return q
+
+            def trim(db, pid):
+                q = db.query(PlayerSeason).filter(PlayerSeason.player_id == pid)
+                q.delete()
+            """
+        )
+        assert found == []
+
+    def test_closure_over_outer_builder_is_still_flagged(self):
+        """A nested function deleting an outer scope's unscoped builder is the same wipe."""
+        found = _violations(
+            """
+            def outer(db):
+                q = db.query(PlayerSeason)
+
+                def wipe():
+                    q.delete()
+
+                return wipe
+            """
+        )
+        assert len(found) == 1
+
 
 class TestAllowsScopedAndWaivedDeletes:
     """Legitimate forms must stay silent, or the rule trains people to bypass it."""

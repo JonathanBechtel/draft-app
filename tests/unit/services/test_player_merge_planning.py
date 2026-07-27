@@ -165,6 +165,62 @@ def test_child_tables_all_have_player_column() -> None:
         assert spec.player_column, f"{spec.table} has empty player_column"
 
 
+def test_desk_player_grades_conflict_columns() -> None:
+    """Grades conflict on (competition_id, baseline_version).
+
+    uq_summer_league_desk_player_grades_player_competition_version includes
+    player_id, so two players graded in the same competition+baseline collide
+    on reassignment; the discard's row must be dropped instead.
+    """
+    spec = next(
+        s for s in _CHILD_TABLES if s.table == "summer_league_desk_player_grades"
+    )
+    assert spec.conflict_columns is not None
+    assert set(spec.conflict_columns) == {"competition_id", "baseline_version"}
+
+
+def test_pbp_person_columns_have_one_spec_each() -> None:
+    """Play-by-play registers person1/2/3_id as three separate specs."""
+    pbp_columns = {
+        s.player_column
+        for s in _CHILD_TABLES
+        if s.table == "summer_league_play_by_play_events"
+    }
+    assert pbp_columns == {"person1_id", "person2_id", "person3_id"}
+
+
+def test_storyline_subject_columns_have_one_spec_each() -> None:
+    """Desk storylines register both subject columns as separate specs."""
+    subject_columns = {
+        s.player_column
+        for s in _CHILD_TABLES
+        if s.table == "summer_league_desk_storylines"
+    }
+    assert subject_columns == {"subject_player_id", "subject_player_id_2"}
+
+
+def test_summer_league_plain_reassign_tables_have_no_conflict_columns() -> None:
+    """Tables whose unique keys exclude the player FK need no conflict columns.
+
+    Participation, game logs, shot events, source players, resolution reviews,
+    draft results and affiliations are all uniquely keyed on game/source/team
+    shaped columns, so reassignment can never violate a unique constraint.
+    """
+    plain = {
+        "draft_results",
+        "player_affiliations",
+        "summer_league_participation",
+        "summer_league_player_game_logs",
+        "summer_league_shot_events",
+        "summer_league_source_players",
+        "summer_league_player_resolution_reviews",
+    }
+    for table in plain:
+        spec = next(s for s in _CHILD_TABLES if s.table == table)
+        assert spec.conflict_columns is None, f"{table} should plain-reassign"
+        assert not spec.singleton_per_player
+
+
 # ---------------------------------------------------------------------------
 # keep_id == discard_id guard (fast path — no DB needed)
 # ---------------------------------------------------------------------------
@@ -217,3 +273,71 @@ def test_child_table_conflict_columns_optional() -> None:
     spec = _ChildTable("foo", "player_id")
     assert spec.conflict_columns is None
     assert not spec.singleton_per_player
+
+
+# ---------------------------------------------------------------------------
+# Batched inbound-reference query (#681)
+# ---------------------------------------------------------------------------
+
+
+def test_inbound_reference_sql_covers_every_registered_spec() -> None:
+    """The batched guard query has one branch per registry entry, labelled to match."""
+    from app.services.player_merge_references import (
+        _INBOUND_REFERENCE_LABELS,
+        _INBOUND_REFERENCE_SPECS,
+        _INBOUND_REFERENCE_SQL,
+    )
+
+    specs = (*_CHILD_TABLES, _SIMILARITY_ANCHOR, _SIMILARITY_COMPARISON)
+    assert len(_INBOUND_REFERENCE_SPECS) == len(specs)
+    # Labels are the guard's public keys — they surface in delete_stub's refusal
+    # message and in the integration assertions.
+    assert len(set(_INBOUND_REFERENCE_LABELS)) == len(specs), "duplicate label"
+    for (table, column), label in zip(
+        _INBOUND_REFERENCE_SPECS, _INBOUND_REFERENCE_LABELS
+    ):
+        assert label == f"{table}.{column}"
+        assert f"FROM {table} WHERE {column} = :player_id" in _INBOUND_REFERENCE_SQL
+    assert _INBOUND_REFERENCE_SQL.count("UNION ALL") == len(specs) - 1
+
+
+def test_inbound_reference_sql_resolves_the_sentinel_table_name() -> None:
+    """The source_analytics sentinel spec must query the real table, not the alias."""
+    from app.services.player_merge_references import (
+        _INBOUND_REFERENCE_LABELS,
+        _INBOUND_REFERENCE_SQL,
+    )
+
+    assert "source_analytics.biggest_outlier_player_id" in _INBOUND_REFERENCE_LABELS
+    assert "source_analytics_outlier" not in _INBOUND_REFERENCE_SQL
+
+
+@pytest.mark.asyncio
+async def test_count_inbound_references_issues_one_round_trip() -> None:
+    """The guard runs a single statement, not one per registered table.
+
+    Bulk stub deletion calls it once per selected player, so a query apiece meant
+    hundreds of sequential round trips (#681).
+    """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from app.services.player_merge_references import count_inbound_references
+
+    result = MagicMock()
+    result.all.return_value = [
+        ("player_aliases.player_id", 2),
+        ("summer_league_play_by_play_events.person2_id", 0),
+        ("summer_league_play_by_play_events.person3_id", 5),
+    ]
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+
+    refs = await count_inbound_references(db, 99)
+
+    assert db.execute.await_count == 1
+    # Zero-count rows are dropped; survivors keep registry order, which is where
+    # play-by-play sits relative to aliases.
+    assert list(refs.items()) == [
+        ("player_aliases.player_id", 2),
+        ("summer_league_play_by_play_events.person3_id", 5),
+    ]

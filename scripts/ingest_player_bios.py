@@ -558,7 +558,7 @@ def main() -> None:
     parser.add_argument(
         "--cache-dir",
         type=str,
-        default="scraper/cache/players",
+        default="data/scraper-cache/players",
         help="Directory containing cached player HTML for snapshots",
     )
     parser.add_argument(

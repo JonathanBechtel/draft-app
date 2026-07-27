@@ -74,6 +74,12 @@ jobs:
       - name: Complexity ratchet
         run: python scripts/check_complexity_ratchet.py
 
+      - name: Runtime entrypoint boundary (app/cli vs scripts)
+        # Fails if a Fly cron entrypoint points at scripts/, or if anything under
+        # app/ grows a new `import scripts.*`. See CLAUDE.md "Executable code
+        # lives in two places".
+        run: python scripts/check_runtime_entrypoints.py
+
       - name: File-size ratchet
         # Enforces against the PR merge base, alongside the diff-cover gate the
         # diff-scoped tooling already lives in. Pre-commit runs the same script in
@@ -199,6 +205,12 @@ jobs:
 
       - name: Complexity ratchet
         run: python scripts/check_complexity_ratchet.py
+
+      - name: Runtime entrypoint boundary (app/cli vs scripts)
+        # Fails if a Fly cron entrypoint points at scripts/, or if anything under
+        # app/ grows a new `import scripts.*`. See CLAUDE.md "Executable code
+        # lives in two places".
+        run: python scripts/check_runtime_entrypoints.py
 
       - name: File-size ratchet
         # Enforces against the PR merge base, alongside the diff-cover gate the

@@ -1304,7 +1304,7 @@ async def test_schedule_pull_in_window_false_no_configured_dates(
 ) -> None:
     """A competition with no starts_on/ends_on yet (cold start) -> off-window.
 
-    Mirrors `scripts/sl_desk_tick.py`'s `_needs_scoreboard_bootstrap` trade-off:
+    Mirrors `app/cli/sl_desk_tick.py`'s `_needs_scoreboard_bootstrap` trade-off:
     with no real games and no configured window, there is no signal to reason
     about, so this stays network-free rather than guessing.
     """

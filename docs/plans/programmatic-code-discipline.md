@@ -69,7 +69,11 @@ only, so `sa_delete(Model)` and `sa.delete(Model)` were invisible — and
 `app/services/admin_player_service.py` already imports `delete as sa_delete` and uses it at
 sixteen sites, making the blind spot the established house style rather than a hypothetical.
 The checker resolves aliases from the file's imports, which is also how it tells
-`sa.delete(Model)` apart from the ORM instance delete `db.delete(obj)`. Raw
+`sa.delete(Model)` apart from the ORM instance delete `db.delete(obj)`. A second audit pass
+found two more spellings the first fix missed, both now covered: the deeper module path
+(`sqlalchemy.sql.delete(Model)` after a plain `import sqlalchemy`) and the legacy ORM bulk
+delete `query(Model).delete()` — no live usage in this async codebase, but the canonical
+spelling in every old SQLAlchemy tutorial, so exactly what a copy-paste would carry in. Raw
 `text("DELETE FROM ...")` stays out of reach — a known gap, covered by Tier 2, not a safe case.
 
 **Allowlist:** test fixtures, explicit `--replace-run` correction paths, seed/demo scripts — each
@@ -152,6 +156,11 @@ naive delta check fails exactly the refactor we want. Design for it:
   file that already existed.
 - Provide an escape hatch (`# discipline: file-size <reason>`) requiring a justification visible
   in review.
+- **Fail closed on git errors when enforcing.** As first shipped, a failed diff (missing base
+  ref, broken fetch) exited 0 with a stderr line — the one gate here that waved the changeset
+  through precisely in the CI runs it exists for. Enforce mode now goes red on a git failure;
+  warn-only mode (pre-commit) stays permissive so a local hiccup cannot block a commit the CI
+  gate will still judge.
 
 Get this wrong and the rule becomes an argument *against* cleaning up god files.
 
@@ -200,6 +209,13 @@ Counts, rather than the inline `# noqa` annotations the review suggested, becaus
 all 265 findings would add a line per offending function across 94 files — many already over
 the file-size threshold, so the annotations would trip §1.4 and need their own waivers. A
 counts file keeps the debt out of the source entirely.
+
+**Stale entries fail (correction, per §3.4b's own rule).** As first shipped, a count that
+dropped below its baseline printed a nudge and passed — leaving the entry as silent headroom
+to regress back up with CI green, and within a day main carried two such entries. The FK and
+import-contract baselines both ship stale-entry tests; this one now does too: an improvement
+must be locked in (`make lint.complexity.update`) in the same change that earned it, enforced
+by the script and by `test_current_tree_matches_baseline_exactly`.
 
 ### 1.7 Migration safety
 
@@ -404,6 +420,14 @@ over: it found the drift, and the constraint analysis it prompted showed the rep
 smaller than feared — only one of the 13 tables has a unique constraint containing the player
 column, so the rest cannot collide on reassignment, and no migration was required.
 
+**The second copy of the list is now derived, not maintained.** `count_inbound_references`
+(the safe-delete guard behind stub deletion) carried its *own* hand-maintained 19-entry copy
+of the child-table list, which #675 fixed on the merge path but not here — a stub holding only
+Summer League rows counted as reference-free and `delete_stub` proceeded into a raw
+`ForeignKeyViolationError` instead of the designed clean refusal. The guard now iterates the
+classified merge specs directly (recovered from the closed duplicate PR #678), so the two
+paths cannot drift apart again — the same fix §3.4b prescribes for every mirrored list.
+
 ### 3.4b Guard the hand-maintained lists the same way
 
 The same drift class applies to import contract 3, whose `forbidden_modules` is enumerated
@@ -413,6 +437,39 @@ omitting `app.schemas.summer_league_metrics`, which holds the very tables a lift
 would reach for. `tests/unit/test_import_contract_coverage.py` derives the universe from the
 filesystem and enforces that the contract covers it. **Any hand-maintained list mirroring a
 structure the code already knows gets a reflective test, or it silently rots.**
+
+### 3.4c Registration implies a scan — so registration must imply an index
+
+**Failure:** deriving the safe-delete guard from the registry (§3.4) made a second cost
+visible. Registering a child table is what makes it *scanned*: the merge path's
+`UPDATE ... WHERE col = :discard_id`, `count_inbound_references`, and Postgres's own RESTRICT
+check on the final `players_master` DELETE all address every registered table by its player
+column. A foreign key does not create an index, so a registration without one turns each of
+those into a Seq Scan of the whole child table. Seven registered columns had no index —
+including all three `summer_league_play_by_play_events.person*_id`, so deleting one stub
+Seq-Scanned the fastest-growing table in the schema three times, multiplied by the selection
+size in bulk delete (#681).
+
+**Mechanism:** `tests/unit/test_player_merge_index_coverage.py` walks the registry against
+SQLModel metadata and asserts some index on each table *leads* with the registered column
+(plain `Index`, `UniqueConstraint`, column-level `index=True`, or the PK). Same shape as
+§3.4: the registry supplies the universe, the schema is the evidence, and a new registration
+that would re-open the hole is a red build rather than a slow production merge.
+
+**Shipped (#681)** together with the seven partial indexes and their migration
+(`3f8c1d47a9b2`), and with the guard's per-spec queries collapsed into one `UNION ALL`
+statement — the registry is 30+ entries and bulk deletion runs the guard once per selected
+player, so the round trips multiplied even once every lookup was indexed. The two fixes are
+independent and both were needed: indexes make each branch an Index Scan, batching makes it
+one round trip.
+
+**§1.4 collected on the same change.** Both files the fix had to touch were already over the
+threshold, so the ratchet refused the growth and got two decompositions instead of a waiver:
+the event-grain tables moved to `app/schemas/summer_league_events.py` (re-exported, so no
+import site changed), and the safe-delete guard to `app/services/player_merge_references.py` —
+a read-only question derived from the registry that never needed the merge machinery. §3.4b's
+coverage test then caught the new schema module missing from import contract 3. Three guards
+composing on one small change is the intended behaviour, not friction.
 
 ### 3.5 Browser-execution smoke — "passes every test, dead in the browser"
 
