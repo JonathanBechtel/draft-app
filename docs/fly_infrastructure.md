@@ -33,6 +33,33 @@ Each app runs two types of machines:
 - Auto-stop enabled (stops when idle, resumes on request)
 - Min machines: 1
 
+#### Health endpoints — liveness vs. readiness
+
+Two endpoints, and pointing the wrong thing at the wrong one makes outages worse:
+
+| Endpoint | Touches DB? | Point this at | Meaning |
+|---|---|---|---|
+| `/health` | **No** | Fly `[[http_service.checks]]`, machine restart policies | The process is up and serving |
+| `/health/db` | Yes (bounded `SELECT 1`) | External uptime monitoring / alerting | This instance can actually get a working database connection |
+
+**Why `/health` must stay database-free.** It is what an orchestrator restarts a machine
+on. If it went red during a database outage, Fly would cycle every web machine — turning
+a database problem into a database problem *plus* no running app.
+
+**Why `/health/db` must not be a Fly health check** for the same reason: a shared-database
+outage marks every machine unhealthy simultaneously, which accomplishes nothing (there is
+no healthy machine to shift traffic to) while risking machine churn. Its job is to tell a
+*human or pager* that reads are failing.
+
+`/health/db` returns 200 with pool gauges, or **503** with an `error` field and those same
+gauges. It is bounded at 5s — deliberately under SQLAlchemy's 30s `pool_timeout` — so a
+saturated pool reports fast rather than hanging the probe.
+
+**Currently nothing polls it.** This is the known gap: incident #669 ran ~96 minutes with
+`/health` green and public routes 500ing, and until an external monitor watches
+`/health/db`, the signal exists but no one is listening. Wiring that monitor is tracked
+with the deploy-freshness work in the Phase 1 roadmap.
+
 ### Cron Machines (news-ingestion-cron)
 
 - **Purpose**: Run scheduled news feed ingestion

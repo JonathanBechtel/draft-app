@@ -243,6 +243,42 @@ builds in dedicated, idempotent migrations (`if_not_exists=True`, as `2c78f64221
 Deploy-time lock contention should degrade the *deploy* — a fast, retryable failure — never
 production reads.
 
+**Shipped (Phase 1):** `scripts/check_migration_safety.py`, diff-scoped against the merge base
+like the file-size ratchet — 36 existing revisions build indexes non-concurrently, have already
+run in production, and never will again, so an absolute rule would be a permanent wall of noise.
+Alongside it: a 10s `lock_timeout` and `transaction_per_migration=True` in `alembic/env.py`, and
+`2c78f642217c` rebuilt as a concurrent build with invalid-index cleanup.
+
+Three corrections came out of building it, each worth keeping:
+
+1. **`lock_timeout` bounds lock *acquisition*, not lock *lifetime*.** It was written here as if
+   it were the whole fix. It is not: `alembic/env.py` ran every pending revision in one
+   transaction, so `ACCESS EXCLUSIVE` taken by an early `ALTER` was held until the *last*
+   revision committed — in #669, across the full 55 minutes the fifth revision spent blocked, on
+   a table public routes read. `transaction_per_migration=True` is the setting that bounds
+   lifetime, and the rule needs both.
+2. **Raw SQL is a live bypass, not a hypothetical one.** Five existing revisions build indexes
+   via `op.execute("CREATE INDEX ...")` rather than `op.create_index` (`bb20c6f83560`,
+   `w2x3y4z5a6b7`). A checker matching only the Alembic operation would have left the
+   established house pattern as the way around the guard. The rule reads SQL strings passed to
+   executing calls — scoped to those sinks rather than to every literal, so migration docstrings
+   that *discuss* `CREATE INDEX` (several do, because of this rule) are not flagged as
+   committing it.
+3. **"The setting is mentioned" is not "the setting is applied."** The first version checked for
+   the substring `lock_timeout` anywhere in `alembic/env.py` — satisfied by a comment or an
+   unused constant, so deleting the `execute(set_config(...))` call would have passed both the
+   checker and its own regression test. It now requires an *executed* statement.
+
+Corrections 2 and 3 came from review, not from writing the rule. Both are the same failure
+shape the rest of this document is about: a guard that looks correct, passes its tests, and does
+not cover the path the code actually takes.
+
+**Known gap: the ratchet is diff-scoped, so it protects future revisions only.** A
+non-concurrent index migration already merged to `main` is invisible to it, and one is pending
+prod deploy today (`3f8c1d47a9b2`, seven non-concurrent indexes, three of them on
+`summer_league_play_by_play_events` — the same table as #669). Diff-scoping is still right; the
+lesson is that the checker is not a substitute for looking at what is queued for the next deploy.
+
 ---
 
 ## Tier 2 — Runtime guards (the ones that catch the real bugs)
@@ -310,12 +346,25 @@ independence.
 | 1 | `app.routes` → `app.services` → `app.schemas` → `app.domain` | layers | **needs measuring** — likely near-passing; run before enabling |
 | 2 | `app.domain` ↛ `app.schemas`, `app.services`, `app.routes` | forbidden | **green** (package not yet created) — keeps the vocabulary ORM-free, doc #4 §5b rule 3 |
 | 3 | `app.services.stats` ↛ `app.services.summer_league*`, `app.schemas.summer_league*` | forbidden | **green** (package not yet created) — the engine stays source-agnostic |
-| 4 | `app.services.event_desk` ↛ `app.schemas.summer_league*`, `app.services.summer_league*` | forbidden | **fails broadly** — adopt with `ignore_imports` baseline; shrink as doc #3 decouples |
+| 4 | `app.services.event_desk` ↛ `app.schemas.summer_league*`, `app.services.summer_league*` | forbidden | **shipped (Phase 1)** — 4 `ignore_imports` entries, not the predicted wall; shrink as doc #3 decouples |
 | 5 | `app.services.sources.*` mutually independent | independence | **vacuous at one spoke** — pre-install so spoke #2 inherits it |
 
 Contract 4 is the one that matters most: it converts *"this framework is secretly coupled to one
 spoke"* from an archaeological discovery into a failing build. Contract 5 is vacuous today and
 that is precisely why to add it now — spoke #2 inherits the constraint instead of discovering it.
+
+**Shipped (Phase 1), and the debt was smaller than this document claimed.** The prediction above
+was that contract 4 "fails broadly", with every module in `app/services/event_desk/` importing
+Summer League. Measured: **3 of 9 modules, 4 imports** — `registry` (schemas + `scoreboard_ingest`),
+`render_snapshots` and `snapshot_materialization` (both `desk_read`). The rest name Summer League
+in strings and docstrings, which is not coupling. The retrospective read prose as dependency and
+over-estimated the decoupling work; Phase 5 starts from four entries, not dozens.
+
+Two details worth keeping. `unmatched_ignore_imports_alerting = "error"` makes a stale baseline
+entry a failure rather than a shrug — without it the list could quietly claim more debt than
+exists, which is the same rot the §3.4b reflective tests exist to prevent, just in the opposite
+direction. And the ratchet was verified by introducing a deliberate violation: the contract breaks
+and returns to KEPT when reverted. A guardrail nobody has watched fail is an assumption.
 
 ### Honest scope — what import contracts do and don't prevent
 
@@ -480,8 +529,9 @@ Sequenced by value-per-effort, and so nothing lands as a wall of violations.
 7. **1.6 Ruff complexity rules** — baseline via `per-file-ignores`, enforce on new code.
 8. **1.2 transaction body weight**, **2.3 duration budgets**, **3.2 parity tests** — as the
    corresponding refactors land.
-9. **3.4 merge coverage** — free; do it with Phase 0. **1.7 migration safety** — with the next
-   migration-bearing change. **3.5 browser smoke** — with the next UI-bearing change.
+9. **3.4 merge coverage** — free; do it with Phase 0 (**shipped**). **1.7 migration safety** —
+   **shipped with Phase 1's first change**. **3.5 browser smoke** — with the next UI-bearing
+   change.
 
 **Stop after 4 if bandwidth is short.** Those four cover most of the drift, and two rules that are
 respected beat eight that get `# noqa`'d.

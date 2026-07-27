@@ -257,6 +257,56 @@ forbidden_modules = [
 # whole dotted segments: `app.services.summer_league*` is not expressible. A hand-list
 # drifts, so tests/unit/test_import_contract_coverage.py asserts it stays complete.
 
+# Contract 4 — the Event Desk presents itself as a generic, multi-event framework while every
+# concrete dependency it has is Summer League. Nothing made that contradiction visible, which
+# is how "a generic framework that isn't" survived review. This contract converts it from an
+# archaeological discovery into a failing build.
+#
+# Unlike contracts 2, 3 and 5 this one does NOT start green, so it ships with an
+# `ignore_imports` baseline naming every violation that exists today. New coupling fails;
+# listed coupling is documented debt. The list may only shrink — Phase 5's decomposition
+# removes entries as it decouples, which makes it the progress meter for that work.
+#
+# It is far shorter than the spec predicted. `programmatic-code-discipline.md` §3.1 describes
+# this contract as failing "broadly", with "every module in app/services/event_desk/"
+# importing Summer League. Measured, only 3 of 9 modules do; the rest name Summer League in
+# strings and docstrings, which is not coupling. The decoupling is closer to done than the
+# retrospective assumed.
+[[tool.importlinter.contracts]]
+name = "app.services.event_desk must not import Summer League"
+type = "forbidden"
+source_modules = ["app.services.event_desk"]
+forbidden_modules = [
+    "app.services.summer_league",
+    "app.services.summer_league_environment_registry",
+    "app.services.summer_league_environment_service",
+    "app.services.summer_league_explorer_service",
+    "app.services.summer_league_franchise_service",
+    "app.services.summer_league_games_service",
+    "app.services.summer_league_leaders_service",
+    "app.services.summer_league_metrics_service",
+    "app.services.summer_league_season_service",
+    "app.services.summer_league_shotchart_service",
+    "app.services.summer_league_stats_service",
+    "app.services.summer_league_team_service",
+    "app.schemas.summer_league",
+    "app.schemas.summer_league_desk",
+    "app.schemas.summer_league_events",
+    "app.schemas.summer_league_environment",
+    "app.schemas.summer_league_metrics",
+    "app.schemas.summer_league_pipeline",
+]
+# Same enumeration rationale as contract 3, and the same reflective guard covers both lists.
+ignore_imports = [
+    "app.services.event_desk.registry -> app.schemas.summer_league",
+    "app.services.event_desk.registry -> app.services.summer_league.scoreboard_ingest",
+    "app.services.event_desk.render_snapshots -> app.services.summer_league.desk_read",
+    "app.services.event_desk.snapshot_materialization -> app.services.summer_league.desk_read",
+]
+# An entry that no longer matches a real import is an error, not a shrug: it would mean the
+# baseline is stale and quietly larger than the debt it claims to describe.
+unmatched_ignore_imports_alerting = "error"
+
 # Contract 5 — sibling spokes may not import one another. Two spokes needing the same thing
 # must get it from the hub. Vacuous at one spoke, which is precisely why it is installed now:
 # spoke #2 inherits the constraint instead of discovering it.

@@ -135,7 +135,7 @@ bio.ingest:
 	$(PYTHON) scripts/ingest_player_bios.py --file $(BBIO) --cache-dir $(CACHE) $(if $(DRY),--dry-run,) $(if $(VERBOSE),--verbose,) $(if $(OVERWRITE_MASTER),--overwrite-master,) $(if $(CREATE_MISSING),--create-missing,) $(if $(FIX),--fix-ambiguities $(FIX),)
 
 # Lint & format
-.PHONY: fmt lint lint.imports lint.filesize lint.complexity lint.complexity.update fix precommit test coverage coverage.diff visual visual.headed
+.PHONY: fmt lint lint.imports lint.filesize lint.complexity lint.complexity.update lint.migrations deploy.freshness fix precommit test coverage coverage.diff visual visual.headed
 fmt:
 	ruff format .
 
@@ -168,6 +168,22 @@ lint.complexity.update:
 # import. See CLAUDE.md "Executable code lives in two places".
 lint.entrypoints:
 	python scripts/check_runtime_entrypoints.py
+
+# Index-build safety in new Alembic revisions (docs/plans/programmatic-code-discipline.md §1.7).
+# Diff-scoped against main the way CI is: existing revisions have already run in
+# production. Requires CONCURRENTLY *and* an autocommit block, for both op.create_index
+# and raw `op.execute("CREATE INDEX ...")`. See incident #669.
+lint.migrations:
+	python scripts/check_migration_safety.py --against origin/main
+
+# How far behind main is a deployed app? Incident #669 ran 3.5 days behind through the
+# entire Summer League window with nothing reporting it. Read-only.
+# Usage:
+#   make deploy.freshness                       # prod vs origin/main
+#   make deploy.freshness FLY_APP=draft-app     # staging
+FLY_APP ?= draft-app-prod
+deploy.freshness:
+	python scripts/check_deploy_freshness.py --app $(FLY_APP) --report-only
 
 fix:
 	ruff check --fix .

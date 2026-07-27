@@ -516,9 +516,9 @@ async def test_unscoped_rebuild_still_does_a_full_wipe_and_rebuild(
     await db_session.commit()
 
     async with db_session.begin():
-        first = await rebuild(db_session)
+        first = await rebuild(db_session, model_version="fit-1")
     async with db_session.begin():
-        second = await rebuild(db_session)
+        second = await rebuild(db_session, model_version="fit-2")
 
     assert first["seasons"] == second["seasons"] == 24
     assert first["contexts"] == second["contexts"] == 2
@@ -528,8 +528,11 @@ async def test_unscoped_rebuild_still_does_a_full_wipe_and_rebuild(
     )
     assert len(seasons) == 24  # not duplicated across the two full rebuilds
 
+    # Projections are replaced; fits accumulate. Each unscoped rebuild retains the
+    # prior model row and deactivates it rather than deleting it (P2).
     models = (await db_session.execute(select(SummerLeagueMetricModel))).scalars().all()
-    assert len(models) == 1  # each unscoped rebuild wipes the prior model row
+    assert {m.model_version for m in models} == {"fit-1", "fit-2"}
+    assert [m.model_version for m in models if m.is_active] == ["fit-2"]
 
 
 # --------------------------------------------------------------------------- #
@@ -1082,3 +1085,102 @@ async def test_desk_tick_off_window_never_touches_player_seasons(
     assert unchanged.gp == 3
     assert unchanged.minutes == pytest.approx(42.0)
     assert unchanged.gmsc == pytest.approx(12.3)
+
+
+# --------------------------------------------------------------------------- #
+# Group C -- fit history retention (P2). The model table records *how* the
+# numbers were derived; wiping it made each hour's fit unreproducible the
+# moment the next hour ran.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_repeated_rebuilds_retain_every_fit_with_one_active(db_session):
+    """Each unscoped rebuild adds a fit and deactivates the previous one.
+
+    The read path selects ``WHERE is_active IS TRUE ORDER BY id DESC``, so "exactly one
+    active" is the invariant that keeps it unambiguous once rows accumulate.
+    """
+    await _seed_pool(
+        db_session,
+        year=2025,
+        venue="las_vegas",
+        league_id="15",
+        players_per_team=6,
+        n_games=4,
+    )
+    await db_session.commit()
+
+    for version in ("v1", "v2", "v3"):
+        async with db_session.begin():
+            await rebuild(db_session, model_version=version)
+
+    models = (await db_session.execute(select(SummerLeagueMetricModel))).scalars().all()
+    assert {m.model_version for m in models} == {"v1", "v2", "v3"}
+    assert [m.model_version for m in models if m.is_active] == ["v3"]
+
+
+@pytest.mark.asyncio
+async def test_rerunning_the_same_version_refits_in_place(db_session):
+    """A rebuild is safely re-runnable — a Phase 1 exit criterion.
+
+    ``model_version`` is UNIQUE, so re-publishing an existing version has to refit that
+    row rather than raise. This also covers the real collision case: the auto-minted
+    version is second-granularity, so two rebuilds inside one second *are* the same
+    version and must collapse rather than crash the tick.
+    """
+    await _seed_pool(
+        db_session,
+        year=2025,
+        venue="las_vegas",
+        league_id="15",
+        players_per_team=6,
+        n_games=4,
+    )
+    await db_session.commit()
+
+    async with db_session.begin():
+        await rebuild(db_session, model_version="same")
+    async with db_session.begin():
+        await rebuild(db_session, model_version="same")
+
+    models = (await db_session.execute(select(SummerLeagueMetricModel))).scalars().all()
+    assert len(models) == 1
+    assert models[0].model_version == "same"
+    assert models[0].is_active is True
+
+
+@pytest.mark.asyncio
+async def test_database_rejects_a_second_active_fit(db_session):
+    """The single-active invariant is enforced by the database, not by callers.
+
+    Publication deactivates prior fits and then writes the new one, which is sound
+    inside one transaction -- but the hourly ingestion holds the Summer League writer
+    lock while ``scripts/rebuild_sl_metrics.py`` takes no lock at all, so two overlapping
+    unscoped rebuilds are not serialized against each other. Without the partial unique
+    index, that race leaves two active rows and ``_active_or_fresh_model_version()``
+    picks one arbitrarily by id.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    def _fit(version: str) -> SummerLeagueMetricModel:
+        return SummerLeagueMetricModel(
+            model_version=version,
+            pyth_exponent=10.0,
+            ws_ppw_coeff=0.4,
+            pyth_n_teams=1,
+            bpm_intercept=0.0,
+            bpm_r2=0.5,
+            bpm_n_fit=10,
+            bpm_replacement=-2.0,
+            bpm_coefficients={},
+            is_active=True,
+        )
+
+    db_session.add(_fit("race-a"))
+    await db_session.commit()
+
+    db_session.add(_fit("race-b"))
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
