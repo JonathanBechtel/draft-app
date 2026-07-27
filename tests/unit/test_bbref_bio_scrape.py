@@ -3,8 +3,17 @@
 This is the fetch/cache/assemble half of the scraper — the half the Summer
 League roster cron runs every hour during an event. Every test drives it
 entirely from local HTML (``from_index_dir`` / ``from_player_dir`` /
-``from_player_file``) or from a fake ``httpx`` client, so nothing here touches
-the network or the shared ``data/scraper-cache`` tree.
+``from_player_file``) or from a fake ``httpx`` client.
+
+Both halves of that isolation are enforced by the autouse ``offline`` fixture
+below rather than left to each test's arguments, because leaving it implicit
+did not hold: an earlier version of this file reached basketball-reference.com
+for real and wrote 30 live pages into the repo's ``data/scraper-cache``. It
+passed locally and failed in CI, where the fetch succeeded and returned a real
+player's height instead of the fixture's. ``scrape_letters`` falls back to a
+live client for any slug the local directories do not cover, which is easy to
+trigger by accident — so the default here is a client that refuses to fetch and
+a cache rooted in ``tmp_path``.
 
 The HTML is synthetic and small on purpose: these tests are about the *loop*
 (which pages get read, which slugs get emitted, what the cache does), and the
@@ -20,6 +29,30 @@ import pytest
 
 from app.services.player_bio import bbref_scrape
 from app.services.player_bio.bbref_scrape import _fetch_player_html, scrape_letters
+
+
+class _OfflineClient:
+    """An httpx.Client stand-in that refuses every request.
+
+    Refusing rather than returning empty makes an unintended fetch loud in the
+    behaviour under test: `_fetch_player_html` catches the error and falls back
+    to the cache (or to ""), which is the branch these tests want to exercise.
+    """
+
+    def get(self, url: str) -> object:
+        raise RuntimeError(f"offline test attempted a live fetch: {url}")
+
+
+@pytest.fixture(autouse=True)
+def offline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Root the page cache in ``tmp_path`` and block all outbound HTTP.
+
+    ``scrape_letters`` hard-codes a relative ``data/scraper-cache`` path, so the
+    chdir is what keeps a test run from reading or writing the developer's real
+    cache. A test that wants a working fake client overrides ``_client`` itself.
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(bbref_scrape, "_client", lambda timeout=30.0: _OfflineClient())
 
 
 def _index_html(*slugs: str) -> str:
@@ -251,7 +284,6 @@ def test_scrape_letters_fetches_and_caches_pages_when_nothing_is_local(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """With no local pages the loop fetches over HTTP and writes the cache."""
-    monkeypatch.chdir(tmp_path)
     requested: list[str] = []
 
     class _FakeResponse:
@@ -286,7 +318,6 @@ def test_scrape_letters_reuses_the_cached_index_page(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A cached index page is read from disk instead of re-fetched."""
-    monkeypatch.chdir(tmp_path)
     cache = tmp_path / "data" / "scraper-cache"
     (cache / "players").mkdir(parents=True)
     (cache / "players_b.html").write_text(_index_html("balllo01"), encoding="utf-8")
