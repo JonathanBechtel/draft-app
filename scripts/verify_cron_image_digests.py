@@ -73,14 +73,31 @@ class MachineImageStatus:
     current_image: Optional[str]
     expected_image: Optional[str]
 
+    current_digest: Optional[str] = None
+    expected_digest: Optional[str] = None
+
     @property
     def matches(self) -> bool:
-        """Whether the machine exists and its image matches the deployed app image."""
-        return (
-            self.found
-            and self.current_image is not None
-            and self.expected_image is not None
-            and self.current_image == self.expected_image
+        """Whether the machine exists and its image matches the deployed app image.
+
+        Compares content digests when both sides report one -- the strictest and
+        most literal reading of "same image", and what this script is named for.
+
+        Falls back to comparing *normalized* references only when a digest is
+        missing on either side. Raw string equality is wrong here: Fly reports an
+        app machine's ``config.image`` as ``repo:tag`` but pins cron machines to
+        ``repo:tag@sha256:...`` once updated, so identical images compared as
+        strings never match. That false positive failed every prod deploy at the
+        post-deploy gate from 2026-07-23 onward.
+        """
+        if not self.found:
+            return False
+        if self.current_digest and self.expected_digest:
+            return self.current_digest == self.expected_digest
+        if self.current_image is None or self.expected_image is None:
+            return False
+        return _normalize_image_ref(self.current_image) == _normalize_image_ref(
+            self.expected_image
         )
 
 
@@ -125,6 +142,28 @@ def _run_flyctl_machine_list(app: str) -> list[dict[str, Any]]:
     return machines
 
 
+def _normalize_image_ref(image: str) -> str:
+    """Strip a ``@sha256:...`` suffix so ``repo:tag`` references compare equal.
+
+    Only used when a content digest is unavailable on one side of a comparison.
+    Fly deployment tags (``deployment-01KY...``) are unique per deploy, so the
+    tag alone is still a sound identity check -- just a weaker one than a digest.
+    """
+    return image.split("@", 1)[0]
+
+
+def _machine_digest(machine: dict[str, Any]) -> Optional[str]:
+    """Return a machine's image content digest from ``image_ref``, if reported.
+
+    Fly exposes the resolved digest on every machine as ``image_ref.digest``,
+    including app machines whose ``config.image`` carries only a tag. Preferring
+    it is what makes this a digest check rather than a string check.
+    """
+    image_ref = machine.get("image_ref") or {}
+    digest = image_ref.get("digest")
+    return digest if isinstance(digest, str) and digest else None
+
+
 def _resolve_app_image(machines: list[dict[str, Any]]) -> Optional[str]:
     """Find the just-deployed app image from the ``app`` process-group machine.
 
@@ -141,6 +180,16 @@ def _resolve_app_image(machines: list[dict[str, Any]]) -> Optional[str]:
     return None
 
 
+def _resolve_app_digest(machines: list[dict[str, Any]]) -> Optional[str]:
+    """Return the deployed app machine's image digest, if Fly reports one."""
+    for machine in machines:
+        config = machine.get("config") or {}
+        metadata = config.get("metadata") or {}
+        if metadata.get("fly_process_group") == "app":
+            return _machine_digest(machine)
+    return None
+
+
 def build_machine_statuses(
     machines: list[dict[str, Any]], expected_machine_names: Sequence[str]
 ) -> list[MachineImageStatus]:
@@ -154,6 +203,7 @@ def build_machine_statuses(
         One :class:`MachineImageStatus` per name in ``expected_machine_names``.
     """
     expected_image = _resolve_app_image(machines)
+    expected_digest = _resolve_app_digest(machines)
     by_name: dict[str, dict[str, Any]] = {}
     for machine in machines:
         name = machine.get("name")
@@ -170,6 +220,7 @@ def build_machine_statuses(
                     found=False,
                     current_image=None,
                     expected_image=expected_image,
+                    expected_digest=expected_digest,
                 )
             )
             continue
@@ -181,6 +232,8 @@ def build_machine_statuses(
                 found=True,
                 current_image=current_image if isinstance(current_image, str) else None,
                 expected_image=expected_image,
+                current_digest=_machine_digest(resolved),
+                expected_digest=expected_digest,
             )
         )
     return statuses
