@@ -1,12 +1,16 @@
-"""Guard that import contract 3's hand-maintained module list stays complete.
+"""Guard that the hand-maintained Summer League module lists stay complete.
 
 Failure this descends from
 --------------------------
-Contract 3 keeps the shared stat engine (``app/services/stats/``) source-agnostic by
-forbidding it from importing Summer League. It names the forbidden modules one by one,
-because import-linter module expressions match whole dotted segments — ``*`` stands for an
-entire segment, so ``app.services.summer_league*`` is not expressible and a real list is the
-only option.
+Two contracts forbid a package from importing Summer League: contract 3 keeps the shared
+stat engine (``app/services/stats/``) source-agnostic, and contract 4 does the same for the
+Event Desk. Both name the forbidden modules one by one, because import-linter module
+expressions match whole dotted segments — ``*`` stands for an entire segment, so
+``app.services.summer_league*`` is not expressible and a real list is the only option.
+
+**Both lists get this guard, not just the first one.** A second copy of a hand-maintained
+list is the drift risk doubled, and a contract whose list has rotted reports KEPT while the
+coupling it exists to prevent walks straight through.
 
 As shipped, the list named 11 of 11 service modules but only 2 of 5 schema modules. The
 omissions included ``app.schemas.summer_league_metrics``, which holds
@@ -25,9 +29,17 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-CONTRACT_NAME = "app.services.stats must not import Summer League"
+
+# Every contract that enumerates Summer League modules by hand. Adding a third such contract
+# without adding it here would leave it unguarded, so the list is asserted complete below.
+ENUMERATED_CONTRACTS = (
+    "app.services.stats must not import Summer League",
+    "app.services.event_desk must not import Summer League",
+)
 
 # Directories whose ``summer_league*`` modules the engine must not import, and the dotted
 # prefix each maps to.
@@ -56,35 +68,64 @@ def _summer_league_modules() -> set[str]:
     return modules
 
 
-def _forbidden_modules() -> set[str]:
-    """Return contract 3's ``forbidden_modules`` as configured in pyproject.toml."""
+def _contracts() -> list[dict]:
+    """Return every configured import-linter contract from pyproject.toml."""
     config = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    contracts = config["tool"]["importlinter"]["contracts"]
-    for contract in contracts:
-        if contract["name"] == CONTRACT_NAME:
+    return list(config["tool"]["importlinter"]["contracts"])
+
+
+def _forbidden_modules(contract_name: str) -> set[str]:
+    """Return one contract's ``forbidden_modules`` as configured in pyproject.toml."""
+    for contract in _contracts():
+        if contract["name"] == contract_name:
             return set(contract["forbidden_modules"])
-    raise AssertionError(f"Contract {CONTRACT_NAME!r} is missing from pyproject.toml")
+    raise AssertionError(f"Contract {contract_name!r} is missing from pyproject.toml")
 
 
-def test_contract_names_every_summer_league_module() -> None:
-    """Adding a Summer League module must not silently escape the stat-engine contract."""
-    missing = sorted(_summer_league_modules() - _forbidden_modules())
+@pytest.mark.parametrize("contract_name", ENUMERATED_CONTRACTS)
+def test_contract_names_every_summer_league_module(contract_name: str) -> None:
+    """Adding a Summer League module must not silently escape a forbidding contract."""
+    missing = sorted(_summer_league_modules() - _forbidden_modules(contract_name))
 
     assert not missing, (
-        "Summer League module(s) absent from import contract 3:\n"
+        f"Summer League module(s) absent from {contract_name!r}:\n"
         + "\n".join(f"  {module}" for module in missing)
         + "\n\nAdd them to [tool.importlinter] forbidden_modules in pyproject.toml, or the\n"
-        "stat engine may import them and `lint-imports` will still pass.\n"
+        "guarded package may import them and `lint-imports` will still pass.\n"
         "Wildcards cannot express this — import-linter matches whole dotted segments."
     )
 
 
-def test_contract_does_not_name_modules_that_no_longer_exist() -> None:
+@pytest.mark.parametrize("contract_name", ENUMERATED_CONTRACTS)
+def test_contract_does_not_name_modules_that_no_longer_exist(contract_name: str) -> None:
     """A stale entry is dead weight that makes the list look more complete than it is."""
-    stale = sorted(_forbidden_modules() - _summer_league_modules())
+    stale = sorted(_forbidden_modules(contract_name) - _summer_league_modules())
 
     assert not stale, (
-        "Import contract 3 names module(s) that no longer exist:\n"
+        f"{contract_name!r} names module(s) that no longer exist:\n"
         + "\n".join(f"  {module}" for module in stale)
         + "\n\nRemove them from pyproject.toml."
+    )
+
+
+def test_every_summer_league_enumerating_contract_is_guarded() -> None:
+    """A new hand-enumerated contract must be added to ``ENUMERATED_CONTRACTS``.
+
+    Without this, contract 5 or 6 could copy the same list and inherit none of the drift
+    protection — the exact way the guard itself goes stale.
+    """
+    enumerating = {
+        contract["name"]
+        for contract in _contracts()
+        if any(
+            module.startswith(("app.services.summer_league", "app.schemas.summer_league"))
+            for module in contract.get("forbidden_modules", [])
+        )
+    }
+    unguarded = sorted(enumerating - set(ENUMERATED_CONTRACTS))
+
+    assert not unguarded, (
+        "Contract(s) enumerate Summer League modules but are not covered by this test:\n"
+        + "\n".join(f"  {name}" for name in unguarded)
+        + "\n\nAdd them to ENUMERATED_CONTRACTS."
     )

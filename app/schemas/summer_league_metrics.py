@@ -29,6 +29,7 @@ from sqlalchemy import (
     Index,
     Integer,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -41,6 +42,26 @@ class SummerLeagueMetricModel(SQLModel, table=True):  # type: ignore[call-arg]
     __table_args__ = (
         UniqueConstraint(
             "model_version", name="uq_summer_league_metric_models_version"
+        ),
+        # Exactly one active fit, enforced by the database rather than by callers.
+        #
+        # Publication deactivates prior fits and then writes the new one. Within one
+        # transaction that is sound, but two overlapping unscoped rebuilds are not
+        # serialized against each other: the hourly ingestion holds the Summer League
+        # writer lock while `scripts/rebuild_sl_metrics.py` takes no lock at all, so a
+        # manual rebuild running alongside the cron could leave two rows active and make
+        # `_active_or_fresh_model_version()` pick one arbitrarily by id.
+        #
+        # There is no scope column here -- the fit is league-wide -- so the index is on a
+        # constant expression, which is the standard way to spell "at most one row
+        # matching this predicate" in PostgreSQL. This is the same guarantee
+        # `summer_league_environment_profiles` gets per scope_key, and the one
+        # `DatedVersionMixin`'s docstring tells adopters they still owe.
+        Index(
+            "uq_summer_league_metric_models_active",
+            text("(true)"),
+            unique=True,
+            postgresql_where=text("is_active"),
         ),
     )
 

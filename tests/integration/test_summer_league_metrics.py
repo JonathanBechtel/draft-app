@@ -262,14 +262,19 @@ async def test_rebuild_is_idempotent(db_session: AsyncSession) -> None:
     await db_session.commit()
 
     async with db_session.begin():
-        await rebuild(db_session)
+        await rebuild(db_session, model_version="fit-1")
     async with db_session.begin():
-        summary = await rebuild(db_session)
+        summary = await rebuild(db_session, model_version="fit-2")
 
     total = (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
     assert len(total) == summary["seasons"] == 12
+
+    # Season rows are replaced, but each fit is retained: the model table is the
+    # auditable record of how the numbers were derived (P2). Exactly one is active.
     models = (await db_session.execute(select(SummerLeagueMetricModel))).scalars().all()
-    assert len(models) == 1  # not duplicated
+    assert {m.model_version for m in models} == {"fit-1", "fit-2"}
+    active = [m for m in models if m.is_active]
+    assert [m.model_version for m in active] == ["fit-2"]
 
 
 @pytest.mark.asyncio
