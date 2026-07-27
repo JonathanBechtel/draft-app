@@ -62,7 +62,7 @@ dated snapshot instead of editing an old one.
 
 ## Affiliation Resolution
 
-Use `scripts/data/school_mapping.json` and `scripts/data/college_schools.json`
+Use `app/data/school_mapping.json` and `app/data/college_schools.json`
 before any player creation or update.
 
 Rules:

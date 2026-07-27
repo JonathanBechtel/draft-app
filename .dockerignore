@@ -1,5 +1,41 @@
+# What the deployed image needs is narrow: the `app` package (web app + the
+# `app/cli` cron entrypoints), `alembic/` + `alembic.ini` for the release
+# command, and the packaging metadata. Everything below is developer- or
+# CI-facing and was shipping to production only because the Dockerfile does
+# `COPY . .` against a five-line ignore file.
+#
+# Excluding a directory here makes it *absent at runtime*. A module under
+# `app/` that reads from one of these paths therefore breaks the deployed
+# container while CI, the deploy, and the digest verifier all stay green --
+# the failure mode #688 was filed about. `scripts/check_runtime_entrypoints.py`
+# reads this file and fails (E3) if anything under `app/` references an
+# excluded path, so the two cannot drift apart. Add a directory here only
+# after checking that guard passes.
+
 fly.toml
 .git/
+.github/
+.claude/
+.codex/
 __pycache__/
 .envrc
 .venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Local tool output — present only on a developer machine, never needed at runtime.
+.coverage
+coverage.xml
+.import_linter_cache
+
+# Developer and CI trees — never executed inside the container.
+scripts/
+tests/
+docs/
+mockups/
+deploy/
+data/
+node_modules/

@@ -1,6 +1,6 @@
 import pathlib
 
-from scripts.bbref_bio_scraper import parse_index_html, parse_player_html
+from app.services.player_bio.bbref_parse import parse_index_html, parse_player_html
 
 
 def read_sample(path: str) -> str:

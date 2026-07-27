@@ -19,6 +19,11 @@
       "C901": 1,
       "PLR0915": 1
     },
+    "app/cli/sl_desk_tick.py": {
+      "C901": 2,
+      "PLR0913": 2,
+      "PLR0915": 2
+    },
     "app/cli/summer_league_ingest_runner.py": {
       "C901": 1,
       "PLR0913": 4,
@@ -142,6 +147,23 @@
       "C901": 1,
       "PLR0913": 1
     },
+    "app/services/player_bio/bbref_parse.py": {
+      "C901": 2,
+      "PLR0915": 1
+    },
+    "app/services/player_bio/bbref_scrape.py": {
+      "C901": 1,
+      "PLR0913": 2,
+      "PLR0915": 1
+    },
+    "app/services/player_bio/ingest.py": {
+      "C901": 1,
+      "PLR0913": 1,
+      "PLR0915": 1
+    },
+    "app/services/player_bio/persistence.py": {
+      "C901": 1
+    },
     "app/services/player_merge_service.py": {
       "C901": 2
     },
@@ -203,6 +225,10 @@
     "app/services/summer_league/player_resolution.py": {
       "PLR0913": 3
     },
+    "app/services/summer_league/roster_fetch.py": {
+      "C901": 1,
+      "PLR0913": 1
+    },
     "app/services/summer_league/roster_ingest.py": {
       "C901": 1,
       "PLR0913": 1,
@@ -241,9 +267,8 @@
       "PLR0915": 1
     },
     "scripts/bbref_bio_scraper.py": {
-      "C901": 4,
-      "PLR0913": 2,
-      "PLR0915": 3
+      "C901": 1,
+      "PLR0915": 1
     },
     "scripts/big_boards/sync_from_prod.py": {
       "PLR0913": 1
@@ -270,10 +295,6 @@
       "C901": 1,
       "PLR0913": 3,
       "PLR0915": 1
-    },
-    "scripts/fetch_summer_league_rosters.py": {
-      "C901": 1,
-      "PLR0913": 1
     },
     "scripts/fix_495_top_pick_dup_resolution.py": {
       "C901": 1,
@@ -314,11 +335,6 @@
       "PLR0913": 1,
       "PLR0915": 1
     },
-    "scripts/ingest_player_bios.py": {
-      "C901": 2,
-      "PLR0913": 1,
-      "PLR0915": 1
-    },
     "scripts/merge_2025_draft_dup_players.py": {
       "C901": 1
     },
@@ -334,11 +350,6 @@
     "scripts/seed_film_room.py": {
       "C901": 1,
       "PLR0915": 1
-    },
-    "app/cli/sl_desk_tick.py": {
-      "C901": 2,
-      "PLR0913": 2,
-      "PLR0915": 2
     },
     "scripts/top100/cbb_enrich.py": {
       "PLR0913": 2

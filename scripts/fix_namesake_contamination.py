@@ -58,8 +58,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.bbref_bio_scraper import PlayerBio, parse_player_html  # noqa: E402
-from scripts.ingest_player_bios import _norm, _update_master  # noqa: E402
+from app.services.player_bio.bbref_parse import (  # noqa: E402
+    PlayerBio,
+    parse_player_html,
+)
+from app.services.player_bio.matching import _norm  # noqa: E402
+from app.services.player_bio.persistence import _update_master  # noqa: E402
 from app.schemas.player_aliases import PlayerAlias  # noqa: E402
 from app.schemas.player_bio_snapshots import PlayerBioSnapshot  # noqa: E402
 from app.schemas.player_college_stats import PlayerCollegeStats  # noqa: E402

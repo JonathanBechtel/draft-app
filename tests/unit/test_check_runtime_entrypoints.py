@@ -161,6 +161,60 @@ class TestAppImportsScripts:
         assert guard._imports_scripts(tree) == []
 
 
+class TestAppReferencesDockerignoredPaths:
+    """E3: nothing under `app/` may name a path the image does not contain."""
+
+    def _segments(self, source: str) -> list[str]:
+        return [literal for _, literal in guard._path_literals(ast.parse(source))]
+
+    def test_a_segment_wise_path_build_is_detected(self):
+        """The shape that made this rule necessary, caught one segment at a time.
+
+        `REPO_ROOT / "scripts" / "data" / "x.json"` never contains the substring
+        `"scripts/"`, so nothing short of reading the operands would find it —
+        and this exact line shipped to production for months.
+        """
+        source = 'P = REPO_ROOT / "scripts" / "data" / "school_mapping.json"'
+        assert "scripts" in self._segments(source)
+
+    def test_a_single_string_path_is_detected(self):
+        source = 'CACHE = Path("tests/fixtures/sample.html")'
+        assert "tests/fixtures/sample.html" in self._segments(source)
+
+    def test_os_path_join_is_detected(self):
+        source = 'p = os.path.join("docs", "plans", "spec.md")'
+        assert "docs" in self._segments(source)
+
+    def test_a_module_docstring_naming_scripts_is_not_a_path(self):
+        """Prose references are documentation, not a runtime read."""
+        source = '"""Mirrors scripts/bbref_bio_scraper.py CLI defaults."""\nx = 1\n'
+        assert self._segments(source) == []
+
+    def test_a_function_docstring_naming_scripts_is_not_a_path(self):
+        source = 'def f():\n    """See scripts/foo.py and docs/bar.md."""\n    return 1\n'
+        assert self._segments(source) == []
+
+    def test_an_unrelated_division_is_not_a_path(self):
+        """`/` on numbers must not be read as path joining."""
+        assert self._segments("rate = made / attempted") == []
+
+    def test_dockerignore_is_the_single_source_of_the_excluded_set(self):
+        """The guard reads the real file, so the two cannot drift apart."""
+        excluded = guard.dockerignored_dirs()
+        assert {"scripts", "tests", "docs", "mockups", "deploy"} <= excluded
+
+    def test_runtime_writable_dirs_are_exempt(self):
+        """`data/` is created and written by the cron, never read from the image."""
+        assert "data" not in guard.dockerignored_dirs()
+        assert "data" in guard._RUNTIME_WRITABLE_DIRS
+
+    def test_directories_the_image_keeps_are_not_excluded(self):
+        """`alembic/` runs as the Fly release command and must stay in the image."""
+        excluded = guard.dockerignored_dirs()
+        assert "alembic" not in excluded
+        assert "app" not in excluded
+
+
 class TestRepoState:
     """The repo must pass its own guard — the check is worthless if it is vacuous."""
 
@@ -171,6 +225,15 @@ class TestRepoState:
     def test_no_unallowlisted_app_imports_of_scripts(self):
         """Only the recorded pre-existing violations may import operator tooling."""
         assert guard.check_app_imports() == []
+
+    def test_no_app_module_reads_a_path_the_image_excludes(self):
+        """Every path `app/` names survives `.dockerignore`.
+
+        This is the check that would have caught the school-mapping JSON being
+        read out of `scripts/data/` — a runtime break that CI, the deploy, and
+        the digest verifier all reported as green.
+        """
+        assert [v.format() for v in guard.check_app_path_references()] == []
 
     def test_allowlist_entries_still_exist_and_still_offend(self):
         """Guards the ratchet against rot in both directions.
@@ -200,12 +263,27 @@ class TestRepoState:
             assert allowed, "an empty allowlist entry exempts the whole file"
             assert all(m.startswith("scripts") for m in allowed)
 
-    def test_a_new_import_in_an_allowlisted_file_is_still_a_violation(self, tmp_path):
-        """The regression codex caught: baseline by import, not by file."""
-        target = next(iter(guard._KNOWN_APP_IMPORTS_SCRIPTS))
-        allowed = guard._KNOWN_APP_IMPORTS_SCRIPTS[target]
-        source = (guard.REPO_ROOT / target).read_text(encoding="utf-8")
-        tree = ast.parse("from scripts.some_new_tool import thing\n" + source)
+    def test_allowlist_is_empty(self):
+        """The boundary is fully closed; re-opening it must be a deliberate change.
+
+        #688 lifted the roster cron's last three `scripts.*` imports into
+        `app/services/`. The ratchet may only shrink, so a future entry here is a
+        decision to argue for in review -- not something that lands quietly.
+        """
+        assert guard._KNOWN_APP_IMPORTS_SCRIPTS == {}
+
+    def test_a_new_import_in_an_allowlisted_file_is_still_a_violation(self):
+        """The regression codex caught: baseline by import, not by file.
+
+        Exercised against a synthetic allowlist rather than the live one, which is
+        empty now that the boundary is closed. The rule has to keep holding for
+        whatever entry is baselined next, so the test cannot depend on one existing.
+        """
+        allowed = frozenset({"scripts.already_baselined"})
+        tree = ast.parse(
+            "from scripts.already_baselined import thing\n"
+            "from scripts.some_new_tool import other\n"
+        )
 
         offenders = {
             name for _, name in guard._imports_scripts(tree) if name not in allowed

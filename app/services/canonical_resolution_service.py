@@ -9,9 +9,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SCHOOL_MAPPING_PATH = REPO_ROOT / "scripts" / "data" / "school_mapping.json"
-DEFAULT_COLLEGE_SCHOOLS_PATH = REPO_ROOT / "scripts" / "data" / "college_schools.json"
+# These two files are read at *runtime* by the deployed container (the bio
+# ingest resolves every scraped school through them), so they live inside the
+# shipped package rather than in `scripts/`, which the image excludes. Moving
+# them back out would break the roster cron behind a fully green deploy --
+# `scripts/check_runtime_entrypoints.py` (E3) exists to stop exactly that.
+APP_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_SCHOOL_MAPPING_PATH = APP_ROOT / "data" / "school_mapping.json"
+DEFAULT_COLLEGE_SCHOOLS_PATH = APP_ROOT / "data" / "college_schools.json"
 
 _PUNCT_TRANSLATION = str.maketrans(
     {
