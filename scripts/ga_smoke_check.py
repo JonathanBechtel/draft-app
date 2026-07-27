@@ -3,7 +3,7 @@
 Usage:
     GOOGLE_APPLICATION_CREDENTIALS=~/.config/draftguru/ga-sa.json \
     GA4_PROPERTY_ID=123456789 \
-    python scripts/ga_smoke_test.py
+    python scripts/ga_smoke_check.py
 
 Prints active users + pageviews per day for the last 7 days.
 """
