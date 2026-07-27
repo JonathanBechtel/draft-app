@@ -27,7 +27,6 @@ from scripts.verify_cron_image_digests import (
 
 CURRENT_IMAGE = "registry.fly.io/draft-app-prod:deployment-01CURRENT"
 STALE_IMAGE = "registry.fly.io/draft-app-prod:deployment-00STALE"
-CURRENT_IMAGE_WITH_DIGEST = f"{CURRENT_IMAGE}@sha256:{'a' * 64}"
 
 
 def _app_machine() -> dict[str, Any]:
@@ -88,40 +87,108 @@ def test_build_machine_statuses_reports_match_and_drift() -> None:
     assert by_name["summer-league-desk-cron"].expected_image == CURRENT_IMAGE
 
 
-def test_build_machine_statuses_matches_fly_digest_qualified_cron_image() -> None:
-    """Fly's tag@digest cron form matches the app machine's equivalent bare tag."""
-    machines = [
-        _app_machine(),
-        {
-            "name": "summer-league-ingestion-cron",
-            "config": {"image": CURRENT_IMAGE_WITH_DIGEST, "metadata": {}},
+DIGEST_A = "sha256:" + "a" * 64
+DIGEST_B = "sha256:" + "b" * 64
+TAG = "deployment-01CURRENT"
+
+
+def _real_app_machine(digest: str = DIGEST_A, tag: str = TAG) -> dict[str, Any]:
+    """App machine as Fly actually reports it: `config.image` is tag-only.
+
+    The digest lives on `image_ref`, never inline in `config.image`.
+    """
+    return {
+        "name": "draft-app-prod-app-abc123",
+        "config": {
+            "image": f"registry.fly.io/draft-app-prod:{tag}",
+            "metadata": {"fly_process_group": "app"},
         },
-    ]
-
-    [status] = build_machine_statuses(
-        machines, ["summer-league-ingestion-cron"]
-    )
-
-    assert status.matches is True
+        "image_ref": {"tag": tag, "digest": digest},
+    }
 
 
-def test_build_machine_statuses_rejects_two_different_explicit_digests() -> None:
-    """Two explicit digests for one tag remain a real drift signal."""
-    app_machine = _app_machine()
-    app_machine["config"]["image"] = f"{CURRENT_IMAGE}@sha256:{'b' * 64}"
-    machines = [
-        app_machine,
-        {
-            "name": "summer-league-ingestion-cron",
-            "config": {"image": CURRENT_IMAGE_WITH_DIGEST, "metadata": {}},
+def _real_cron_machine(
+    name: str, digest: str = DIGEST_A, tag: str = TAG
+) -> dict[str, Any]:
+    """Cron machine as Fly actually reports it: `config.image` is digest-pinned."""
+    return {
+        "name": name,
+        "config": {
+            "image": f"registry.fly.io/draft-app-prod:{tag}@{digest}",
+            "metadata": {},
         },
+        "image_ref": {"tag": tag, "digest": digest},
+    }
+
+
+def test_digest_pinned_cron_matches_tag_only_app_image() -> None:
+    """The false positive that failed every prod deploy from 2026-07-23 onward.
+
+    Fly reports the app machine's image as `repo:tag` but pins cron machines to
+    `repo:tag@sha256:...`. Comparing those as raw strings never matches, so the
+    post-deploy gate reported drift on machines that were perfectly in sync.
+    """
+    machines = [
+        _real_app_machine(),
+        _real_cron_machine("summer-league-desk-cron"),
     ]
+    statuses = build_machine_statuses(machines, ["summer-league-desk-cron"])
 
-    [status] = build_machine_statuses(
-        machines, ["summer-league-ingestion-cron"]
+    assert statuses[0].matches is True
+
+
+def test_real_digest_drift_is_still_detected() -> None:
+    """Same tag, different content digest -- must still fail.
+
+    This is what stops the fix from being vacuous: a check that merely ignored
+    the `@sha256:` suffix would compare equal tags and pass, defeating the whole
+    purpose of a *digest* verifier.
+    """
+    machines = [
+        _real_app_machine(digest=DIGEST_A),
+        _real_cron_machine("summer-league-desk-cron", digest=DIGEST_B),
+    ]
+    statuses = build_machine_statuses(machines, ["summer-league-desk-cron"])
+
+    assert statuses[0].matches is False
+    assert statuses[0].current_digest == DIGEST_B
+    assert statuses[0].expected_digest == DIGEST_A
+
+
+def test_falls_back_to_normalized_reference_without_digests() -> None:
+    """With no `image_ref` on either side, compare references ignoring any digest."""
+    same = build_machine_statuses(
+        [
+            _app_machine(),
+            {
+                "name": "summer-league-desk-cron",
+                "config": {"image": f"{CURRENT_IMAGE}@{DIGEST_A}", "metadata": {}},
+            },
+        ],
+        ["summer-league-desk-cron"],
     )
+    assert same[0].matches is True
 
-    assert status.matches is False
+    different = build_machine_statuses(
+        [
+            _app_machine(),
+            {
+                "name": "summer-league-desk-cron",
+                "config": {"image": f"{STALE_IMAGE}@{DIGEST_A}", "metadata": {}},
+            },
+        ],
+        ["summer-league-desk-cron"],
+    )
+    assert different[0].matches is False
+
+
+def test_missing_machine_still_fails_with_digests_present() -> None:
+    """An absent machine is never 'matching', regardless of digest availability."""
+    statuses = build_machine_statuses(
+        [_real_app_machine()], ["summer-league-desk-cron"]
+    )
+    assert statuses[0].found is False
+    assert statuses[0].matches is False
 
 
 def test_build_machine_statuses_reports_missing_machine() -> None:
