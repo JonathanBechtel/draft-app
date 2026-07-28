@@ -38,6 +38,8 @@ as SQL arithmetic inside a CTE/subquery so they can be sorted in SQL.
 
 from __future__ import annotations
 
+# discipline: file-size current-projection read predicate; no new explorer surface
+
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -210,6 +212,7 @@ def _appearance_rank_subq() -> Any:
     ps = SummerLeaguePlayerSeason
     distinct_years = (
         select(ps.player_id, ps.year)  # type: ignore[call-overload]
+        .where(ps.is_current.is_(True))  # type: ignore[attr-defined]
         .distinct()
         .subquery("_sl_appearance_years")
     )
@@ -2385,7 +2388,9 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
                     Position.id.in_(  # type: ignore[union-attr]
                         select(PlayerStatus.position_id).where(  # type: ignore[call-overload]
                             PlayerStatus.player_id.in_(  # type: ignore[attr-defined]
-                                select(SummerLeaguePlayerSeason.player_id)  # type: ignore[call-overload]
+                                select(SummerLeaguePlayerSeason.player_id).where(  # type: ignore[call-overload]
+                                    SummerLeaguePlayerSeason.is_current.is_(True)  # type: ignore[attr-defined]
+                                )
                             )
                         )
                     )
@@ -2760,7 +2765,7 @@ def _build_player_career_stmt(q: ExplorerQuery) -> Any:
     ps = SummerLeaguePlayerSeason
     pm = PlayerMaster
 
-    conds: list[Any] = []
+    conds: list[Any] = [ps.is_current.is_(True)]  # type: ignore[attr-defined]
     if q.year_min is not None:
         conds.append(ps.year >= q.year_min)  # type: ignore[arg-type]
     if q.year_max is not None:
@@ -3031,6 +3036,7 @@ async def _fetch_adv_eligible(db: AsyncSession, year: int, venue_slug: str) -> b
     ctx = SummerLeagueMetricContext
     result = await db.execute(
         select(ctx.adv_eligible)  # type: ignore[call-overload]
+        .where(ctx.is_current.is_(True))  # type: ignore[attr-defined]
         .where(ctx.year == year)  # type: ignore[arg-type]
         .where(ctx.venue_slug == venue_slug)  # type: ignore[arg-type]
         .limit(1)
@@ -3051,6 +3057,7 @@ async def _fetch_adv_eligible_by_competition(
     ctx = SummerLeagueMetricContext
     result = await db.execute(
         select(ctx.adv_eligible)  # type: ignore[call-overload]
+        .where(ctx.is_current.is_(True))  # type: ignore[attr-defined]
         .where(ctx.competition_id == competition_id)  # type: ignore[arg-type]
         .limit(1)
     )
@@ -3074,7 +3081,7 @@ async def _fetch_adv_counts(db: AsyncSession, q: ExplorerQuery) -> tuple[int, in
         Tuple ``(eligible_n, total_m)``.
     """
     ctx = SummerLeagueMetricContext
-    conds: list[Any] = []
+    conds: list[Any] = [ctx.is_current.is_(True)]  # type: ignore[attr-defined]
     if q.competition_id is not None:
         # Authoritative competition-scope handoff (#609): year/venue are
         # cleared during canonicalization, so filter on the stable id directly
@@ -3130,6 +3137,7 @@ async def _query_players_per_competition(
     # pace_sec = pace * minutes * 60 (pace is possessions/48): each row is one
     # competition, so per_100 is exact where pace is present and NULL otherwise.
     conds: list[Any] = [
+        ps.is_current.is_(True),  # type: ignore[attr-defined]
         ps.gp >= q.min_games,  # type: ignore[operator]
         ps.minutes >= q.min_minutes,  # minutes stored as minutes, not seconds
     ]

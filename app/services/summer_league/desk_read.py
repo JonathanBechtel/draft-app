@@ -49,6 +49,8 @@ this call assembles.
 
 from __future__ import annotations
 
+# discipline: file-size candidate-version Desk assembly; no new page service surface
+
 from collections import defaultdict
 from dataclasses import dataclass, replace as dataclass_replace
 from datetime import date, datetime, timezone
@@ -1650,6 +1652,7 @@ async def _assemble_tracker(
     baseline_version: Optional[str],
     cohort: str,
     stat_view: str,
+    metrics_version: Optional[int] = None,
 ) -> tuple[DeskTrackerSection, dict[int, dict[str, Optional[str]]]]:
     """The pinned Class Tracker: fixed frame + the active stat view's middle block (#511).
 
@@ -1733,6 +1736,14 @@ async def _assemble_tracker(
         SummerLeaguePlayerSeason.player_id.in_(member_ids),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year == event_year,  # type: ignore[arg-type]
     )
+    if metrics_version is None:
+        season_stmt = season_stmt.where(
+            SummerLeaguePlayerSeason.is_current.is_(True)  # type: ignore[attr-defined]
+        )
+    else:
+        season_stmt = season_stmt.where(
+            SummerLeaguePlayerSeason.version == metrics_version  # type: ignore[arg-type]
+        )
     season_rows = (await db.execute(season_stmt)).scalars().all()
     events = blend_event_aggregates(season_rows, min_minutes=0.0)
     season_rows_by_player: dict[int, list[SummerLeaguePlayerSeason]] = defaultdict(list)
@@ -2117,6 +2128,7 @@ async def _assemble_desk_payload_body(
     daily_state: EventDailyState,
     tracker_cohort: str,
     tracker_stat_view: str,
+    metrics_version: Optional[int] = None,
 ) -> tuple[DeskPayload, dict[int, dict[str, Optional[str]]]]:
     """Assemble hero/slate/live_board/ledger/tracker for ONE (state, cohort, stat_view).
 
@@ -2149,6 +2161,8 @@ async def _assemble_desk_payload_body(
             slate/live_board/ledger for.
         tracker_cohort: One of `TRACKER_COHORTS` (validated by `_assemble_tracker`).
         tracker_stat_view: One of `TRACKER_STAT_VIEWS` (validated by `_assemble_tracker`).
+        metrics_version: Optional staged metric version for candidate snapshot
+            builds; ``None`` reads the currently published version.
 
     Returns:
         The assembled `DeskPayload` for this exact combination, plus its
@@ -2251,6 +2265,7 @@ async def _assemble_desk_payload_body(
         baseline_version=baseline_version,
         cohort=tracker_cohort,
         stat_view=tracker_stat_view,
+        metrics_version=metrics_version,
     )
 
     payload = DeskPayload(
@@ -2354,6 +2369,7 @@ async def build_desk_render_variants(
     now: Optional[datetime] = None,
     now_is_effective: bool = False,
     scheduled_write: bool = False,
+    metrics_version: Optional[int] = None,
 ) -> Optional[tuple[int, list[DeskRenderVariant]]]:
     """Build the COMPLETE Preview/Live/Recap x Tracker cohort/stat-view variant matrix.
 
@@ -2401,6 +2417,8 @@ async def build_desk_render_variants(
             second calendar decision during snapshot materialization.
         scheduled_write: Whether this call will persist scheduled content.
             Production scheduled writes reject a configured historical date.
+        metrics_version: Optional staged metric version for candidate snapshot
+            builds; ``None`` reads the currently published version.
 
     Returns:
         `None` when the event is off-window (nothing to materialize -- the
@@ -2447,6 +2465,7 @@ async def build_desk_render_variants(
                     daily_state=daily_state,
                     tracker_cohort=cohort,
                     tracker_stat_view=stat_view,
+                    metrics_version=metrics_version,
                 )
                 view_context = await get_desk_view_context(db, payload)
                 view = DeskView(

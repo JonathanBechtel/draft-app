@@ -30,6 +30,8 @@ cohort has no history), not a fallback to compute one on the fly.
 
 from __future__ import annotations
 
+# discipline: file-size version-aware Desk read compatibility; no new service surface
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -298,6 +300,7 @@ async def grade_player_event(
         SummerLeaguePlayerSeason.gp,
     ).where(
         SummerLeaguePlayerSeason.player_id == player_id,
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year == competition.year,
     )
     rows = (await session.execute(season_stmt)).all()
@@ -436,6 +439,7 @@ async def grade_players_bulk(
         SummerLeaguePlayerSeason.gp,
     ).where(
         SummerLeaguePlayerSeason.player_id.in_(unique_ids),  # type: ignore[attr-defined]
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year == competition.year,
     )
     season_rows = (await session.execute(season_stmt)).all()

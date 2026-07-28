@@ -98,6 +98,8 @@ instead of three independent (and previously inconsistent) definitions of
 
 from __future__ import annotations
 
+# discipline: file-size version-aware baseline read compatibility; no new service surface
+
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -560,6 +562,7 @@ async def build_baselines(
         SummerLeaguePlayerSeason.minutes,
         SummerLeaguePlayerSeason.gp,
     ).where(
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year >= start_year,
         SummerLeaguePlayerSeason.year <= end_year,
     )

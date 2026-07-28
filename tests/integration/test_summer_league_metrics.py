@@ -196,7 +196,13 @@ async def test_rebuild_materializes_metrics_and_gates_pools(
     # Context gating.
     ctxs = {
         c.competition_id: c
-        for c in (await db_session.execute(select(SummerLeagueMetricContext))).scalars()
+        for c in (
+            await db_session.execute(
+                select(SummerLeagueMetricContext).where(
+                    SummerLeagueMetricContext.is_current.is_(True)  # type: ignore[attr-defined]
+                )
+            )
+        ).scalars()
     }
     assert ctxs[elig_id].adv_eligible is True
     assert ctxs[thin_id].adv_eligible is False
@@ -206,7 +212,8 @@ async def test_rebuild_materializes_metrics_and_gates_pools(
         (
             await db_session.execute(
                 select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == elig_id
+                    SummerLeaguePlayerSeason.competition_id == elig_id,
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -229,7 +236,8 @@ async def test_rebuild_materializes_metrics_and_gates_pools(
         (
             await db_session.execute(
                 select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == thin_id
+                    SummerLeaguePlayerSeason.competition_id == thin_id,
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -266,7 +274,17 @@ async def test_rebuild_is_idempotent(db_session: AsyncSession) -> None:
     async with db_session.begin():
         summary = await rebuild(db_session, model_version="fit-2")
 
-    total = (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
+    total = (
+        (
+            await db_session.execute(
+                select(SummerLeaguePlayerSeason).where(
+                    SummerLeaguePlayerSeason.is_current.is_(True)  # type: ignore[attr-defined]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert len(total) == summary["seasons"] == 12
 
     # Season rows are replaced, but each fit is retained: the model table is the
@@ -386,7 +404,8 @@ async def test_rebuild_excludes_non_season_game_until_it_is_final(
         (
             await db_session.execute(
                 select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == competition_id  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.competition_id == competition_id,  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -404,7 +423,8 @@ async def test_rebuild_excludes_non_season_game_until_it_is_final(
         (
             await db_session.execute(
                 select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == competition_id  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.competition_id == competition_id,  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )

@@ -22,6 +22,8 @@ The dataset deliberately contains, per the frozen implementation contract §10:
 
 from __future__ import annotations
 
+# discipline: file-size versioned metric fixture compatibility; no new fixture surface
+
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Optional
@@ -624,7 +626,10 @@ async def _seed_leaders_players(session: AsyncSession, *, competition_id: int) -
     existing = (
         await session.execute(
             _select(SummerLeaguePlayerSeason.id)  # type: ignore[call-overload]
-            .where(SummerLeaguePlayerSeason.competition_id == competition_id)
+            .where(
+                SummerLeaguePlayerSeason.competition_id == competition_id,
+                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            )
             .limit(1)
         )
     ).first()

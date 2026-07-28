@@ -13,6 +13,8 @@ No composite/derived metrics are computed here.
 
 from __future__ import annotations
 
+# discipline: file-size current-projection read predicate; no new stats service surface
+
 from dataclasses import asdict, dataclass
 from typing import Optional
 
@@ -463,6 +465,7 @@ async def get_competition_id_for_player_year(
         SummerLeaguePlayerSeason.venue_slug,
     ).where(
         SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year == year,  # type: ignore[arg-type]
     )
     if venue_slug is not None:
@@ -517,6 +520,7 @@ async def get_player_shotchart_context(
         diet_stmt = select(SummerLeaguePlayerSeason).where(  # type: ignore[call-overload]
             SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
             SummerLeaguePlayerSeason.competition_id == competition_id,  # type: ignore[arg-type]
+            SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         )
     else:
         # Career view: use the most recent competition's rates as the "latest" diet.
@@ -524,6 +528,7 @@ async def get_player_shotchart_context(
             select(SummerLeaguePlayerSeason)  # type: ignore[call-overload]
             .where(
                 SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
+                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
             )
             .order_by(
                 desc(SummerLeaguePlayerSeason.year),  # type: ignore[arg-type]
