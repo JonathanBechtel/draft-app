@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -41,9 +42,7 @@ def _summer_league_writer_lock_available(
     async def _record_failure(_db: object, **_kwargs: object) -> None:
         return None
 
-    async def _available_yielding(
-        _db: object, _step_fields: object = None
-    ) -> bool:
+    async def _available_yielding(_db: object, _step_fields: object = None) -> bool:
         return True
 
     async def _no_completed_batches(_db: object, **_kwargs: object) -> set[str]:
@@ -282,6 +281,11 @@ def _patch_backbone_services(
             "resolution_pairs is empty"
         )
 
+    async def _fake_revalidate(
+        _db: object, _source_player: object, plan: object
+    ) -> object:
+        return plan
+
     async def _fake_shot(_db: object, **kwargs: object) -> object:
         calls.append("shot")
         if shot_batches is not None:
@@ -310,6 +314,9 @@ def _patch_backbone_services(
     )
     monkeypatch.setattr(
         runner, "apply_source_player_resolution_plan", _fake_apply_resolution_plan
+    )
+    monkeypatch.setattr(
+        runner, "revalidate_source_player_resolution_plan", _fake_revalidate
     )
     monkeypatch.setattr(runner, "normalize_shot_events", _fake_shot)
     monkeypatch.setattr(runner, "normalize_pbp_events", _fake_pbp)
@@ -518,9 +525,7 @@ async def test_run_venue_skips_db_processing_while_desk_writer_is_active(
     async def _defer(_db: object, *, reason: str) -> None:
         deferred_reasons.append(reason)
 
-    monkeypatch.setattr(
-        runner, "try_acquire_summer_league_writer_lock_yielding", _busy
-    )
+    monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock_yielding", _busy)
     monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
     ingestor = _FakeIngestor(
         [
@@ -868,6 +873,7 @@ def _patch_main(
         "snapshots_refreshed": False,
         "disposed": False,
         "full_reconcile_flags": [],
+        "identity_audit_called": False,
     }
 
     async def _fake_run_venue(
@@ -905,6 +911,10 @@ def _patch_main(
         events["schedule_refresh_called"] = True
         return None
 
+    async def _fake_identity_audit(_db: object) -> object:
+        events["identity_audit_called"] = True
+        return SimpleNamespace(groups=(), likely_duplicate_count=0)
+
     monkeypatch.setattr(runner, "_run_venue", _fake_run_venue)
     monkeypatch.setattr(runner, "rebuild_sl_metrics", _fake_rebuild)
     monkeypatch.setattr(
@@ -918,6 +928,7 @@ def _patch_main(
     # `_FakeSession` doesn't support -- tests that specifically exercise the
     # wiring override this again below.
     monkeypatch.setattr(runner, "_refresh_schedule", _fake_refresh_schedule)
+    monkeypatch.setattr(runner, "audit_variant_player_duplicates", _fake_identity_audit)
     events["schedule_refresh_called"] = False
     return events
 
@@ -990,6 +1001,7 @@ async def test_main_with_games_runs_rebuild_once(
 
     assert result == 0
     assert events["rebuild_called"] is True
+    assert events["identity_audit_called"] is True
     assert events["snapshots_refreshed"] is True
     assert events["disposed"] is True
 
@@ -1399,9 +1411,7 @@ async def test_refresh_schedule_calls_run_scoreboard_ingest_when_in_window(
 
     monkeypatch.setattr(runner, "_schedule_pull_in_window", _fake_in_window)
     monkeypatch.setattr(runner, "run_scoreboard_ingest", _fake_scoreboard_ingest)
-    monkeypatch.setattr(
-        runner, "try_acquire_summer_league_writer_lock", _fake_try_lock
-    )
+    monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _fake_try_lock)
 
     fake_client = _FakeClient()
     now = datetime(2026, 7, 12, 18, 0, tzinfo=timezone.utc)  # 2:00pm ET (EDT)

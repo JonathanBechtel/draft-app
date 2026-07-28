@@ -18,7 +18,9 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
+    SummerLeaguePlayerResolutionReview,
     SummerLeagueResolutionStatus,
+    SummerLeagueReviewStatus,
     SummerLeagueShotEvent,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
@@ -359,6 +361,118 @@ async def test_unique_alias_match_resolves(
     assert await _external_id_count(db_session, person_id="1641004") == 1
 
 
+@pytest.mark.parametrize(
+    ("canonical_name", "source_name", "person_id"),
+    [
+        ("José García Jr.", "Jose Garcia", "1641101"),
+        ("P.J. Washington", "PJ Washington", "1641102"),
+        ("Jean-Luc O’Neal III", "Jean Luc Oneal", "1641103"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_variant_names_resolve_before_stub_creation(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    canonical_name: str,
+    source_name: str,
+    person_id: str,
+) -> None:
+    """Suffix, diacritic, and punctuation variants reuse the canonical row."""
+    competition, team, game = await _seed_game_context(db_session)
+    canonical = PlayerMaster(display_name=canonical_name)
+    db_session.add(canonical)
+    await db_session.flush()
+    assert canonical.id is not None
+    source_player = await _source_with_log(
+        db_session,
+        raw_name=source_name,
+        person_id=person_id,
+        competition=competition,
+        team=team,
+        game=game,
+    )
+
+    async def _search_must_not_run(*args: object, **kwargs: object) -> object:
+        raise AssertionError("normalized variant match should precede hybrid search")
+
+    monkeypatch.setattr(
+        "app.services.summer_league.player_resolution.find_candidate_players",
+        _search_must_not_run,
+    )
+    result = await resolve_source_player(
+        db_session,
+        source_player,
+        create_stub=True,
+    )
+
+    assert result.player_id == canonical.id
+    assert result.status == SummerLeagueResolutionStatus.EXACT
+    assert result.stub_created is False
+    assert await _log_player_id(db_session, person_id=person_id) == canonical.id
+
+
+@pytest.mark.asyncio
+async def test_namesake_collision_stays_unresolved_in_stub_mode(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A father/son normalized-name collision is reviewed, never collapsed."""
+    competition, team, game = await _seed_game_context(db_session)
+    father = PlayerMaster(display_name="Gary Payton", draft_year=1986)
+    son = PlayerMaster(display_name="Gary Payton II", draft_year=2016)
+    db_session.add_all([father, son])
+    await db_session.flush()
+    assert father.id is not None
+    assert son.id is not None
+    source_player = await _source_with_log(
+        db_session,
+        raw_name="Gary Payton II",
+        person_id="1641104",
+        competition=competition,
+        team=team,
+        game=game,
+    )
+    player_count_before = int(
+        await db_session.scalar(select(func.count()).select_from(PlayerMaster)) or 0
+    )
+
+    async def _search_must_not_run(*args: object, **kwargs: object) -> object:
+        raise AssertionError("ambiguous normalized matches should bypass hybrid search")
+
+    monkeypatch.setattr(
+        "app.services.summer_league.player_resolution.find_candidate_players",
+        _search_must_not_run,
+    )
+    result = await resolve_source_player(
+        db_session,
+        source_player,
+        create_stub=True,
+    )
+    player_count_after = int(
+        await db_session.scalar(select(func.count()).select_from(PlayerMaster)) or 0
+    )
+
+    assert result.player_id is None
+    assert result.status == SummerLeagueResolutionStatus.VECTOR_CANDIDATE
+    assert {candidate.player_id for candidate in result.candidates} == {
+        father.id,
+        son.id,
+    }
+    assert {candidate.method for candidate in result.candidates} == {
+        "NORMALIZED_VARIANT_COLLISION"
+    }
+    assert source_player.canonical_player_id is None
+    assert player_count_after == player_count_before
+    review = (
+        await db_session.execute(
+            select(SummerLeaguePlayerResolutionReview).where(
+                SummerLeaguePlayerResolutionReview.source_player_id == source_player.id  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    assert review.status == SummerLeagueReviewStatus.PENDING
+
+
 @pytest.mark.asyncio
 async def test_ambiguous_exact_match_collects_candidates_without_resolution(
     db_session: AsyncSession,
@@ -681,7 +795,11 @@ async def test_prepare_then_apply_matches_one_shot_resolve(
         db_session, one_shot_player, create_stub=True
     )
 
-    assert split_result.status == one_shot_result.status == SummerLeagueResolutionStatus.STUB
+    assert (
+        split_result.status
+        == one_shot_result.status
+        == SummerLeagueResolutionStatus.STUB
+    )
     assert split_result.stub_created is True
     assert split_result.player_id != one_shot_result.player_id  # distinct new stubs
     assert (
@@ -706,7 +824,9 @@ async def test_prepare_batch_then_apply_matches_resolve_summer_league_players(
     ingest cron's actual call shape: `prepare_summer_league_player_resolutions`
     (no writes) followed by `apply_source_player_resolution_plan` per pair.
     """
-    competition, team, game = await _seed_game_context(db_session, year=2024, league_id="15")
+    competition, team, game = await _seed_game_context(
+        db_session, year=2024, league_id="15"
+    )
     exact_player = PlayerMaster(display_name="Prepare Batch Player")
     db_session.add(exact_player)
     await db_session.flush()

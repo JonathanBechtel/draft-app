@@ -69,6 +69,8 @@ Exit codes:
     1 - Failure (check logs for details)
 """
 
+# discipline: file-size orchestration-only reconciliation and lock-boundary wiring
+
 import asyncio
 import logging
 import os
@@ -89,6 +91,10 @@ from app.services.event_desk.snapshot_materialization import (
     materialize_desk_render_snapshots,
 )
 from app.services.event_desk.timeutils import to_eastern_date
+from app.services.player_identity_guard import (
+    IdentityDuplicateAuditReport,
+    audit_variant_player_duplicates,
+)
 from app.services.summer_league.backfill import (
     SummerLeagueBackfillOptions,
     backfill_summer_league_backbone,
@@ -107,6 +113,7 @@ from app.services.summer_league.player_resolution import (
     apply_source_player_resolution_plan,
     build_resolution_report,
     prepare_summer_league_player_resolutions,
+    revalidate_source_player_resolution_plan,
 )
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.services.summer_league.batch_progress import (
@@ -193,6 +200,28 @@ RESOLUTION_BATCH_SIZE = 8
 
 class SummerLeagueScheduleLockUnavailable(RuntimeError):
     """Raised internally when schedule persistence cannot acquire the writer lock."""
+
+
+def _log_identity_duplicate_audit(report: IdentityDuplicateAuditReport) -> None:
+    """Emit the recurring duplicate audit's summary and reviewable groups."""
+    logger.info(
+        "player_identity_duplicate_audit groups=%d likely_duplicates=%d",
+        len(report.groups),
+        report.likely_duplicate_count,
+    )
+    for group in report.groups:
+        log = (
+            logger.info
+            if group.classification == "identified_namesakes"
+            else logger.warning
+        )
+        log(
+            "player_identity_duplicate_group normalized_name=%r "
+            "classification=%s players=%s",
+            group.normalized_name,
+            group.classification,
+            [(member.player_id, member.display_name) for member in group.members],
+        )
 
 
 def _telemetry_step(telemetry: PipelineTelemetry | None, name: str, **fields: object):
@@ -704,8 +733,22 @@ async def _run_resolution_phase(
     """
     with _telemetry_step(telemetry, f"venue:{league_id}:resolution_preparation"):
         pairs = await prepare_summer_league_player_resolutions(
-            db, year=year, league_id=league_id
+            db,
+            year=year,
+            league_id=league_id,
+            before_candidate_search=db.commit,
         )
+        pairs = [
+            (
+                source_player,
+                await revalidate_source_player_resolution_plan(
+                    db,
+                    source_player,
+                    plan,
+                ),
+            )
+            for source_player, plan in pairs
+        ]
     await db.commit()  # close the preparation read's autobegun transaction
 
     if not pairs:
@@ -721,7 +764,11 @@ async def _run_resolution_phase(
         for source_player, plan in batch:
             results.append(
                 await apply_source_player_resolution_plan(
-                    db, source_player, plan, create_stub=True
+                    db,
+                    source_player,
+                    plan,
+                    create_stub=True,
+                    recheck_variant_before_stub=False,
                 )
             )
         if step_fields is not None:
@@ -1312,6 +1359,10 @@ async def main() -> int:
             # failure here never flips `failed`.
             with telemetry.step("schedule_refresh"):
                 await _refresh_schedule(db, now=start_time, client=client)
+
+            with telemetry.step("identity_duplicate_audit"):
+                duplicate_report = await audit_variant_player_duplicates(db)
+                _log_identity_duplicate_audit(duplicate_report)
 
             pending_reconciliation = await full_reconciliation_is_pending(db)
             # The state read auto-begins a transaction.  End that read-only

@@ -25,8 +25,6 @@ from app.services.summer_league.player_resolution import (
     _create_stub_player,
     _ensure_nba_stats_external_id,
     _find_external_id_player,
-    _find_unique_normalized_alias_match,
-    _find_unique_normalized_display_match,
     _has_serious_candidate,
     _load_source_players,
     _serialize_search_candidates,
@@ -137,8 +135,10 @@ def test_collapse_whitespace_trims_repeated_spacing() -> None:
 
 
 def test_normalize_player_name_folds_diacritics_and_suffixes() -> None:
-    """Summer League exact matching mirrors board-name normalization rules."""
+    """Identity matching folds suffix, diacritic, and punctuation variants."""
     assert normalize_player_name(" José   García Jr. ") == "jose garcia"
+    assert normalize_player_name("P.J. Washington") == "pj washington"
+    assert normalize_player_name("Jean-Luc O’Neal III") == "jean luc oneal"
 
 
 def test_candidate_payloads_round_scores_for_json_storage() -> None:
@@ -411,33 +411,6 @@ async def test_backfill_player_game_logs_returns_update_rowcount() -> None:
 
 
 @pytest.mark.asyncio
-async def test_unique_normalized_display_and_alias_matches() -> None:
-    """Name lookup helpers return only unique normalized matches."""
-    display_db = _FakeDb([_FakeResult(rows=[(1, "José García Jr.")])])
-    alias_db = _FakeDb([_FakeResult(rows=[(2, "Source Alias Jr.")])])
-    ambiguous_db = _FakeDb([_FakeResult(rows=[(1, "Same Name"), (2, "Same Name")])])
-
-    assert (
-        await _find_unique_normalized_display_match(  # type: ignore[arg-type]
-            display_db, "Jose Garcia"
-        )
-        == 1
-    )
-    assert (
-        await _find_unique_normalized_alias_match(  # type: ignore[arg-type]
-            alias_db, "Source Alias"
-        )
-        == 2
-    )
-    assert (
-        await _find_unique_normalized_display_match(  # type: ignore[arg-type]
-            ambiguous_db, "Same Name"
-        )
-        is None
-    )
-
-
-@pytest.mark.asyncio
 async def test_create_stub_player_populates_stub_fields() -> None:
     """Stub creation writes the minimal PlayerMaster fields expected by ingest."""
     db = _FakeDb()
@@ -453,6 +426,43 @@ async def test_create_stub_player_populates_stub_fields() -> None:
     assert stub.suffix == "Jr."
     assert stub.is_stub is True
     assert stub.bio_source == service.STUB_BIO_SOURCE
+
+
+@pytest.mark.asyncio
+async def test_stub_creation_rechecks_variant_matches_at_write_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stale no-match plan cannot create a duplicate after a variant appears."""
+    source = _source(name="PJ Washington")
+    plan = service.SummerLeagueResolutionPlan(
+        source_player_id=source.id,  # type: ignore[arg-type]
+        kind="UNRESOLVED",
+    )
+
+    async def variant_match(
+        db: Any, source_name: str
+    ) -> service.IdentityVariantMatches:
+        return service.IdentityVariantMatches(
+            display_names={77: "P.J. Washington Jr."},
+            alias_names={},
+        )
+
+    async def create_stub(db: Any, source_player: SummerLeagueSourcePlayer) -> int:
+        raise AssertionError("late variant match must block stub creation")
+
+    monkeypatch.setattr(service, "find_variant_identity_matches", variant_match)
+    monkeypatch.setattr(service, "_create_stub_player", create_stub)
+
+    result = await service.apply_source_player_resolution_plan(
+        _FakeDb(),  # type: ignore[arg-type]
+        source,
+        plan,
+        create_stub=True,
+    )
+
+    assert result.player_id == 77
+    assert result.status == SummerLeagueResolutionStatus.EXACT
+    assert result.stub_created is False
 
 
 @pytest.mark.asyncio
@@ -502,6 +512,13 @@ async def test_resolve_source_player_existing_exact_alias_candidate_and_stub(
     monkeypatch.setattr(service, "_ensure_nba_stats_external_id", ensure)
     monkeypatch.setattr(service, "_backfill_player_game_logs", backfill)
 
+    async def no_variant_match(
+        db: Any, source_name: str
+    ) -> service.IdentityVariantMatches:
+        return service.IdentityVariantMatches(display_names={}, alias_names={})
+
+    monkeypatch.setattr(service, "find_variant_identity_matches", no_variant_match)
+
     manual_resolved_at = datetime(2024, 7, 1, 12, 0, 0)
     existing_source = _source(
         canonical_player_id=11,
@@ -515,26 +532,24 @@ async def test_resolve_source_player_existing_exact_alias_candidate_and_stub(
     assert existing_source.resolved_at == manual_resolved_at
     assert existing_source.resolved_by == "admin@example.test"
 
-    async def exact(db: Any, source_name: str) -> int:
-        return 12
+    async def exact(db: Any, source_name: str) -> service.IdentityVariantMatches:
+        return service.IdentityVariantMatches(
+            display_names={12: "Exact Prospect"},
+            alias_names={},
+        )
 
-    async def no_alias(db: Any, source_name: str) -> None:
-        return None
-
-    monkeypatch.setattr(service, "_find_unique_normalized_display_match", exact)
-    monkeypatch.setattr(service, "_find_unique_normalized_alias_match", no_alias)
+    monkeypatch.setattr(service, "find_variant_identity_matches", exact)
     exact_result = await resolve_source_player(_FakeDb(), _source())  # type: ignore[arg-type]
     assert exact_result.status == SummerLeagueResolutionStatus.EXACT
     assert exact_result.player_id == 12
 
-    async def no_exact(db: Any, source_name: str) -> None:
-        return None
+    async def alias(db: Any, source_name: str) -> service.IdentityVariantMatches:
+        return service.IdentityVariantMatches(
+            display_names={},
+            alias_names={13: "Alias Prospect"},
+        )
 
-    async def alias(db: Any, source_name: str) -> int:
-        return 13
-
-    monkeypatch.setattr(service, "_find_unique_normalized_display_match", no_exact)
-    monkeypatch.setattr(service, "_find_unique_normalized_alias_match", alias)
+    monkeypatch.setattr(service, "find_variant_identity_matches", alias)
     alias_result = await resolve_source_player(_FakeDb(), _source())  # type: ignore[arg-type]
     assert alias_result.status == SummerLeagueResolutionStatus.ALIAS
     assert alias_result.player_id == 13
@@ -548,7 +563,7 @@ async def test_resolve_source_player_existing_exact_alias_candidate_and_stub(
             )
         ]
 
-    monkeypatch.setattr(service, "_find_unique_normalized_alias_match", no_alias)
+    monkeypatch.setattr(service, "find_variant_identity_matches", no_variant_match)
     monkeypatch.setattr(service, "_collect_candidates", candidates)
     candidate_source = _source()
     candidate_result = await resolve_source_player(  # type: ignore[arg-type]
@@ -568,7 +583,9 @@ async def test_resolve_source_player_existing_exact_alias_candidate_and_stub(
         db: Any, source_player: SummerLeagueSourcePlayer
     ) -> list[SummerLeagueResolutionCandidate]:
         return [
-            SummerLeagueResolutionCandidate(player_id=15, display_name="Weak", score=0.1)
+            SummerLeagueResolutionCandidate(
+                player_id=15, display_name="Weak", score=0.1
+            )
         ]
 
     async def stub(db: Any, source_player: SummerLeagueSourcePlayer) -> int:
@@ -593,19 +610,22 @@ async def test_resolve_source_player_unresolved_stores_weak_candidates(
     async def no_external(db: Any, person_id: str) -> None:
         return None
 
-    async def no_match(db: Any, source_name: str) -> None:
-        return None
+    async def no_variant_match(
+        db: Any, source_name: str
+    ) -> service.IdentityVariantMatches:
+        return service.IdentityVariantMatches(display_names={}, alias_names={})
 
     async def weak_candidates(
         db: Any, source_player: SummerLeagueSourcePlayer
     ) -> list[SummerLeagueResolutionCandidate]:
         return [
-            SummerLeagueResolutionCandidate(player_id=15, display_name="Weak", score=0.1)
+            SummerLeagueResolutionCandidate(
+                player_id=15, display_name="Weak", score=0.1
+            )
         ]
 
     monkeypatch.setattr(service, "_find_external_id_player", no_external)
-    monkeypatch.setattr(service, "_find_unique_normalized_display_match", no_match)
-    monkeypatch.setattr(service, "_find_unique_normalized_alias_match", no_match)
+    monkeypatch.setattr(service, "find_variant_identity_matches", no_variant_match)
     monkeypatch.setattr(service, "_collect_candidates", weak_candidates)
 
     source = _source()
@@ -653,9 +673,6 @@ async def test_resolve_source_player_search_failure_does_not_create_stub(
     async def no_external(db: Any, person_id: str) -> None:
         return None
 
-    async def no_match(db: Any, source_name: str) -> None:
-        return None
-
     async def broken_candidates(
         db: Any, source_player: SummerLeagueSourcePlayer
     ) -> list[SummerLeagueResolutionCandidate]:
@@ -665,8 +682,13 @@ async def test_resolve_source_player_search_failure_does_not_create_stub(
         raise AssertionError("stub creation should not run after search failure")
 
     monkeypatch.setattr(service, "_find_external_id_player", no_external)
-    monkeypatch.setattr(service, "_find_unique_normalized_display_match", no_match)
-    monkeypatch.setattr(service, "_find_unique_normalized_alias_match", no_match)
+
+    async def no_variant_match(
+        db: Any, source_name: str
+    ) -> service.IdentityVariantMatches:
+        return service.IdentityVariantMatches(display_names={}, alias_names={})
+
+    monkeypatch.setattr(service, "find_variant_identity_matches", no_variant_match)
     monkeypatch.setattr(service, "_collect_candidates", broken_candidates)
     monkeypatch.setattr(service, "_create_stub_player", create_stub)
 
@@ -695,9 +717,9 @@ async def test_load_source_players_and_batch_report(
         source
     ]
 
-    async def fake_load(db_arg: Any, year: int | None, league_id: str | None) -> list[
-        SummerLeagueSourcePlayer
-    ]:
+    async def fake_load(
+        db_arg: Any, year: int | None, league_id: str | None
+    ) -> list[SummerLeagueSourcePlayer]:
         return [source]
 
     async def fake_resolve(
