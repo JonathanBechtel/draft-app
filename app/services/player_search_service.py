@@ -51,10 +51,15 @@ on the Gemini embedding API; if it is unavailable the hybrid degrades to
 lexical-only rather than discarding the trigram matches that need no API.
 """
 
+# discipline: file-size cross-cutting network boundary; no new search policy
+
 from __future__ import annotations
 
 import logging
 import math
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Any
 
@@ -63,6 +68,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.embedding_service import embed_text
 
 logger = logging.getLogger(__name__)
+
+_candidate_search_boundary: ContextVar[Callable[[], Awaitable[None]] | None] = (
+    ContextVar("candidate_search_boundary", default=None)
+)
+
+
+@contextmanager
+def candidate_search_boundary(
+    boundary: Callable[[], Awaitable[None]],
+) -> Iterator[None]:
+    """Scope a read boundary to the lexical-to-vector search transition."""
+    token = _candidate_search_boundary.set(boundary)
+    try:
+        yield
+    finally:
+        _candidate_search_boundary.reset(token)
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -446,6 +467,9 @@ async def find_candidate_players(
     # latency overhead is dominated by network round-trips to Postgres and
     # Gemini, not by Python scheduling.
     lexical = await find_lexical_players(db, query, k=k)
+    boundary = _candidate_search_boundary.get()
+    if boundary is not None:
+        await boundary()
     # Isolate vector-search failures: vector depends on the Gemini embedding
     # API, while lexical (trigram) needs no API. A transient embed failure must
     # not discard successful lexical matches — degrade to lexical-only instead.

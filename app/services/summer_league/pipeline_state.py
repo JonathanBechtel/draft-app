@@ -127,6 +127,7 @@ async def complete_pipeline(
     source_advanced: bool = False,
     projections_refreshed: bool = False,
     content_updated: bool = False,
+    metrics_input_watermark: str | None = None,
     started_at: datetime | None = None,
     now: datetime | None = None,
 ) -> SummerLeaguePipelineState:
@@ -149,6 +150,7 @@ async def complete_pipeline(
         state.last_projection_refreshed_at = completed_at
     if metrics_rebuilt:
         state.last_metrics_rebuilt_at = completed_at
+        state.last_metrics_input_watermark = metrics_input_watermark
     if snapshots_materialized:
         state.last_snapshots_materialized_at = completed_at
     if job == SummerLeaguePipelineJob.FULL_INGESTION:

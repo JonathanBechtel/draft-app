@@ -131,7 +131,10 @@ class TestFindCandidatePlayers:
     @pytest.mark.asyncio
     async def test_returns_merged_results(self) -> None:
         """Hybrid function merges lexical + vector results into a single ranked list."""
-        from app.services.player_search_service import find_candidate_players
+        from app.services.player_search_service import (
+            candidate_search_boundary,
+            find_candidate_players,
+        )
 
         lex_result = [_c(1, 0.8, "Aday Mara")]
         vec_result = [_c(2, 0.9, "Cooper Flagg")]
@@ -155,6 +158,41 @@ class TestFindCandidatePlayers:
         # the vector hit (Cooper Flagg) has a higher raw score.
         assert result[0].player_id == 1
         assert result[1].player_id == 2
+
+    @pytest.mark.asyncio
+    async def test_closes_lexical_transaction_before_vector_search(self) -> None:
+        """Hybrid search closes lexical DB work before Gemini vector embedding."""
+        from app.services.player_search_service import (
+            candidate_search_boundary,
+            find_candidate_players,
+        )
+
+        call_order: list[str] = []
+        db = AsyncMock()
+        db.close.side_effect = lambda: call_order.append("boundary")
+
+        async def _lexical(*args, **kwargs):
+            call_order.append("lexical")
+            return []
+
+        async def _vector(*args, **kwargs):
+            call_order.append("vector")
+            return []
+
+        with (
+            patch(
+                "app.services.player_search_service.find_lexical_players",
+                side_effect=_lexical,
+            ),
+            patch(
+                "app.services.player_search_service.find_similar_players",
+                side_effect=_vector,
+            ),
+        ):
+            with candidate_search_boundary(db.close):
+                await find_candidate_players(db, "mara", k=5)
+
+        assert call_order == ["lexical", "boundary", "vector"]
 
     @pytest.mark.asyncio
     async def test_vector_failure_degrades_to_lexical_only(self) -> None:

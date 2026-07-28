@@ -404,13 +404,8 @@ async def extract_board_from_news_item(
             status_code=303,
         )
 
-    # All reads and the extraction write happen inside a single transaction.
-    # Reads prior to begin() would autobegin an implicit transaction and cause
-    # begin() to raise InvalidRequestError (require_dataset_access already
-    # commits its own auth transaction, so _transaction is None here).
     try:
         async with db.begin():
-            # Verify the NewsItem exists (404 guard).
             item_result = await db.execute(
                 select(NewsItem).where(NewsItem.id == item_id)  # type: ignore[arg-type]
             )
@@ -439,8 +434,18 @@ async def extract_board_from_news_item(
             pre_result = await db.execute(pre_stmt)
             pre_existing_board = pre_result.scalar_one_or_none()
 
-            board = await board_extraction_service.extract_board(
-                db, news_item_id=item_id, kind=board_kind
+        board: Board | None = pre_existing_board
+        if board is None:
+            # Fetch before opening the persistence transaction. The runtime
+            # guard intentionally rejects HTTP while a DB transaction is open.
+            article_text = await board_extraction_service._default_fetcher(item.url)
+
+            board = await board_extraction_service.extract_board_from_article(
+                db,
+                news_item_id=item_id,
+                kind=board_kind,
+                article_text=article_text,
+                before_network_io=db.close,
             )
     except HTTPException:
         raise

@@ -77,10 +77,13 @@ class _FakeBegin:
 
 
 class _FakeSession:
-    """Minimal async session exposing ``begin()`` as a context manager."""
+    """Minimal async session exposing transaction boundaries."""
 
     def begin(self) -> _FakeBegin:
         return _FakeBegin()
+
+    async def commit(self) -> None:
+        """Stand in for committing before an external candidate search."""
 
 
 class _FakeSessionLocal:

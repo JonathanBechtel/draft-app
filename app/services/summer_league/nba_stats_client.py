@@ -9,6 +9,8 @@ from typing import Any, Callable, Mapping
 
 from curl_cffi import requests as cffi_requests
 
+from app.utils.network_guard import guard_network_io
+
 NBA_API_ROOT = "https://stats.nba.com/stats"
 
 NBA_API_HEADERS = {
@@ -146,6 +148,8 @@ class NBAStatsClient:
         """
         clean_endpoint = endpoint.strip("/")
         url = f"{NBA_API_ROOT}/{clean_endpoint}"
+        if self._owns_session:
+            guard_network_io(f"NBA Stats request GET {url}")
         attempts = self.max_retries + 1
         for attempt in range(attempts):
             try:

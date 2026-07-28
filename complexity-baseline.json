@@ -26,8 +26,7 @@
     },
     "app/cli/summer_league_ingest_runner.py": {
       "C901": 1,
-      "PLR0913": 4,
-      "PLR0915": 1
+      "PLR0913": 4
     },
     "app/routes/admin/auth.py": {
       "PLR0913": 1

@@ -42,7 +42,7 @@ import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.boards import Board, BoardKind, BoardStatus
+from app.schemas.boards import BoardKind, BoardStatus
 from app.schemas.news_items import BoardExtractionResult, NewsItem, NewsItemTag
 from app.services import board_extraction_service
 from app.services.board_extraction_service import (
@@ -176,10 +176,8 @@ async def _record_extraction_result(
 ) -> None:
     """Persist extraction-memory fields on the ``NewsItem`` row.
 
-    Commits in its own transaction so this write is durable even if a
-    later step in the same run fails.  Uses ``begin_nested`` (SAVEPOINT)
-    when the session already has an open transaction (e.g. in tests that
-    share a session) and a plain transaction otherwise.
+    Commits immediately so this write is durable even if a later item closes
+    the shared worker session before performing network I/O.
 
     Args:
         db: Async session.
@@ -195,15 +193,13 @@ async def _record_extraction_result(
             last_extraction_result=result,
         )
     )
-    # If a transaction is already active (autobegin triggered by a previous
-    # flush/query on this session), use a SAVEPOINT rather than trying to
-    # open a nested top-level transaction which SQLAlchemy forbids.
+    # Existing-board dedup performs read queries and can leave an implicit
+    # transaction open. It owns no writes, so close it before starting the
+    # durable extraction-memory transaction.
     if db.in_transaction():
+        await db.close()
+    async with db.begin():
         await db.execute(stmt)
-        await db.flush()
-    else:
-        async with db.begin():
-            await db.execute(stmt)
 
 
 async def run_auto_ingest(
@@ -246,18 +242,15 @@ async def run_auto_ingest(
         dry_run,
         lookback_cutoff.isoformat(),
     )
+    if db.in_transaction():
+        raise RuntimeError(
+            "run_auto_ingest requires a session with no active caller transaction."
+        )
 
     # Fetch all candidate items in one query (eligibility is cheap to evaluate
     # in Python and the candidate set is small — at most a few dozen rows per week).
-    # Use a nested transaction / SAVEPOINT when the session already has an open
-    # transaction (common in test fixtures that share a session across calls).
-    if db.in_transaction():
+    async with db.begin():
         candidates = await _fetch_eligible_items(db, lookback_cutoff=lookback_cutoff)
-    else:
-        async with db.begin():
-            candidates = await _fetch_eligible_items(
-                db, lookback_cutoff=lookback_cutoff
-            )
 
     report.scanned = len(candidates)
     logger.info("board.auto_ingest.scanned count=%d", report.scanned)
@@ -293,10 +286,11 @@ async def run_auto_ingest(
         extraction_result: Optional[BoardExtractionResult] = None
 
         try:
-            board: Optional[Board] = await board_extraction_service.extract_board(
+            board = await board_extraction_service.extract_board(
                 db,
                 news_item_id=item.id,  # type: ignore[arg-type]
                 kind=kind,
+                before_network_io=db.close,
             )
 
             if board is None:

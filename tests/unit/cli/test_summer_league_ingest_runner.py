@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
 from app.cli import summer_league_ingest_runner as runner
 from app.schemas.summer_league import SummerLeagueCompetition
+from app.services.summer_league import metrics_rebuild_gate as metrics_gate
 
 
 @dataclass
@@ -18,6 +20,16 @@ class _FakeEnvironmentRefreshOutcome:
     attempted: bool = True
     succeeded: bool = True
     built_scopes: int = 1
+
+
+async def _unit_input_watermark(_db: object) -> str:
+    """Return the stable metrics-input fingerprint used by runner unit tests."""
+    return "unit-input-watermark"
+
+
+async def _unit_pipeline_freshness(_db: object, _job: object) -> object:
+    """Return pipeline state with no previously persisted input fingerprint."""
+    return SimpleNamespace(last_metrics_input_watermark=None)
 
 
 @pytest.fixture(autouse=True)
@@ -41,9 +53,7 @@ def _summer_league_writer_lock_available(
     async def _record_failure(_db: object, **_kwargs: object) -> None:
         return None
 
-    async def _available_yielding(
-        _db: object, _step_fields: object = None
-    ) -> bool:
+    async def _available_yielding(_db: object, _step_fields: object = None) -> bool:
         return True
 
     async def _no_completed_batches(_db: object, **_kwargs: object) -> set[str]:
@@ -67,16 +77,28 @@ def _summer_league_writer_lock_available(
     monkeypatch.setattr(
         runner, "try_acquire_summer_league_writer_lock_yielding", _available_yielding
     )
+    monkeypatch.setattr(
+        metrics_gate,
+        "try_acquire_summer_league_writer_lock_yielding",
+        _available_yielding,
+    )
     monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
-    monkeypatch.setattr(runner, "full_reconciliation_is_pending", _pending)
-    monkeypatch.setattr(runner, "complete_pipeline", _complete)
+    monkeypatch.setattr(metrics_gate, "defer_full_reconciliation", _defer)
+    monkeypatch.setattr(metrics_gate, "full_reconciliation_is_pending", _pending)
+    monkeypatch.setattr(metrics_gate, "complete_pipeline", _complete)
     monkeypatch.setattr(runner, "record_pipeline_failure", _record_failure)
     monkeypatch.setattr(runner, "get_completed_batch_game_ids", _no_completed_batches)
     monkeypatch.setattr(runner, "count_pending_batch_games", _no_pending_batches)
     monkeypatch.setattr(runner, "record_batch_progress", _record_batch_progress)
     monkeypatch.setattr(runner, "invalidate_batch_progress", _invalidate_batch_progress)
     monkeypatch.setattr(
-        runner, "refresh_environment_profiles_for_year", _fake_refresh_environment
+        metrics_gate, "refresh_environment_profiles_for_year", _fake_refresh_environment
+    )
+    monkeypatch.setattr(
+        metrics_gate, "calculate_metrics_input_watermark", _unit_input_watermark
+    )
+    monkeypatch.setattr(
+        metrics_gate, "get_pipeline_freshness", _unit_pipeline_freshness
     )
 
 
@@ -282,6 +304,11 @@ def _patch_backbone_services(
             "resolution_pairs is empty"
         )
 
+    async def _fake_revalidate(
+        _db: object, _source_player: object, plan: object
+    ) -> object:
+        return plan
+
     async def _fake_shot(_db: object, **kwargs: object) -> object:
         calls.append("shot")
         if shot_batches is not None:
@@ -310,6 +337,9 @@ def _patch_backbone_services(
     )
     monkeypatch.setattr(
         runner, "apply_source_player_resolution_plan", _fake_apply_resolution_plan
+    )
+    monkeypatch.setattr(
+        runner, "revalidate_source_player_resolution_plan", _fake_revalidate
     )
     monkeypatch.setattr(runner, "normalize_shot_events", _fake_shot)
     monkeypatch.setattr(runner, "normalize_pbp_events", _fake_pbp)
@@ -518,9 +548,7 @@ async def test_run_venue_skips_db_processing_while_desk_writer_is_active(
     async def _defer(_db: object, *, reason: str) -> None:
         deferred_reasons.append(reason)
 
-    monkeypatch.setattr(
-        runner, "try_acquire_summer_league_writer_lock_yielding", _busy
-    )
+    monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock_yielding", _busy)
     monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
     ingestor = _FakeIngestor(
         [
@@ -868,6 +896,8 @@ def _patch_main(
         "snapshots_refreshed": False,
         "disposed": False,
         "full_reconcile_flags": [],
+        "identity_audit_called": False,
+        "completion_calls": [],
     }
 
     async def _fake_run_venue(
@@ -905,10 +935,20 @@ def _patch_main(
         events["schedule_refresh_called"] = True
         return None
 
+    async def _fake_identity_audit(_db: object) -> object:
+        events["identity_audit_called"] = True
+        return SimpleNamespace(groups=(), likely_duplicate_count=0)
+
+    async def _fake_complete(_db: object, **kwargs: object) -> None:
+        assert isinstance(events["completion_calls"], list)
+        events["completion_calls"].append(kwargs)
+
     monkeypatch.setattr(runner, "_run_venue", _fake_run_venue)
-    monkeypatch.setattr(runner, "rebuild_sl_metrics", _fake_rebuild)
+    monkeypatch.setattr(metrics_gate, "rebuild_sl_metrics", _fake_rebuild)
     monkeypatch.setattr(
-        runner, "materialize_desk_render_snapshots", _fake_materialize_snapshots
+        metrics_gate,
+        "materialize_desk_render_snapshots",
+        _fake_materialize_snapshots,
     )
     monkeypatch.setattr(runner, "dispose_engine", _fake_dispose)
     monkeypatch.setattr(runner, "NBAStatsClient", _FakeClient)
@@ -918,6 +958,8 @@ def _patch_main(
     # `_FakeSession` doesn't support -- tests that specifically exercise the
     # wiring override this again below.
     monkeypatch.setattr(runner, "_refresh_schedule", _fake_refresh_schedule)
+    monkeypatch.setattr(runner, "audit_variant_player_duplicates", _fake_identity_audit)
+    monkeypatch.setattr(metrics_gate, "complete_pipeline", _fake_complete)
     events["schedule_refresh_called"] = False
     return events
 
@@ -933,10 +975,10 @@ class _FakeSessionLocal:
 
 
 @pytest.mark.asyncio
-async def test_main_all_no_games_skips_rebuild(
+async def test_main_no_games_rebuilds_when_watermark_changed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Every venue no-games -> exit 0, metrics rebuild not called."""
+    """A changed durable watermark rebuilds even when discovery finds no games."""
     monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "13,16,15")
     events = _patch_main(
         monkeypatch,
@@ -951,8 +993,8 @@ async def test_main_all_no_games_skips_rebuild(
 
     assert result == 0
     assert events["venues"] == ["13", "16", "15"]
-    assert events["rebuild_called"] is False
-    assert events["snapshots_refreshed"] is False
+    assert events["rebuild_called"] is True
+    assert events["snapshots_refreshed"] is True
     assert events["disposed"] is True
     assert events["full_reconcile_flags"] == [False, False, False]
 
@@ -973,6 +1015,7 @@ async def test_main_propagates_full_reconcile_env_var_to_every_venue(
 
     assert result == 0
     assert events["full_reconcile_flags"] == [True, True]
+    assert events["rebuild_called"] is True
 
 
 @pytest.mark.asyncio
@@ -990,8 +1033,47 @@ async def test_main_with_games_runs_rebuild_once(
 
     assert result == 0
     assert events["rebuild_called"] is True
+    assert events["identity_audit_called"] is True
     assert events["snapshots_refreshed"] is True
     assert events["disposed"] is True
+    assert events["completion_calls"] == [
+        {
+            "job": runner.SummerLeaguePipelineJob.FULL_INGESTION,
+            "metrics_rebuilt": True,
+            "snapshots_materialized": True,
+            "metrics_input_watermark": "unit-input-watermark",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_main_unchanged_inputs_skip_full_metrics_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Historical games with an unchanged watermark complete without recomputing."""
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "15")
+    events = _patch_main(monkeypatch, venue_results={"15": (True, False)})
+
+    async def _unchanged_state(_db: object, _job: object) -> object:
+        return SimpleNamespace(last_metrics_input_watermark="unit-input-watermark")
+
+    monkeypatch.setattr(metrics_gate, "get_pipeline_freshness", _unchanged_state)
+    caplog.set_level("INFO", logger="summer_league_ingest_runner")
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["rebuild_called"] is False
+    assert events["snapshots_refreshed"] is False
+    assert "input watermark unchanged" in caplog.text
+    assert events["completion_calls"] == [
+        {
+            "job": runner.SummerLeaguePipelineJob.FULL_INGESTION,
+            "metrics_rebuilt": False,
+            "snapshots_materialized": False,
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -1005,7 +1087,7 @@ async def test_main_drains_a_deferred_reconciliation_without_new_games(
     async def _pending(_db: object) -> bool:
         return True
 
-    monkeypatch.setattr(runner, "full_reconciliation_is_pending", _pending)
+    monkeypatch.setattr(metrics_gate, "full_reconciliation_is_pending", _pending)
 
     result = await runner.main()
 
@@ -1029,6 +1111,8 @@ async def test_main_venue_failure_returns_one(
 
     assert result == 1
     assert events["venues"] == ["13", "15"]  # failure did not abort the rest
+    assert events["rebuild_called"] is False
+    assert events["completion_calls"] == []
     assert events["disposed"] is True
 
 
@@ -1075,7 +1159,7 @@ async def test_main_calls_environment_refresh_after_snapshots_when_any_games(
         return _FakeEnvironmentRefreshOutcome()
 
     monkeypatch.setattr(
-        runner, "refresh_environment_profiles_for_year", _recording_refresh
+        metrics_gate, "refresh_environment_profiles_for_year", _recording_refresh
     )
 
     result = await runner.main()
@@ -1106,8 +1190,13 @@ async def test_main_skips_environment_refresh_when_no_games_and_nothing_pending(
         return _FakeEnvironmentRefreshOutcome()
 
     monkeypatch.setattr(
-        runner, "refresh_environment_profiles_for_year", _recording_refresh
+        metrics_gate, "refresh_environment_profiles_for_year", _recording_refresh
     )
+
+    async def _unchanged_state(_db: object, _job: object) -> object:
+        return SimpleNamespace(last_metrics_input_watermark="unit-input-watermark")
+
+    monkeypatch.setattr(metrics_gate, "get_pipeline_freshness", _unchanged_state)
 
     result = await runner.main()
 
@@ -1136,7 +1225,7 @@ async def test_main_environment_refresh_failure_does_not_fail_the_run(
         return _FakeEnvironmentRefreshOutcome(attempted=True, succeeded=False)
 
     monkeypatch.setattr(
-        runner, "refresh_environment_profiles_for_year", _failed_refresh
+        metrics_gate, "refresh_environment_profiles_for_year", _failed_refresh
     )
 
     result = await runner.main()
@@ -1158,7 +1247,7 @@ async def test_main_drains_deferred_reconciliation_runs_environment_refresh(
     async def _pending(_db: object) -> bool:
         return True
 
-    monkeypatch.setattr(runner, "full_reconciliation_is_pending", _pending)
+    monkeypatch.setattr(metrics_gate, "full_reconciliation_is_pending", _pending)
 
     calls: list[dict[str, object]] = []
 
@@ -1169,7 +1258,7 @@ async def test_main_drains_deferred_reconciliation_runs_environment_refresh(
         return _FakeEnvironmentRefreshOutcome()
 
     monkeypatch.setattr(
-        runner, "refresh_environment_profiles_for_year", _recording_refresh
+        metrics_gate, "refresh_environment_profiles_for_year", _recording_refresh
     )
 
     result = await runner.main()
@@ -1382,13 +1471,24 @@ async def test_refresh_schedule_calls_run_scoreboard_ingest_when_in_window(
     fake_report = _FakeScoreboardReport()
 
     async def _fake_scoreboard_ingest(
-        _db: object, *, today: object, client: object
+        _db: object,
+        *,
+        today: object,
+        client: object,
+        before_fetch: object,
+        before_upsert: object,
     ) -> object:
         calls.append({"today": today, "client": client})
+        await before_fetch()  # type: ignore[operator]
+        await before_upsert()  # type: ignore[operator]
         return fake_report
+
+    async def _fake_try_lock(_db: object) -> bool:
+        return True
 
     monkeypatch.setattr(runner, "_schedule_pull_in_window", _fake_in_window)
     monkeypatch.setattr(runner, "run_scoreboard_ingest", _fake_scoreboard_ingest)
+    monkeypatch.setattr(runner, "try_acquire_summer_league_writer_lock", _fake_try_lock)
 
     fake_client = _FakeClient()
     now = datetime(2026, 7, 12, 18, 0, tzinfo=timezone.utc)  # 2:00pm ET (EDT)

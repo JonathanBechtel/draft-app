@@ -65,6 +65,7 @@ async def test_full_lock_deferrals_are_durable_until_a_later_rebuild_completes(
         job=SummerLeaguePipelineJob.FULL_INGESTION,
         metrics_rebuilt=True,
         snapshots_materialized=True,
+        metrics_input_watermark="watermark-v1",
         now=completed,
     )
     await db_session.commit()
@@ -77,6 +78,7 @@ async def test_full_lock_deferrals_are_durable_until_a_later_rebuild_completes(
     assert refreshed.last_outcome == SummerLeaguePipelineOutcome.SUCCEEDED
     assert refreshed.consecutive_deferrals == 0
     assert refreshed.last_metrics_rebuilt_at == completed
+    assert refreshed.last_metrics_input_watermark == "watermark-v1"
     assert refreshed.last_snapshots_materialized_at == completed
 
 

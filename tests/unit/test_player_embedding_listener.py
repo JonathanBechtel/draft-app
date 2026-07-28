@@ -6,6 +6,7 @@ caller's commit and can persist an embedding for a row that later rolls back.
 These tests pin the deferral: collect-on-flush, fire-on-commit, drop-on-rollback.
 """
 
+import contextvars
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -18,6 +19,7 @@ from app.schemas.players_master import (
     discard_uncommitted_player_embeddings,
     embed_committed_players,
 )
+from app.utils import network_guard
 
 
 def _fake_session(new: list[Any] | None = None) -> Any:
@@ -91,3 +93,33 @@ def test_after_rollback_discards_without_scheduling() -> None:
         sched.assert_not_called()
 
     assert _PENDING_EMBEDDINGS_KEY not in session.info
+
+
+def test_scheduled_embedding_uses_clean_context() -> None:
+    """Post-commit tasks must not inherit the committing transaction marker."""
+    captured: list[contextvars.Context] = []
+
+    class _Loop:
+        def is_running(self) -> bool:
+            return True
+
+        def create_task(self, coroutine, *, context):
+            captured.append(context)
+            coroutine.close()
+
+    token = network_guard._active_transaction_ids.set(frozenset({123}))
+    try:
+        with patch.object(pm.asyncio, "get_event_loop", return_value=_Loop()):
+            pm._schedule_player_embedding(
+                {
+                    "player_id": 7,
+                    "display_name": "Cooper Flagg",
+                    "school": "Duke",
+                    "birth_country": "USA",
+                }
+            )
+    finally:
+        network_guard._active_transaction_ids.reset(token)
+
+    assert len(captured) == 1
+    assert captured[0].run(network_guard.transaction_depth) == 0

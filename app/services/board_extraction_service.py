@@ -23,7 +23,7 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, Protocol
+from typing import Awaitable, Callable, Optional, Protocol
 
 import httpx
 from bs4 import BeautifulSoup
@@ -41,10 +41,13 @@ from app.schemas.player_aliases import PlayerAlias
 from app.schemas.players_master import PlayerMaster
 from app.services import board_service
 from app.services.player_search_service import (
+    candidate_search_boundary,
     find_candidate_players,
     find_lexical_players,
 )
+from app.utils.network_guard import guard_network_io, guarded_async_httpx_event_hooks
 
+# discipline: file-size cross-cutting transport guard; no service logic added
 logger = logging.getLogger(__name__)
 
 _PAGE_FETCH_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0)
@@ -190,13 +193,14 @@ class ResolutionResult:
 # --- Public entry point ----------------------------------------------------
 
 
-async def extract_board(
+async def extract_board(  # noqa: PLR0913
     db: AsyncSession,
     *,
     news_item_id: int,
     kind: BoardKind = BoardKind.BIG_BOARD,
     fetcher: Optional["ArticleFetcher"] = None,
     ai_client: Optional[genai.Client] = None,
+    before_network_io: Optional[Callable[[], Awaitable[None]]] = None,
 ) -> Optional[Board]:
     """Extract a board from a NewsItem and persist as PENDING.
 
@@ -217,6 +221,8 @@ async def extract_board(
             to substitute canned HTML without touching the network).
         ai_client: Optional override for the Gemini client (used in tests to
             return canned structured output).
+        before_network_io: Boundary that closes caller-owned read transactions
+            before external requests.
 
     Returns:
         The persisted Board (PENDING), or ``None`` if extraction yielded no
@@ -256,10 +262,13 @@ async def extract_board(
         return existing
 
     # 1. Fetch article HTML and clean it to plain text.
-    fetch = fetcher or _default_fetcher
-    article_text = await fetch(news_item.url)
+    if before_network_io is not None:
+        await before_network_io()
+    article_text = await (fetcher or _default_fetcher)(news_item.url)
 
     # 2. Hand the article text to Gemini and parse the structured response.
+    if before_network_io is not None:
+        await before_network_io()
     extracted = await _extract_via_gemini(article_text, client=ai_client)
     if not extracted.entries:
         logger.warning(
@@ -284,7 +293,10 @@ async def extract_board(
     for raw in extracted.entries:
         resolve_started = time.monotonic()
         resolution = await resolve_player(
-            db, raw.player_name, use_vector=vector_enabled
+            db,
+            raw.player_name,
+            use_vector=vector_enabled,
+            before_candidate_search=before_network_io,
         )
         if (
             vector_enabled
@@ -353,16 +365,30 @@ async def extract_board(
         else None
     )
     published_at = extracted.published_at or news_item.published_at or datetime.utcnow()
-    board = await board_service.create_board(
-        db,
-        kind=kind,
-        num_rounds=num_rounds,
-        news_source_id=news_item.source_id,
-        draft_year=extracted.draft_year,
-        published_at=published_at,
-        entries=entries_in,
-        news_item_id=news_item_id,
-    )
+    if before_network_io is not None:
+        await before_network_io()
+        async with db.begin():
+            board = await board_service.create_board(
+                db,
+                kind=kind,
+                num_rounds=num_rounds,
+                news_source_id=news_item.source_id,
+                draft_year=extracted.draft_year,
+                published_at=published_at,
+                entries=entries_in,
+                news_item_id=news_item_id,
+            )
+    else:
+        board = await board_service.create_board(
+            db,
+            kind=kind,
+            num_rounds=num_rounds,
+            news_source_id=news_item.source_id,
+            draft_year=extracted.draft_year,
+            published_at=published_at,
+            entries=entries_in,
+            news_item_id=news_item_id,
+        )
     logger.info(
         "board.extract.created board_id=%s news_item_id=%s entries=%d unresolved=%d",
         board.id,
@@ -371,6 +397,29 @@ async def extract_board(
         len(unresolved_names),
     )
     return board
+
+
+async def extract_board_from_article(
+    db: AsyncSession,
+    *,
+    news_item_id: int,
+    kind: BoardKind,
+    article_text: str,
+    before_network_io: Optional[Callable[[], Awaitable[None]]] = None,
+) -> Optional[Board]:
+    """Persist an already-fetched article without performing HTTP in a transaction."""
+
+    async def _cached_fetcher(url: str) -> str:
+        del url
+        return article_text
+
+    return await extract_board(
+        db,
+        news_item_id=news_item_id,
+        kind=kind,
+        fetcher=_cached_fetcher,
+        before_network_io=before_network_io,
+    )
 
 
 # --- Article fetching -----------------------------------------------------
@@ -508,6 +557,7 @@ async def _http_get(url: str) -> str:
         timeout=_PAGE_FETCH_TIMEOUT,
         headers=_PAGE_FETCH_HEADERS,
         follow_redirects=True,
+        event_hooks=guarded_async_httpx_event_hooks(),
     ) as client:
         try:
             response = await client.get(url)
@@ -734,6 +784,7 @@ async def _extract_via_gemini(
         raise BoardExtractionError("Empty article text — nothing to extract.")
 
     gemini_client = client or _build_gemini_client()
+    guard_network_io("Gemini board extraction request")
 
     try:
         response = await asyncio.wait_for(
@@ -905,7 +956,11 @@ def normalize_player_name(name: str) -> str:
 
 
 async def resolve_player(
-    db: AsyncSession, raw_name: str, *, use_vector: bool = True
+    db: AsyncSession,
+    raw_name: str,
+    *,
+    use_vector: bool = True,
+    before_candidate_search: Optional[Callable[[], Awaitable[None]]] = None,
 ) -> ResolutionResult:
     """Resolve a raw player name to a ``players_master`` id via a three-step cascade.
 
@@ -934,6 +989,8 @@ async def resolve_player(
             extracting a whole board flip this off once the embedding backend
             looks degraded so a stalled embedding can't be paid once per
             remaining name.
+        before_candidate_search: Boundary that closes exact/alias reads before
+            embedding-backed candidate search.
 
     Returns:
         A :class:`ResolutionResult` with:
@@ -1002,7 +1059,13 @@ async def resolve_player(
     # search misses.  Persist candidates regardless of score so an admin can
     # review them.  Do NOT auto-resolve — that is a follow-up ticket.
     try:
-        hybrid_hits = await find_candidate_players(db, raw_name, k=5)
+        if before_candidate_search is not None:
+            await before_candidate_search()
+        if before_candidate_search is None:
+            hybrid_hits = await find_candidate_players(db, raw_name, k=5)
+        else:
+            with candidate_search_boundary(before_candidate_search):
+                hybrid_hits = await find_candidate_players(db, raw_name, k=5)
     except Exception:
         logger.exception(
             "board.resolve.hybrid_search_error raw_name=%r — returning UNRESOLVED",

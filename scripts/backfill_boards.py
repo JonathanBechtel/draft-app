@@ -180,9 +180,18 @@ async def _ingest_one(db: AsyncSession, cand: dict, *, kind: str) -> tuple[str, 
 
     item = await _find_or_create_news_item(db, cand, kind=kind)
     item_id = item.id  # type: ignore[attr-defined]
+    # ``extract_board`` closes read transactions before network calls. Make a
+    # newly flushed source item durable first so that boundary cannot roll it
+    # back before the board's FK is persisted.
+    await db.commit()
 
     try:
-        board = await extract_board(db, news_item_id=item_id, kind=_board_kind(kind))
+        board = await extract_board(
+            db,
+            news_item_id=item_id,
+            kind=_board_kind(kind),
+            before_network_io=db.close,
+        )
     except PaywallDetectedError as exc:
         await db.rollback()
         return ("paywalled", str(exc)[:120])

@@ -17,9 +17,12 @@ The safe-delete guard's counterpart, :func:`~app.services.player_merge_reference
 child-table registry but asks a read-only question and needs none of this machinery.
 """
 
+# discipline: file-size cross-cutting network boundary; no new merge domain logic
+
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -484,6 +487,8 @@ async def find_duplicate_candidates(
     db: AsyncSession,
     player_id: int,
     k: int = 5,
+    *,
+    before_candidate_search: Callable[[], Awaitable[None]] | None = None,
 ) -> list[Candidate]:
     """Return near-duplicate candidates for a player, excluding itself.
 
@@ -495,6 +500,8 @@ async def find_duplicate_candidates(
         db: Active async database session.
         player_id: The player to find duplicates for.
         k: Maximum number of candidates to return (before excluding self).
+        before_candidate_search: Optional caller-owned boundary that closes a
+            read transaction before vector search.
 
     Returns:
         A list of up to *k* :class:`~app.services.player_search_service.Candidate`
@@ -507,6 +514,7 @@ async def find_duplicate_candidates(
     # dependency) at module-import time, keeping unit tests lightweight.
     from app.services.player_search_service import (  # noqa: PLC0415
         Candidate as _Candidate,
+        candidate_search_boundary,
         find_candidate_players,
     )
 
@@ -515,7 +523,11 @@ async def find_duplicate_candidates(
         raise ValueError(f"Player {player_id} not found")
 
     # Request k+1 to ensure we still have k results after removing self.
-    candidates: list[_Candidate] = await find_candidate_players(
-        db, display_name, k=k + 1
-    )
+    if before_candidate_search is None:
+        candidates: list[_Candidate] = await find_candidate_players(
+            db, display_name, k=k + 1
+        )
+    else:
+        with candidate_search_boundary(before_candidate_search):
+            candidates = await find_candidate_players(db, display_name, k=k + 1)
     return [c for c in candidates if c.player_id != player_id][:k]

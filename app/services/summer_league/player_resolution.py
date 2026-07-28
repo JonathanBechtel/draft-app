@@ -1,10 +1,12 @@
 """Resolve Summer League source players to canonical DraftGuru players."""
 
+# discipline: file-size cross-cutting network boundary; no new resolution policy
+
 from __future__ import annotations
 
 import logging
 import re
-import unicodedata
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal, Protocol, cast
@@ -14,7 +16,6 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_affiliation import PlayerAffiliation
-from app.schemas.player_aliases import PlayerAlias
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
@@ -26,6 +27,11 @@ from app.schemas.summer_league import (
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
     SummerLeagueSourcePlayer,
+)
+from app.services.player_identity_guard import (
+    IdentityVariantMatches,
+    find_variant_identity_matches,
+    normalize_player_identity_name,
 )
 from app.services.player_mention_service import parse_player_name
 
@@ -123,20 +129,9 @@ def _collapse_whitespace(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip())
 
 
-_NAME_SUFFIX_RE = re.compile(
-    r"\s+(jr|sr|ii|iii|iv|v)\.?\s*$",
-    re.IGNORECASE,
-)
-
-
 def normalize_player_name(name: str) -> str:
-    """Return a suffix- and diacritic-insensitive player-name key."""
-    if not name:
-        return ""
-    folded = unicodedata.normalize("NFKD", name)
-    ascii_only = "".join(ch for ch in folded if not unicodedata.combining(ch))
-    without_suffix = _NAME_SUFFIX_RE.sub("", ascii_only)
-    return _collapse_whitespace(without_suffix).lower()
+    """Return the shared variant-aware canonical-player identity key."""
+    return normalize_player_identity_name(name)
 
 
 def _candidate_payloads(
@@ -568,46 +563,39 @@ async def _confirm_resolution(
     )
 
 
-async def _find_unique_normalized_display_match(
-    db: AsyncSession,
-    source_name: str,
-) -> int | None:
-    """Return a unique player whose normalized display name matches."""
-    needle = normalize_player_name(source_name)
-    if not needle:
+def _plan_from_variant_matches(
+    *,
+    source_player_id: int,
+    matches: IdentityVariantMatches,
+) -> SummerLeagueResolutionPlan | None:
+    """Build a safe resolution plan from variant-normalized identity matches."""
+    player_ids = matches.player_ids
+    if not player_ids:
         return None
-
-    result = await db.execute(
-        select(PlayerMaster.id, PlayerMaster.display_name)  # type: ignore[call-overload]
+    if len(player_ids) == 1:
+        player_id = next(iter(player_ids))
+        kind: SummerLeagueResolutionPlanKind = (
+            "EXACT" if player_id in matches.display_names else "ALIAS"
+        )
+        return SummerLeagueResolutionPlan(
+            source_player_id=source_player_id,
+            kind=kind,
+            player_id=player_id,
+        )
+    candidates = [
+        SummerLeagueResolutionCandidate(
+            player_id=player_id,
+            display_name=matches.display_name_for(player_id),
+            score=1.0,
+            method="NORMALIZED_VARIANT_COLLISION",
+        )
+        for player_id in sorted(player_ids)
+    ]
+    return SummerLeagueResolutionPlan(
+        source_player_id=source_player_id,
+        kind="VECTOR_CANDIDATE",
+        candidates=candidates,
     )
-    matches: set[int] = set()
-    for player_id, display_name in result.all():
-        if display_name and normalize_player_name(display_name) == needle:
-            matches.add(int(player_id))
-            if len(matches) > 1:
-                return None
-    return next(iter(matches)) if len(matches) == 1 else None
-
-
-async def _find_unique_normalized_alias_match(
-    db: AsyncSession,
-    source_name: str,
-) -> int | None:
-    """Return a unique player whose normalized alias matches."""
-    needle = normalize_player_name(source_name)
-    if not needle:
-        return None
-
-    result = await db.execute(
-        select(PlayerAlias.player_id, PlayerAlias.full_name)  # type: ignore[call-overload]
-    )
-    matches: set[int] = set()
-    for player_id, full_name in result.all():
-        if normalize_player_name(full_name) == needle:
-            matches.add(int(player_id))
-            if len(matches) > 1:
-                return None
-    return next(iter(matches)) if len(matches) == 1 else None
 
 
 async def _create_stub_player(
@@ -714,6 +702,8 @@ class SummerLeagueResolutionPlan:
 async def prepare_source_player_resolution(
     db: AsyncSession,
     source_player: SummerLeagueSourcePlayer,
+    *,
+    before_candidate_search: Callable[[], Awaitable[None]] | None = None,
 ) -> SummerLeagueResolutionPlan:
     """Run the read-only resolution cascade for one source player.
 
@@ -725,6 +715,7 @@ async def prepare_source_player_resolution(
     Args:
         db: Async database session.
         source_player: The source player to evaluate.
+        before_candidate_search: Boundary closing the read transaction before search.
 
     Returns:
         A :class:`SummerLeagueResolutionPlan` describing what
@@ -761,30 +752,28 @@ async def prepare_source_player_resolution(
             existing_status=existing_status,
         )
 
-    exact_player_id = await _find_unique_normalized_display_match(
-        db,
-        source_player.raw_player_name,
+    normalized_plan = _plan_from_variant_matches(
+        source_player_id=source_player.id,
+        matches=await find_variant_identity_matches(
+            db,
+            source_player.raw_player_name,
+        ),
     )
-    if exact_player_id is not None:
-        return SummerLeagueResolutionPlan(
-            source_player_id=source_player.id,
-            kind="EXACT",
-            player_id=exact_player_id,
-        )
+    if normalized_plan is not None:
+        return normalized_plan
 
-    alias_player_id = await _find_unique_normalized_alias_match(
-        db,
-        source_player.raw_player_name,
-    )
-    if alias_player_id is not None:
-        return SummerLeagueResolutionPlan(
-            source_player_id=source_player.id,
-            kind="ALIAS",
-            player_id=alias_player_id,
-        )
-
+    if before_candidate_search is not None:
+        await before_candidate_search()
     try:
-        candidates = await _collect_candidates(db, source_player)
+        if before_candidate_search is None:
+            candidates = await _collect_candidates(db, source_player)
+        else:
+            from app.services.player_search_service import (  # noqa: PLC0415
+                candidate_search_boundary,
+            )
+
+            with candidate_search_boundary(before_candidate_search):
+                candidates = await _collect_candidates(db, source_player)
     except SummerLeagueCandidateSearchError:
         return SummerLeagueResolutionPlan(
             source_player_id=source_player.id,
@@ -811,6 +800,7 @@ async def apply_source_player_resolution_plan(
     plan: SummerLeagueResolutionPlan,
     *,
     create_stub: bool = False,
+    recheck_variant_before_stub: bool = True,
 ) -> SummerLeagueResolutionResult:
     """Persist the outcome of a previously prepared resolution plan.
 
@@ -824,6 +814,8 @@ async def apply_source_player_resolution_plan(
         plan: The decision from :func:`prepare_source_player_resolution`.
         create_stub: Whether an unmatched, no-serious-candidate player should
             get a new canonical stub player created for it.
+        recheck_variant_before_stub: Whether to run the final identity lookup
+            here. Lock-bounded callers may revalidate immediately beforehand.
 
     Returns:
         The persisted :class:`SummerLeagueResolutionResult`.
@@ -896,6 +888,22 @@ async def apply_source_player_resolution_plan(
 
     # plan.kind == "UNRESOLVED"
     assert plan.kind == "UNRESOLVED"
+    if create_stub and recheck_variant_before_stub:
+        late_normalized_plan = _plan_from_variant_matches(
+            source_player_id=plan.source_player_id,
+            matches=await find_variant_identity_matches(
+                db,
+                source_player.raw_player_name,
+            ),
+        )
+        if late_normalized_plan is not None:
+            return await apply_source_player_resolution_plan(
+                db,
+                source_player,
+                late_normalized_plan,
+                create_stub=False,
+                recheck_variant_before_stub=False,
+            )
     if create_stub:
         stub_player_id = await _create_stub_player(db, source_player)
         return await _confirm_resolution(
@@ -931,11 +939,32 @@ async def apply_source_player_resolution_plan(
     )
 
 
+async def revalidate_source_player_resolution_plan(
+    db: AsyncSession,
+    source_player: SummerLeagueSourcePlayer,
+    plan: SummerLeagueResolutionPlan,
+) -> SummerLeagueResolutionPlan:
+    """Recheck a prospective stub before entering a writer-lock transaction."""
+    if plan.kind != "UNRESOLVED":
+        return plan
+    return (
+        _plan_from_variant_matches(
+            source_player_id=plan.source_player_id,
+            matches=await find_variant_identity_matches(
+                db,
+                source_player.raw_player_name,
+            ),
+        )
+        or plan
+    )
+
+
 async def resolve_source_player(
     db: AsyncSession,
     source_player: SummerLeagueSourcePlayer,
     *,
     create_stub: bool = False,
+    before_candidate_search: Callable[[], Awaitable[None]] | None = None,
 ) -> SummerLeagueResolutionResult:
     """Resolve one Summer League source player through the configured cascade.
 
@@ -946,7 +975,11 @@ async def resolve_source_player(
     search's Gemini call (see ``summer_league_ingest_runner``'s batched
     resolution phase).
     """
-    plan = await prepare_source_player_resolution(db, source_player)
+    plan = await prepare_source_player_resolution(
+        db,
+        source_player,
+        before_candidate_search=before_candidate_search,
+    )
     return await apply_source_player_resolution_plan(
         db, source_player, plan, create_stub=create_stub
     )
@@ -1061,6 +1094,7 @@ async def resolve_summer_league_players(
     year: int | None = None,
     league_id: str | None = None,
     create_stubs: bool = False,
+    before_candidate_search: Callable[[], Awaitable[None]] | None = None,
 ) -> SummerLeagueResolutionReport:
     """Resolve Summer League source players in a selected batch scope.
 
@@ -1075,13 +1109,18 @@ async def resolve_summer_league_players(
     source_players = await _load_source_players(db, year=year, league_id=league_id)
     results: list[SummerLeagueResolutionResult] = []
     for source_player in source_players:
-        results.append(
-            await resolve_source_player(
+        if before_candidate_search is None:
+            result = await resolve_source_player(
+                db, source_player, create_stub=create_stubs
+            )
+        else:
+            result = await resolve_source_player(
                 db,
                 source_player,
                 create_stub=create_stubs,
+                before_candidate_search=before_candidate_search,
             )
-        )
+        results.append(result)
     return build_resolution_report(year=year, league_id=league_id, results=results)
 
 
@@ -1090,6 +1129,7 @@ async def prepare_summer_league_player_resolutions(
     *,
     year: int | None = None,
     league_id: str | None = None,
+    before_candidate_search: Callable[[], Awaitable[None]] | None = None,
 ) -> list[tuple[SummerLeagueSourcePlayer, SummerLeagueResolutionPlan]]:
     """Load the selected batch scope and prepare a plan for each source player.
 
@@ -1104,6 +1144,7 @@ async def prepare_summer_league_player_resolutions(
         db: Async database session with no open transaction.
         year: Optional Summer League season year to scope the batch.
         league_id: Optional NBA Stats LeagueID to scope the batch.
+        before_candidate_search: Boundary invoked before each candidate search.
 
     Returns:
         ``(source_player, plan)`` pairs in the same order
@@ -1112,6 +1153,10 @@ async def prepare_summer_league_player_resolutions(
     source_players = await _load_source_players(db, year=year, league_id=league_id)
     pairs: list[tuple[SummerLeagueSourcePlayer, SummerLeagueResolutionPlan]] = []
     for source_player in source_players:
-        plan = await prepare_source_player_resolution(db, source_player)
+        plan = await prepare_source_player_resolution(
+            db,
+            source_player,
+            before_candidate_search=before_candidate_search,
+        )
         pairs.append((source_player, plan))
     return pairs

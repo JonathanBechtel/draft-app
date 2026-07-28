@@ -29,7 +29,9 @@ from app.schemas.player_college_stats import PlayerCollegeStats
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
 from app.services.summer_league.cohort import summer_league_cohort
+from app.utils.network_guard import guarded_httpx_event_hooks
 
+# discipline: file-size cross-cutting transport guard; no service logic added
 logger = logging.getLogger(__name__)
 
 _BBREF_BASE = "https://www.basketball-reference.com"
@@ -266,6 +268,7 @@ def fetch_player_html(
             headers={"User-Agent": _USER_AGENT},
             timeout=30.0,
             follow_redirects=True,
+            event_hooks=guarded_httpx_event_hooks(),
         ) as client:
             resp = client.get(url)
             resp.raise_for_status()

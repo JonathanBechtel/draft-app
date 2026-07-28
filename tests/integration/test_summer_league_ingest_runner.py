@@ -48,6 +48,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
 )
+from app.utils.network_guard import transaction_depth
 from app.schemas.summer_league_pipeline import SummerLeagueBatchPhase
 from app.services.player_mention_service import _normalized_name_key
 from app.services.summer_league.audit import audit_summer_league_raw
@@ -579,6 +580,7 @@ async def test_run_venue_resolution_search_runs_without_lock_writes_hold_it(
     async def _fake_candidate_search(
         _db: object, _query: str, k: int = 5
     ) -> list[object]:
+        lock_states["candidate_transaction_free"] = transaction_depth() == 0
         lock_states["during_candidate_search"] = await _probe_writer_lock_is_free(
             session_factory, test_schema
         )
@@ -622,6 +624,7 @@ async def test_run_venue_resolution_search_runs_without_lock_writes_hold_it(
 
     assert (had_games, failed) == (True, False)
     assert lock_states == {
+        "candidate_transaction_free": True,
         "during_candidate_search": True,  # lock free -- no transaction held it
         "during_resolution_write": False,  # lock held -- the write batch owns it
     }
