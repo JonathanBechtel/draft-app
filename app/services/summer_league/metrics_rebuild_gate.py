@@ -16,7 +16,10 @@ from app.services.summer_league.environment_refresh import (
     refresh_environment_profiles_for_year,
     resolve_environment_refresh_scope,
 )
-from app.services.summer_league.metrics import rebuild_staged as rebuild_sl_metrics
+from app.services.summer_league.metrics import (
+    rebuild_staged as rebuild_sl_metrics,
+    set_repeatable_read_snapshot,
+)
 from app.services.summer_league.metric_publish import publish_metric_version
 from app.services.summer_league.metrics_input import calculate_metrics_input_watermark
 from app.services.summer_league.pipeline_state import (
@@ -121,6 +124,7 @@ async def run_metrics_stage(
             # expensive part of a rebuild, so it deliberately runs without the
             # shared writer lock; current rows remain readable throughout.
             async with db.begin():
+                await set_repeatable_read_snapshot(db)
                 summary = await rebuild_sl_metrics(db)
 
             metrics_version = int(summary["version"])

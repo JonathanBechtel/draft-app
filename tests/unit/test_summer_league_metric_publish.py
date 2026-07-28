@@ -70,9 +70,18 @@ async def test_publish_metric_model_refits_and_activates_existing_fit() -> None:
 async def test_next_metric_version_uses_the_highest_projection_version() -> None:
     """The next publication sequence spans context and player projections."""
     db = MagicMock()
-    db.scalar = AsyncMock(side_effect=[4, 9])
+    db.scalar = AsyncMock(side_effect=[None, 4, 9])
 
     assert await metric_publish.next_metric_version(db) == 10
+
+
+@pytest.mark.asyncio
+async def test_next_metric_version_uses_the_database_sequence() -> None:
+    """Production publication versions come from the atomic database sequence."""
+    db = MagicMock()
+    db.scalar = AsyncMock(side_effect=["summer_league_metric_version_seq", 12])
+
+    assert await metric_publish.next_metric_version(db) == 12
 
 
 @pytest.mark.asyncio

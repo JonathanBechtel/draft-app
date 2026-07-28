@@ -17,6 +17,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 REGISTRY_VERSION = "2026.07.1"
 CALCULATION_VERSION = "2026.07.1"
+VERSION_SEQUENCE = "summer_league_metric_version_seq"
 
 _TABLES: dict[str, dict[str, object]] = {
     "summer_league_metric_contexts": {
@@ -102,11 +103,35 @@ def _create_constraints(table: str, spec: Mapping[str, object]) -> None:
             )
 
 
+def _create_version_sequence() -> None:
+    """Create and seed the atomic publication-version allocator."""
+    bind = op.get_bind()
+    op.execute(sa.text(f"CREATE SEQUENCE IF NOT EXISTS {VERSION_SEQUENCE}"))
+    max_version = int(
+        bind.execute(
+            sa.text(
+                "SELECT GREATEST("
+                "COALESCE((SELECT MAX(version) FROM summer_league_metric_contexts), 0), "
+                "COALESCE((SELECT MAX(version) FROM summer_league_player_seasons), 0)"
+                ")"
+            )
+        ).scalar_one()
+        or 0
+    )
+    bind.execute(
+        sa.text(
+            f"SELECT setval('{VERSION_SEQUENCE}', :value, :is_called)"
+        ),
+        {"value": max(1, max_version), "is_called": max_version > 0},
+    )
+
+
 def upgrade() -> None:
     """Backfill legacy rows and enforce one current row per metric scope."""
     for table, spec in _TABLES.items():
         _add_version_columns(table)
         _create_constraints(table, spec)
+    _create_version_sequence()
 
 
 def downgrade() -> None:
@@ -145,3 +170,4 @@ def downgrade() -> None:
             "version",
         ):
             op.drop_column(table, column)
+    op.execute(sa.text(f"DROP SEQUENCE IF EXISTS {VERSION_SEQUENCE}"))

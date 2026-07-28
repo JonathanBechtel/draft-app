@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league_metrics import (
@@ -121,7 +121,19 @@ async def publish_metric_model(
 
 
 async def next_metric_version(db: AsyncSession) -> int:
-    """Return the next publication version across both metric projections."""
+    """Return an atomic publication version, with a pre-migration fallback."""
+    sequence_exists = await db.scalar(
+        text("SELECT to_regclass('summer_league_metric_version_seq')")
+    )
+    if sequence_exists is not None:
+        sequence_value = await db.scalar(
+            text("SELECT nextval('summer_league_metric_version_seq')")
+        )
+        return int(sequence_value)
+
+    # Test fixtures that create tables from SQLModel metadata do not run Alembic,
+    # so retain a compatibility fallback for those DBs. Production databases have
+    # the sequence from c5d6e7f8a9b0 and never use this race-prone legacy path.
     season_max = await db.scalar(select(func.max(SummerLeaguePlayerSeason.version)))
     context_max = await db.scalar(select(func.max(SummerLeagueMetricContext.version)))
     return max(int(season_max or 0), int(context_max or 0)) + 1

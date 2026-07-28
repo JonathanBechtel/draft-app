@@ -56,6 +56,9 @@ def _summer_league_writer_lock_available(
     async def _available_yielding(_db: object, _step_fields: object = None) -> bool:
         return True
 
+    async def _set_repeatable_read(_db: object) -> None:
+        return None
+
     async def _no_completed_batches(_db: object, **_kwargs: object) -> set[str]:
         return set()
 
@@ -81,6 +84,9 @@ def _summer_league_writer_lock_available(
         metrics_gate,
         "try_acquire_summer_league_writer_lock_yielding",
         _available_yielding,
+    )
+    monkeypatch.setattr(
+        metrics_gate, "set_repeatable_read_snapshot", _set_repeatable_read
     )
     monkeypatch.setattr(runner, "defer_full_reconciliation", _defer)
     monkeypatch.setattr(metrics_gate, "defer_full_reconciliation", _defer)

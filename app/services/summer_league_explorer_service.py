@@ -2765,7 +2765,7 @@ def _build_player_career_stmt(q: ExplorerQuery) -> Any:
     ps = SummerLeaguePlayerSeason
     pm = PlayerMaster
 
-    conds: list[Any] = []
+    conds: list[Any] = [ps.is_current.is_(True)]  # type: ignore[attr-defined]
     if q.year_min is not None:
         conds.append(ps.year >= q.year_min)  # type: ignore[arg-type]
     if q.year_max is not None:

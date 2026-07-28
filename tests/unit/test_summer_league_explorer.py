@@ -23,6 +23,7 @@ from app.services.summer_league_explorer_service import (
     _PLAYER_ADVANCED_COLUMNS,
     _PLAYER_STAT_COLUMNS,
     _build_profile_view,
+    _build_player_career_stmt,
     _build_result,
     _compute_player_values,
     _is_single_competition,
@@ -170,6 +171,14 @@ def test_gmsc_career_sort_expr_scales_to_displayed_rate() -> None:
     assert "NULLIF(COUNT(*), 0)" in expr
     # totals mode is the unscaled cumulative aggregate (no per-game division).
     assert "COUNT(*)" not in _player_sort_expr("gmsc", "totals")
+
+
+def test_career_projection_aggregates_only_current_metric_rows() -> None:
+    """Career totals do not multiply when historical metric versions accumulate."""
+    statement = _build_player_career_stmt(ExplorerQuery())
+    sql = str(statement.compile(compile_kwargs={"literal_binds": True}))
+
+    assert "summer_league_player_seasons.is_current" in sql
 
 
 # --------------------------------------------------------------------------- #

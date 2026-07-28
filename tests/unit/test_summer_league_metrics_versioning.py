@@ -77,6 +77,18 @@ async def test_source_as_of_uses_the_latest_metric_input_timestamp() -> None:
 
 
 @pytest.mark.asyncio
+async def test_metric_build_uses_a_repeatable_read_snapshot() -> None:
+    """Unlocked rebuilds pin all source queries to one committed database snapshot."""
+    db = MagicMock()
+    db.execute = AsyncMock()
+
+    await metrics.set_repeatable_read_snapshot(db)
+
+    db.execute.assert_awaited_once()
+    assert "REPEATABLE READ" in str(db.execute.await_args.args[0])
+
+
+@pytest.mark.asyncio
 async def test_rebuild_staged_writes_an_inactive_candidate_version(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

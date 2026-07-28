@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.summer_league.metric_publish import publish_metric_model
@@ -956,6 +956,11 @@ async def _source_as_of(db: AsyncSession) -> Optional[datetime]:
         await db.scalar(select(func.max(SummerLeaguePlayByPlayEvent.updated_at))),
     ]
     return max((stamp for stamp in timestamps if stamp is not None), default=None)
+
+
+async def set_repeatable_read_snapshot(db: AsyncSession) -> None:
+    """Pin the following unlocked metric build to one committed source snapshot."""
+    await db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
 
 
 async def _load_shot_diet(
