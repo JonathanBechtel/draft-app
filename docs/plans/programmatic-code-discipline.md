@@ -306,6 +306,23 @@ Same shape, with the ContextVar set in `write_lock.py` acquire/release. Distinct
 the lock can be held with no transaction open, and vice versa. This is the precise guard for the
 July 19 starvation cause.
 
+**Shipped (Phase 1, #692 via PR #696):** `app/utils/network_guard.py`, covering both sections
+because they share one mechanism. Transaction depth comes from `@event.listens_for(Session,
+"after_begin" / "after_transaction_end")`; writer-lock depth from
+`mark_summer_league_writer_lock_acquired`, called at both acquire sites in `write_lock.py`.
+`guard_network_io` raises `NetworkIOGuardViolation` outside prod and logs a warning with the full
+stack inside it, exactly as specified.
+
+Two things about the shape are worth recording, because both are easy to get wrong:
+
+* **The guard is only real where it is called.** Defining it is the small half; roughly ten
+  service modules import it, and `nba_stats_client.py` calls it before issuing a request. A
+  version that shipped the module without the call sites would pass every test it has and catch
+  nothing — the same "passes tests, dead in production" shape §3.5 describes.
+* **Warn-in-prod is not timidity.** A guard that raised in production would convert a latent
+  violation into a user-visible failure at the worst moment. Surfacing the stack without breaking
+  the request is what makes it safe to land before the violations are known.
+
 ### 2.3 Transaction duration and statement budgets in tests
 
 **Failure:** the venue phase held a lock ~88 minutes; the Desk needed ~38 seconds.
@@ -519,12 +536,15 @@ deadline pressure; it does not produce good design.
 Sequenced by value-per-effort, and so nothing lands as a wall of violations.
 
 1. **3.1 contracts 2, 3, 5** — write them *before* the packages exist. Near-zero effort, zero
-   debt, permanent guarantee. Do this first precisely because it costs nothing.
+   debt, permanent guarantee. Do this first precisely because it costs nothing. (**shipped**)
 2. **1.1 unscoped delete** — highest value per line, ~60 lines, few existing violations.
+   (**shipped**, hardened twice since — see §1.1)
 3. **2.1 / 2.2 runtime network-in-transaction guards** — the direct fix for the failure that is
    still causing pain. Warning-only in production, hard failure in dev/test.
-4. **1.4 file-size ratchet** — cheap, immediately stops the god files growing.
+   (**shipped**, Phase 1)
+4. **1.4 file-size ratchet** — cheap, immediately stops the god files growing. (**shipped**)
 5. **3.1 contract 4** — the `event_desk` decoupling ratchet, with its `ignore_imports` baseline.
+   (**shipped**, Phase 1)
 6. **1.3 stat constants** — land *with* doc #2's consolidation so it protects the cleanup.
 7. **1.6 Ruff complexity rules** — baseline via `per-file-ignores`, enforce on new code.
 8. **1.2 transaction body weight**, **2.3 duration budgets**, **3.2 parity tests** — as the
@@ -535,6 +555,11 @@ Sequenced by value-per-effort, and so nothing lands as a wall of violations.
 
 **Stop after 4 if bandwidth is short.** Those four cover most of the drift, and two rules that are
 respected beat eight that get `# noqa`'d.
+
+**As of Phase 1, items 1–5 and 9 have all landed.** What remains is deliberately deferred rather
+than skipped: **1.3** waits for doc #2's stat consolidation to protect, **1.2 / 2.3 / 3.2** wait
+for the refactors they measure, and **3.5** waits for the next UI-bearing change. Recorded here so
+"the rest was never done" is not mistaken for a gap.
 
 **Every rule ships with:** the failure it descends from (in its docstring), an escape hatch
 requiring a justifying comment, and a baseline so it never blocks unrelated work.
