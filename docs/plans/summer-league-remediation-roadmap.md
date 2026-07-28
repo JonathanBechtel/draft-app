@@ -97,16 +97,21 @@ section, P2 compliance, and the time axis Phase 3 consumes — but shipping it f
 the phase's riskiest change on a path #669 does not indict. Migration safety goes first instead.
 The scoping subtlety still holds and is still worth fixing (`compute()` loads and refits the full
 historical dataset regardless of scope, so scoping bounds neither compute cost nor transaction
-length) — but it is a cost finding, not the lock finding. **That cost finding is now fixed**
-(#694): `app/services/summer_league/metrics_rebuild_gate.py` compares a durable input watermark
-and skips the rebuild entirely when nothing upstream changed, so `compute()` still loads the full
-pool when it runs — which is required for the fits to be correct — but now rarely runs at all.
+length) — but it is a cost finding, not the lock finding. **That cost finding is only half
+fixed.** #694's `metrics_rebuild_gate.py` compares a durable input watermark and skips the
+rebuild entirely when nothing upstream changed, which removed the off-season waste — an hourly
+24-minute recompute of data unchanged since the last game. But when the watermark *does* move it
+calls `rebuild_sl_metrics(db)` unscoped, so the full-pool `compute()` and both unscoped deletes
+still run. **In a live event, inputs change every tick, so the expensive path runs every hour —
+which is precisely the window this phase's exit criteria measure.** Tracked as #701; do not read
+#694 as having closed it.
 
 ### Status
 
 **Shipped:** migration safety and the readiness probe · deploy-freshness alarm · import
 contract 4 · `DatedVersionMixin` (definition only) · metric-model fit-history retention ·
-runtime network/writer-lock guards · ingestion identity guard · the metrics rebuild gate.
+runtime network/writer-lock guards · ingestion identity guard · the metrics rebuild gate
+(unchanged-input skip only — see #701).
 
 **Remaining**, and all three are tracked as their own tickets:
 
@@ -114,6 +119,7 @@ runtime network/writer-lock guards · ingestion identity guard · the metrics re
 |---|---|
 | **Version-flip publish** (#697) | The largest change in the phase, and the entry gate removed its urgency by exonerating the path it converts. Still owed: it retires the last two unscoped-delete waivers in `metrics.py` and creates Phase 3's time axis |
 | **Intra-day compaction** (#698) | Cannot precede the version-flip — there are no hourly versions to compact until versions exist |
+| **In-event metrics scoping** (#701) | #694 skips rebuilds when inputs are unchanged, which is the off-season case. When inputs move, the unscoped full-pool compute still runs — every hour during a live event |
 | **Latency-class partitioning** (#699) | Buildable now but **not verifiable** until there are live games to poll; shipping it off-season means unverified code lying dormant until July |
 
 **Also open, but a decision rather than work:** auto-deploy on merge to `main`. The freshness
@@ -231,9 +237,9 @@ The live issue queue and this plan describe the same work; keep them pointing at
 
 | Ticket(s) | Relationship |
 |---|---|
-| **#669** (incident record) | The observed evidence behind Phase 1's entry gate, and the source of the migration-safety items. **Entry gate closed** — the diagnosis is a comment on the issue; migration safety shipped as the phase's first change. Remaining open follow-ups on the issue (metrics-compute scoping is now closed by #694's rebuild gate): a maximum transaction/writer-lock lifetime per cron phase, alerting on old transactions and pool saturation, and per-stage cron telemetry that survives machine restarts |
+| **#669** (incident record) | The observed evidence behind Phase 1's entry gate, and the source of the migration-safety items. **Entry gate closed** — the diagnosis is a comment on the issue; migration safety shipped as the phase's first change. Remaining open follow-ups on the issue (metrics-compute scoping is only half closed — see #701): a maximum transaction/writer-lock lifetime per cron phase, alerting on old transactions and pool saturation, and per-stage cron telemetry that survives machine restarts |
 | **#697, #698, #699** (Phase 1 remainder) | The three build items left in this phase: version-flip publish, its compaction policy, and latency-class partitioning. #698 is blocked on #697; #699 is blocked on a live event or a staging replay, not on code |
-| **#692, #693, #694** | **Closed** (PR #696): runtime network/writer-lock guards, the ingestion identity guard, and the metrics rebuild gate that stopped the hourly full recompute |
+| **#692, #693, #694** | **Closed** (PR #696): runtime network/writer-lock guards, the ingestion identity guard, and the metrics rebuild gate. #694 stopped the *unchanged-input* recompute only; the in-event full-pool cost it was meant to bound is still open as #701 |
 | **#661** (scheduler success ≠ data refresh) | Implements the operational half of desk §1's watermark contract — scheduler / source / projection / snapshot signals kept distinct. Complements Phase 5's user-facing contract; ship whenever ready |
 | **#662–#667** (Desk decomposition) | Phase 5 material. **Sequencing guard:** execute after Phase 2's stat consolidation, or restrict each ticket to pure moves — otherwise duplicated math gets scattered into more files (sequencing rule 3) |
 | **#645, #646, #648** (Explorer/environment modularization) | Same Phase 5 guard applies |
