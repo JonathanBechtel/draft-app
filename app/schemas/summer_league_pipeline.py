@@ -96,6 +96,10 @@ class SummerLeaguePipelineState(SQLModel, table=True):  # type: ignore[call-arg]
     last_source_advanced_at: Optional[datetime] = Field(default=None)
     last_projection_refreshed_at: Optional[datetime] = Field(default=None)
     last_metrics_rebuilt_at: Optional[datetime] = Field(default=None)
+    last_metrics_input_watermark: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+    )
     last_snapshots_materialized_at: Optional[datetime] = Field(default=None)
     last_content_updated: Optional[bool] = Field(default=None)
     last_failure_at: Optional[datetime] = Field(default=None)

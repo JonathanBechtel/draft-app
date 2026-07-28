@@ -87,9 +87,6 @@ from app.schemas.event_desk import EventLifecyclePhase
 from app.schemas.summer_league import SummerLeagueCompetition
 from app.services.event_desk.lifecycle import lifecycle_phase
 from app.services.event_desk.registry import DeskEvent, SUMMER_LEAGUE_REGISTRATION
-from app.services.event_desk.snapshot_materialization import (
-    materialize_desk_render_snapshots,
-)
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.player_identity_guard import (
     IdentityDuplicateAuditReport,
@@ -101,12 +98,11 @@ from app.services.summer_league.backfill import (
     summarize_backfill_report,
 )
 from app.services.summer_league.endpoints import normalize_league_id
-from app.services.summer_league.environment_refresh import (
-    refresh_environment_profiles_for_year,
-    resolve_environment_refresh_scope,
-)
 from app.services.summer_league.manifest import SummerLeagueRawManifest
-from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics
+from app.services.summer_league.metrics_rebuild_gate import (
+    MetricsStageContext,
+    run_metrics_stage,
+)
 from app.services.summer_league.player_resolution import (
     SummerLeagueResolutionReport,
     SummerLeagueResolutionResult,
@@ -132,9 +128,7 @@ from app.services.summer_league.normalization import (
     normalize_shot_events,
 )
 from app.services.summer_league.pipeline_state import (
-    complete_pipeline,
     defer_full_reconciliation,
-    full_reconciliation_is_pending,
     record_pipeline_failure,
 )
 from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
@@ -1280,6 +1274,13 @@ async def _retry_incomplete_team_boxes(
                     league_id=league_id,
                     raw_root=RAW_ROOT,
                 )
+                # The forced fetch happens after the raw-file audit, so its
+                # content hash cannot affect this run's watermark. Force the
+                # derivative gate instead whenever retry normalization succeeds.
+                await defer_full_reconciliation(
+                    db,
+                    reason=f"venue:{league_id}:team_box_retry_normalized",
+                )
                 logger.info(
                     "L%s team-box normalization (retry pass): %d team rows",
                     league_id,
@@ -1364,70 +1365,18 @@ async def main() -> int:
                 duplicate_report = await audit_variant_player_duplicates(db)
                 _log_identity_duplicate_audit(duplicate_report)
 
-            pending_reconciliation = await full_reconciliation_is_pending(db)
-            # The state read auto-begins a transaction.  End that read-only
-            # transaction before the explicit serialized derivative phase.
-            await db.commit()
-            if any_games or pending_reconciliation:
-                try:
-                    with telemetry.step("metrics_and_snapshots") as step_fields:
-                        async with db.begin():
-                            if await try_acquire_summer_league_writer_lock_yielding(
-                                db, step_fields
-                            ):
-                                summary = await rebuild_sl_metrics(db)
-                                refreshed_snapshots = (
-                                    await materialize_desk_render_snapshots(db)
-                                )
-                                logger.info(
-                                    "SL metrics rebuild complete: %s player-seasons, "
-                                    "%s contexts (%s adv-eligible pools); refreshed "
-                                    "%s Desk render snapshots",
-                                    summary["seasons"],
-                                    summary["contexts"],
-                                    summary["adv_pools"],
-                                    refreshed_snapshots,
-                                )
-                                # Competition Context (#618): incremental
-                                # profile refresh runs after normalized
-                                # facts and advanced metrics are
-                                # materialized, inside this same locked
-                                # transaction (reusing the lock this branch
-                                # already holds). Isolated: a refresh
-                                # failure is caught/recorded internally and
-                                # never fails this pipeline run.
-                                target_year = resolve_environment_refresh_scope(
-                                    year=year,
-                                    any_games=any_games,
-                                    pending_reconciliation=pending_reconciliation,
-                                )
-                                if target_year is not None:
-                                    await refresh_environment_profiles_for_year(
-                                        db, year=target_year, telemetry=telemetry
-                                    )
-                                await complete_pipeline(
-                                    db,
-                                    job=SummerLeaguePipelineJob.FULL_INGESTION,
-                                    metrics_rebuilt=True,
-                                    snapshots_materialized=True,
-                                )
-                            else:
-                                await defer_full_reconciliation(
-                                    db,
-                                    reason="metrics_and_snapshot_lock_contended",
-                                )
-                                logger.info(
-                                    "SL metrics rebuild deferred (Desk writer is active); "
-                                    "a later scheduled full run will reconcile it"
-                                )
-                except Exception as exc:
-                    failed = True
-                    logger.error("SL metrics rebuild failed: %s", exc, exc_info=True)
-            else:
-                logger.info(
-                    "No venue had games and no deferred reconciliation; "
-                    "skipping metrics rebuild"
-                )
+            metrics_failed = await run_metrics_stage(
+                db,
+                context=MetricsStageContext(
+                    year=year,
+                    any_games=any_games,
+                    upstream_succeeded=not failed,
+                    telemetry=telemetry,
+                    force_reconcile=full_reconcile,
+                ),
+                before_derivatives=db.commit,
+            )
+            failed = failed or metrics_failed
 
             if failed:
                 async with db.begin():
