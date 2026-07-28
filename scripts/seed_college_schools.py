@@ -12,7 +12,6 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import select
@@ -22,9 +21,11 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.services.canonical_resolution_service import DEFAULT_COLLEGE_SCHOOLS_PATH
+
 load_dotenv()
 
-SEED_DATA_PATH = Path(__file__).parent / "data" / "college_schools.json"
+SEED_DATA_PATH = DEFAULT_COLLEGE_SCHOOLS_PATH
 
 
 async def seed_college_schools() -> None:

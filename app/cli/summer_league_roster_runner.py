@@ -60,28 +60,21 @@ from app.services.summer_league.endpoints import (
     SUPPORTED_SUMMER_LEAGUES,
     normalize_league_id,
 )
+from app.services.player_bio.bbref_parse import PlayerBio
+from app.services.player_bio.bbref_scrape import scrape_letters
+from app.services.player_bio.ingest import ingest as ingest_player_bios_csv
 from app.services.summer_league.headshots import backfill_nba_headshots
 from app.services.summer_league.player_resolution import (
     backfill_nba_stats_external_ids,
     resolve_summer_league_players,
 )
+from app.services.summer_league.roster_fetch import RosterFetcher, RosterRunResult
 from app.services.summer_league.roster_ingest import (
     CompetitionKey,
     load_roster_snapshot,
 )
 from app.services.summer_league.roster_parse import RosterEntry
 from app.utils.db_async import SessionLocal, dispose_engine, load_schema_modules
-
-# The bbref bio scrape -> CSV -> ingest flow has no clean single service seam
-# (the scraper is a script-shaped module that writes a CSV, and the ingester
-# reads one back), so we reuse the scripts' own importable module-level
-# functions directly rather than duplicating their scraping/parsing logic.
-# ``scripts`` ships as a package alongside ``app`` in the deployed image, and
-# is resolvable at runtime because the container's working directory (where
-# both ``app`` and ``scripts`` live) is on ``sys.path`` for ``-m`` invocations.
-from scripts.bbref_bio_scraper import PlayerBio, scrape_letters
-from scripts.fetch_summer_league_rosters import RosterFetcher, RosterRunResult
-from scripts.ingest_player_bios import ingest as ingest_player_bios_csv
 
 # Configure logging for cron context
 logging.basicConfig(
@@ -95,11 +88,11 @@ DEFAULT_YEAR = 2026
 DEFAULT_LEAGUE_IDS = ("13", "16", "15")
 RAW_ROOT = Path("data/raw/nba_stats/summer_league")
 
-# Mirrors scripts/fetch_summer_league_rosters.py CLI defaults.
+# Mirrors the scripts/fetch_summer_league_rosters.py CLI defaults.
 FETCH_TIMEOUT_SECONDS = 30.0
 FETCH_DELAY_SECONDS = 0.5
 
-# Mirrors scripts/bbref_bio_scraper.py CLI defaults / output locations.
+# Mirrors the scripts/bbref_bio_scraper.py CLI defaults / output locations.
 BIO_OUT_DIR = Path("data/scraper-output")
 BIO_CACHE_DIR = Path("data/scraper-cache/players")
 BIO_SCRAPE_THROTTLE_SECONDS = 3.0
@@ -161,8 +154,9 @@ def _write_bio_csv(rows: list[dict[str, object]], out_path: Path) -> None:
     """Write scraped bbref bio rows to a CSV matching ``PlayerBio`` fields.
 
     Args:
-        rows: Rows as returned by ``scripts.bbref_bio_scraper.scrape_letters``
-            (each a ``PlayerBio.__dict__``).
+        rows: Rows as returned by
+            ``app.services.player_bio.bbref_scrape.scrape_letters`` (each a
+            ``PlayerBio.__dict__``).
         out_path: Destination CSV path; parent directories are created.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)

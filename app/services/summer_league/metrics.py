@@ -35,6 +35,8 @@ from typing import Any, Optional
 from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.summer_league.metric_publish import publish_metric_model
+
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
@@ -1399,11 +1401,11 @@ async def rebuild(
 
     Two modes, selected by ``competition_ids``:
 
-    * **Unscoped** (default, ``competition_ids=None``) -- a full
-      wipe-and-rebuild, byte-for-byte the same as before #523: every
-      ``summer_league_player_seasons`` / ``_metric_contexts`` /
-      ``_metric_models`` row is deleted and replaced, including a freshly
-      minted, freshly fitted global model row. This is what
+    * **Unscoped** (default, ``competition_ids=None``) -- a full rebuild: every
+      ``summer_league_player_seasons`` / ``_metric_contexts`` row is deleted and
+      replaced. ``_metric_models`` is **not** deleted; the new fit is published
+      via :func:`~app.services.summer_league.metric_publish.publish_metric_model`, which deactivates prior fits and retains
+      them as auditable history (P2). This is what
       ``scripts/rebuild_sl_metrics.py`` (the offline full recompute) calls.
     * **Scoped** (``competition_ids`` a sequence of competition ids) -- only
       ``SummerLeaguePlayerSeason`` / ``SummerLeagueMetricContext`` rows for
@@ -1442,23 +1444,9 @@ async def rebuild(
         await db.execute(delete(SummerLeaguePlayerSeason))
         # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
         await db.execute(delete(SummerLeagueMetricContext))
-        # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
-        await db.execute(delete(SummerLeagueMetricModel))
 
         version = model_version or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        db.add(
-            SummerLeagueMetricModel(
-                model_version=version,
-                pyth_exponent=result.pyth_exponent,
-                ws_ppw_coeff=result.ws_ppw_coeff,
-                pyth_n_teams=result.pyth_n,
-                bpm_intercept=result.bpm_intercept,
-                bpm_r2=result.bpm_r2,
-                bpm_n_fit=result.bpm_n_fit,
-                bpm_replacement=VORP_REPLACEMENT,
-                bpm_coefficients=result.bpm_coef or {},
-            )
-        )
+        await publish_metric_model(db, version=version, result=result)
         contexts_to_write = list(result.contexts.values())
         seasons_to_write = result.seasons
     else:

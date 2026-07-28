@@ -213,13 +213,31 @@ def _waived(lines: list[str], node: ast.AST, parents: dict[ast.AST, ast.AST]) ->
     else:  # pragma: no cover - an expression always sits under some statement
         first = last = getattr(node, "lineno", 1)
 
-    # `first - 1` lets the justification sit on the line above the statement.
-    for candidate in range(first - 1, last + 1):
-        if 1 <= candidate <= len(lines) and line_has_reasoned_waiver(
-            lines[candidate - 1], _RULE
-        ):
-            return True
-    return False
+    # Scan the statement's own lines, plus the whole contiguous comment block directly
+    # above it -- not just the single line above.
+    #
+    # A one-line lookback fails the obvious way to write a justification:
+    #
+    #     # discipline: migration-safety single-row table (one fit in production);
+    #     # a non-concurrent build here takes a lock measured in milliseconds.
+    #     op.create_index(...)
+    #
+    # The marker is two lines up, so the waiver is ignored and the check fails with the
+    # justification sitting right there in the diff. It fails closed, so nothing unsafe
+    # slips through -- but an escape hatch that rejects its own documented shape teaches
+    # people to disable the hook instead of arguing the exception, which is the outcome
+    # every rule in this file is trying to avoid.
+    candidates = list(range(first, last + 1))
+    cursor = first - 1
+    while cursor >= 1 and lines[cursor - 1].lstrip().startswith("#"):
+        candidates.append(cursor)
+        cursor -= 1
+
+    return any(
+        1 <= candidate <= len(lines)
+        and line_has_reasoned_waiver(lines[candidate - 1], _RULE)
+        for candidate in candidates
+    )
 
 
 def _string_literal(node: ast.AST) -> str | None:

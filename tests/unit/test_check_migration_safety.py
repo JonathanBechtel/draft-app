@@ -185,6 +185,38 @@ class TestAcceptsSafeForms:
             == []
         )
 
+    def test_a_multi_line_waiver_applies(self):
+        """The marker may sit anywhere in the contiguous comment block above.
+
+        A one-line lookback rejected the obvious two-line justification, failing with
+        the reason sitting right there in the diff. It fails closed, so nothing unsafe
+        passed -- but an escape hatch that rejects its own documented shape teaches
+        people to disable the hook rather than argue the exception.
+        """
+        assert (
+            _violations(
+                """
+                def upgrade():
+                    # discipline: migration-safety single-row table (one fit in prod);
+                    # a non-concurrent build here locks for milliseconds.
+                    op.create_index("ix_a", "t", ["a"])
+                """
+            )
+            == []
+        )
+
+    def test_a_comment_block_broken_by_code_does_not_reach_back(self):
+        """Only the *contiguous* block counts, or a waiver leaks to unrelated statements."""
+        found = _violations(
+            """
+            def upgrade():
+                # discipline: migration-safety this justifies the first build only
+                op.execute("SELECT 1")
+                op.create_index("ix_a", "t", ["a"])
+            """
+        )
+        assert len(found) == 1
+
     def test_bare_marker_without_a_reason_is_not_a_waiver(self):
         """The convention's whole point is that exceptions are argued, not asserted."""
         found = _violations(

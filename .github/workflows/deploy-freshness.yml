@@ -1,0 +1,57 @@
+name: Deploy freshness
+
+# Incident #669: production ran a 3.5-day-old image through the entire Summer League
+# window. The fixes for the fault actively unfolding were merged to main and simply not
+# running, and nothing anywhere reported the difference. This is the thing that reports it.
+#
+# Deliberately a scheduled *observation*, not a deploy gate. It cannot deploy, and a red
+# run here means "someone should look", not "the build is broken" -- the deploy decision
+# stays a human one.
+
+on:
+  schedule:
+    # 13:00 UTC daily — morning in US timezones, so a stale prod is seen at the start of
+    # a working day rather than discovered mid-incident.
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+    inputs:
+      max_age_hours:
+        description: "Age of the deployed commit that counts as stale"
+        required: false
+        default: "48"
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    environment:
+      name: draft-app-prod
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history: the check measures the distance between the deployed commit
+          # and origin/main, which a shallow clone cannot compute.
+          fetch-depth: 0
+
+      - name: Assert Fly token present
+        run: test -n "${{ secrets.FLY_API_TOKEN }}" || (echo "Missing FLY_API_TOKEN secret"; exit 1)
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@v1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check prod deploy freshness
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          python scripts/check_deploy_freshness.py \
+            --app draft-app-prod \
+            --against origin/main \
+            --max-age-hours "${{ inputs.max_age_hours || '48' }}"

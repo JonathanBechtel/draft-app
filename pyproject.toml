@@ -50,6 +50,16 @@ dev = [
 where = ["."]
 include = ["app*"]
 
+# Runtime assets the shipped package reads, not just imports. Without this,
+# `pip install .` produces a wheel whose `app/data/` is empty and
+# `load_school_mapping()` raises FileNotFoundError. The Docker image happens to
+# mask that -- its `COPY . .` restores the source tree, and `-m app.cli.<mod>`
+# resolves `/app/app` ahead of site-packages -- so the wheel being incomplete
+# would only surface somewhere else, later. Declared here so the package is
+# correct on its own terms rather than correct by accident of the image layout.
+[tool.setuptools.package-data]
+"app" = ["data/*.json"]
+
 [tool.mypy]
 ignore_missing_imports = true
 
@@ -126,6 +136,10 @@ convention = "google"
 "app/services/metrics_service.py" = ["C901", "PLR0913", "PLR0915"]
 "app/services/news_ingestion_service.py" = ["C901", "PLR0915"]
 "app/services/news_service.py" = ["C901", "PLR0913"]
+"app/services/player_bio/bbref_parse.py" = ["C901", "PLR0915"]
+"app/services/player_bio/bbref_scrape.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/player_bio/ingest.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/player_bio/persistence.py" = ["C901"]
 "app/services/player_merge_service.py" = ["C901"]
 "app/services/podcast_ingestion_service.py" = ["C901", "PLR0915"]
 "app/services/share_cards/model_builders.py" = ["C901", "PLR0915"]
@@ -143,6 +157,7 @@ convention = "google"
 "app/services/summer_league/normalization.py" = ["C901", "PLR0913", "PLR0915"]
 "app/services/summer_league/pipeline_state.py" = ["PLR0913"]
 "app/services/summer_league/player_resolution.py" = ["PLR0913"]
+"app/services/summer_league/roster_fetch.py" = ["C901", "PLR0913"]
 "app/services/summer_league/roster_ingest.py" = ["C901", "PLR0913", "PLR0915"]
 "app/services/summer_league/scoreboard_ingest.py" = ["C901", "PLR0913"]
 "app/services/summer_league_environment_service.py" = ["C901", "PLR0915"]
@@ -153,7 +168,7 @@ convention = "google"
 "app/services/video_service.py" = ["PLR0913"]
 "scripts/audit_summer_league_environment_coverage.py" = ["C901", "PLR0913"]
 "scripts/audit_top_pick_sl_coverage.py" = ["C901", "PLR0915"]
-"scripts/bbref_bio_scraper.py" = ["C901", "PLR0913", "PLR0915"]
+"scripts/bbref_bio_scraper.py" = ["C901", "PLR0915"]
 "scripts/big_boards/sync_from_prod.py" = ["PLR0913"]
 "scripts/check_sl_desk_readiness.py" = ["C901", "PLR0913"]
 "scripts/collect_college_logos.py" = ["C901", "PLR0915"]
@@ -161,7 +176,6 @@ convention = "google"
 "scripts/curate_backfill_candidates.py" = ["C901"]
 "scripts/deduplicate_players.py" = ["C901"]
 "scripts/explain_route.py" = ["C901", "PLR0913", "PLR0915"]
-"scripts/fetch_summer_league_rosters.py" = ["C901", "PLR0913"]
 "scripts/fix_495_top_pick_dup_resolution.py" = ["C901", "PLR0915"]
 "scripts/fix_namesake_contamination.py" = ["C901", "PLR0913"]
 "scripts/generate_consensus_history.py" = ["PLR0913"]
@@ -172,7 +186,6 @@ convention = "google"
 "scripts/infographics/scatter.py" = ["C901", "PLR0915"]
 "scripts/ingest_combine.py" = ["C901", "PLR0913"]
 "scripts/ingest_draft_results.py" = ["C901", "PLR0913", "PLR0915"]
-"scripts/ingest_player_bios.py" = ["C901", "PLR0913", "PLR0915"]
 "scripts/merge_2025_draft_dup_players.py" = ["C901"]
 "scripts/merge_prod_shooting_dup_players.py" = ["C901"]
 "scripts/nba_draft_scraper.py" = ["C901"]
@@ -243,6 +256,56 @@ forbidden_modules = [
 # This list is enumerated, not wildcarded, because import-linter module expressions match
 # whole dotted segments: `app.services.summer_league*` is not expressible. A hand-list
 # drifts, so tests/unit/test_import_contract_coverage.py asserts it stays complete.
+
+# Contract 4 — the Event Desk presents itself as a generic, multi-event framework while every
+# concrete dependency it has is Summer League. Nothing made that contradiction visible, which
+# is how "a generic framework that isn't" survived review. This contract converts it from an
+# archaeological discovery into a failing build.
+#
+# Unlike contracts 2, 3 and 5 this one does NOT start green, so it ships with an
+# `ignore_imports` baseline naming every violation that exists today. New coupling fails;
+# listed coupling is documented debt. The list may only shrink — Phase 5's decomposition
+# removes entries as it decouples, which makes it the progress meter for that work.
+#
+# It is far shorter than the spec predicted. `programmatic-code-discipline.md` §3.1 describes
+# this contract as failing "broadly", with "every module in app/services/event_desk/"
+# importing Summer League. Measured, only 3 of 9 modules do; the rest name Summer League in
+# strings and docstrings, which is not coupling. The decoupling is closer to done than the
+# retrospective assumed.
+[[tool.importlinter.contracts]]
+name = "app.services.event_desk must not import Summer League"
+type = "forbidden"
+source_modules = ["app.services.event_desk"]
+forbidden_modules = [
+    "app.services.summer_league",
+    "app.services.summer_league_environment_registry",
+    "app.services.summer_league_environment_service",
+    "app.services.summer_league_explorer_service",
+    "app.services.summer_league_franchise_service",
+    "app.services.summer_league_games_service",
+    "app.services.summer_league_leaders_service",
+    "app.services.summer_league_metrics_service",
+    "app.services.summer_league_season_service",
+    "app.services.summer_league_shotchart_service",
+    "app.services.summer_league_stats_service",
+    "app.services.summer_league_team_service",
+    "app.schemas.summer_league",
+    "app.schemas.summer_league_desk",
+    "app.schemas.summer_league_events",
+    "app.schemas.summer_league_environment",
+    "app.schemas.summer_league_metrics",
+    "app.schemas.summer_league_pipeline",
+]
+# Same enumeration rationale as contract 3, and the same reflective guard covers both lists.
+ignore_imports = [
+    "app.services.event_desk.registry -> app.schemas.summer_league",
+    "app.services.event_desk.registry -> app.services.summer_league.scoreboard_ingest",
+    "app.services.event_desk.render_snapshots -> app.services.summer_league.desk_read",
+    "app.services.event_desk.snapshot_materialization -> app.services.summer_league.desk_read",
+]
+# An entry that no longer matches a real import is an error, not a shrug: it would mean the
+# baseline is stale and quietly larger than the debt it claims to describe.
+unmatched_ignore_imports_alerting = "error"
 
 # Contract 5 — sibling spokes may not import one another. Two spokes needing the same thing
 # must get it from the hub. Vacuous at one spoke, which is precisely why it is installed now:

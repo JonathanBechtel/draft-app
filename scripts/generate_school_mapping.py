@@ -7,7 +7,7 @@ and outputs a mapping JSON for human review.
 
 Usage:
     python scripts/generate_school_mapping.py
-    # Then review scripts/data/school_mapping.json
+    # Then review app/data/school_mapping.json
 """
 
 import asyncio
@@ -16,15 +16,16 @@ import os
 import re
 import sys
 from collections import defaultdict
-from pathlib import Path
 
 from dotenv import load_dotenv
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.services.canonical_resolution_service import DEFAULT_SCHOOL_MAPPING_PATH
+
 load_dotenv()
 
-OUTPUT_PATH = Path(__file__).parent / "data" / "school_mapping.json"
+OUTPUT_PATH = DEFAULT_SCHOOL_MAPPING_PATH
 
 # ---------------------------------------------------------------------------
 # Non-college markers — if a school name contains any of these, map to null
