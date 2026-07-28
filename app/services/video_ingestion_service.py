@@ -30,7 +30,9 @@ from app.services.video_service import (
     parse_youtube_video_id,
 )
 from app.services.video_summarization_service import video_summarization_service
+from app.utils.network_guard import guarded_async_httpx_event_hooks
 
+# discipline: file-size cross-cutting transport guard; no service logic added
 logger = logging.getLogger(__name__)
 
 _YOUTUBE_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=10.0)
@@ -691,7 +693,10 @@ async def _youtube_get_with_retries(
     last_error: Optional[Exception] = None
     for attempt in range(retries + 1):
         try:
-            async with httpx.AsyncClient(timeout=_YOUTUBE_TIMEOUT) as client:
+            async with httpx.AsyncClient(
+                timeout=_YOUTUBE_TIMEOUT,
+                event_hooks=guarded_async_httpx_event_hooks(),
+            ) as client:
                 response = await client.get(url, params=params)
             if response.status_code in {429, 500, 502, 503, 504}:
                 raise httpx.HTTPStatusError(

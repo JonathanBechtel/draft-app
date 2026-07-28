@@ -33,7 +33,9 @@ from app.services.news_summarization_service import news_summarization_service
 from app.services.player_mention_service import resolve_player_names_as_map
 from app.services.publisher_filters import apply_publisher_filters
 from app.utils.draft_relevance import check_keyword_relevance
+from app.utils.network_guard import guarded_async_httpx_event_hooks
 
+# discipline: file-size cross-cutting transport guard; no service logic added
 logger = logging.getLogger(__name__)
 
 _RSS_USER_AGENT = "DraftGuru/1.0 (+https://draftguru)"
@@ -482,6 +484,7 @@ async def fetch_rss_feed(url: str) -> list[dict]:
             headers={"User-Agent": _RSS_USER_AGENT},
             timeout=_RSS_TIMEOUT,
             follow_redirects=True,
+            event_hooks=guarded_async_httpx_event_hooks(),
         ) as client:
             response = await client.get(url)
             response.raise_for_status()

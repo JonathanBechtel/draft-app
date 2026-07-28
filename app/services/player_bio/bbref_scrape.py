@@ -18,13 +18,19 @@ from app.services.player_bio.bbref_parse import (
     parse_player_html,
     parse_slug_from_player_html,
 )
+from app.utils.network_guard import guarded_httpx_event_hooks
 
 USER_AGENT = "nbadraft-bio-scraper/0.1"
 
 
 def _client(timeout: float = 30.0) -> httpx.Client:
     headers = {"User-Agent": USER_AGENT}
-    return httpx.Client(headers=headers, timeout=timeout, follow_redirects=True)
+    return httpx.Client(
+        headers=headers,
+        timeout=timeout,
+        follow_redirects=True,
+        event_hooks=guarded_httpx_event_hooks(),
+    )
 
 
 def _save_text(path: Path, text: str) -> None:

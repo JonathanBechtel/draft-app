@@ -30,7 +30,9 @@ from app.schemas.image_snapshots import PlayerImageSnapshot
 from app.schemas.player_college_stats import PlayerCollegeStats
 from app.schemas.players_master import PlayerMaster
 from app.services.image_generation import image_generation_service
+from app.utils.network_guard import guarded_async_httpx_event_hooks
 
+# discipline: file-size cross-cutting transport guard; no service logic added
 logger = logging.getLogger(__name__)
 
 
@@ -210,7 +212,9 @@ async def _find_reference_image(player_name: str) -> Optional[str]:
         Direct URL to a CC-licensed image, or None.
     """
     async with httpx.AsyncClient(
-        timeout=_WIKIMEDIA_TIMEOUT, headers=_WIKIMEDIA_HEADERS
+        timeout=_WIKIMEDIA_TIMEOUT,
+        headers=_WIKIMEDIA_HEADERS,
+        event_hooks=guarded_async_httpx_event_hooks(),
     ) as http:
         # Try Wikimedia Commons first
         url = await _search_commons(http, player_name)

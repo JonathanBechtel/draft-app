@@ -1,5 +1,7 @@
 """Resolve Summer League source players to canonical DraftGuru players."""
 
+# discipline: file-size cross-cutting network boundary; no new resolution policy
+
 from __future__ import annotations
 
 import logging
@@ -784,7 +786,15 @@ async def prepare_source_player_resolution(
         )
 
     try:
-        candidates = await _collect_candidates(db, source_player)
+        if before_candidate_search is None:
+            candidates = await _collect_candidates(db, source_player)
+        else:
+            from app.services.player_search_service import (  # noqa: PLC0415
+                candidate_search_boundary,
+            )
+
+            with candidate_search_boundary(before_candidate_search):
+                candidates = await _collect_candidates(db, source_player)
     except SummerLeagueCandidateSearchError:
         return SummerLeagueResolutionPlan(
             source_player_id=source_player.id,
@@ -936,6 +946,7 @@ async def resolve_source_player(
     source_player: SummerLeagueSourcePlayer,
     *,
     create_stub: bool = False,
+    before_candidate_search: Callable[[], Awaitable[None]] | None = None,
 ) -> SummerLeagueResolutionResult:
     """Resolve one Summer League source player through the configured cascade.
 
@@ -946,7 +957,11 @@ async def resolve_source_player(
     search's Gemini call (see ``summer_league_ingest_runner``'s batched
     resolution phase).
     """
-    plan = await prepare_source_player_resolution(db, source_player)
+    plan = await prepare_source_player_resolution(
+        db,
+        source_player,
+        before_candidate_search=before_candidate_search,
+    )
     return await apply_source_player_resolution_plan(
         db, source_player, plan, create_stub=create_stub
     )
@@ -1061,6 +1076,7 @@ async def resolve_summer_league_players(
     year: int | None = None,
     league_id: str | None = None,
     create_stubs: bool = False,
+    before_candidate_search: Callable[[], Awaitable[None]] | None = None,
 ) -> SummerLeagueResolutionReport:
     """Resolve Summer League source players in a selected batch scope.
 
@@ -1075,13 +1091,18 @@ async def resolve_summer_league_players(
     source_players = await _load_source_players(db, year=year, league_id=league_id)
     results: list[SummerLeagueResolutionResult] = []
     for source_player in source_players:
-        results.append(
-            await resolve_source_player(
+        if before_candidate_search is None:
+            result = await resolve_source_player(
+                db, source_player, create_stub=create_stubs
+            )
+        else:
+            result = await resolve_source_player(
                 db,
                 source_player,
                 create_stub=create_stubs,
+                before_candidate_search=before_candidate_search,
             )
-        )
+        results.append(result)
     return build_resolution_report(year=year, league_id=league_id, results=results)
 
 

@@ -7,6 +7,8 @@ Routes are thin wrappers; business logic lives in admin_player_service and
 player_mention_service.
 """
 
+# discipline: file-size route-owned transaction boundary for network-safe duplicate search
+
 from __future__ import annotations
 
 import logging
@@ -544,7 +546,12 @@ async def find_stub_duplicates(
         return JSONResponse(status_code=403, content={"error": "Forbidden"})
 
     try:
-        candidates = await find_duplicate_candidates(db, player_id, k=k)
+        candidates = await find_duplicate_candidates(
+            db,
+            player_id,
+            k=k,
+            before_candidate_search=db.close,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

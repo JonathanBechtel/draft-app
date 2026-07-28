@@ -2,11 +2,14 @@
 
 import base64
 import logging
+from collections.abc import Awaitable, Callable
 from io import BytesIO
 from typing import Optional, Tuple
 
 import httpx
 from PIL import Image
+
+from app.utils.network_guard import guarded_async_httpx_event_hooks
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,7 @@ async def fetch_and_embed_image(
     player_name: str,
     width: int = PHOTO_WIDTH,
     height: int = PHOTO_HEIGHT,
+    before_fetch: Callable[[], Awaitable[None]] | None = None,
 ) -> Tuple[Optional[str], bool]:
     """Fetch image from URL, resize, and convert to base64 data URI.
 
@@ -28,6 +32,8 @@ async def fetch_and_embed_image(
         player_name: Player name for fallback/logging
         width: Target width in pixels
         height: Target height in pixels
+        before_fetch: Optional caller-owned boundary that closes any database
+            read transaction before HTTP begins.
 
     Returns:
         Tuple of (data_uri or None, has_photo: bool)
@@ -37,7 +43,12 @@ async def fetch_and_embed_image(
         return None, False
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        if before_fetch is not None:
+            await before_fetch()
+        async with httpx.AsyncClient(
+            timeout=10.0,
+            event_hooks=guarded_async_httpx_event_hooks(),
+        ) as client:
             response = await client.get(public_url)
             response.raise_for_status()
 

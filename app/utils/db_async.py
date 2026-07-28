@@ -16,6 +16,7 @@ from sqlmodel import SQLModel
 
 from app.config import settings
 from app import schemas as schemas_pkg
+from app.utils import network_guard as _network_guard  # noqa: F401
 
 
 def load_schema_modules() -> None:

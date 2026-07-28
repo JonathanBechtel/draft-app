@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.services import player_merge_service, player_search_service
 from app.services.player_merge_service import (
     MergeReport,
     TableStats,
@@ -23,6 +24,7 @@ from app.services.player_merge_service import (
     _SIMILARITY_COMPARISON,
     _ChildTable,
 )
+from app.services.player_search_service import Candidate
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +60,50 @@ def test_merge_report_alias_none() -> None:
     """MergeReport alias_added can be None."""
     report = MergeReport(keep_id=1, discard_id=2, per_table={}, alias_added=None)
     assert report.alias_added is None
+
+
+@pytest.mark.asyncio
+async def test_duplicate_search_uses_only_caller_supplied_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The merge service never closes a caller-owned transaction implicitly."""
+    boundary_calls = 0
+
+    async def fake_fetch_display_name(db: object, player_id: int) -> str:
+        del db, player_id
+        return "Test Player"
+
+    async def fake_find_candidates(
+        db: object, query: str, k: int
+    ) -> list[Candidate]:
+        del db, query, k
+        boundary = player_search_service._candidate_search_boundary.get()
+        if boundary is not None:
+            await boundary()
+        return [Candidate(2, "Other Player", None, 0.8)]
+
+    async def caller_boundary() -> None:
+        nonlocal boundary_calls
+        boundary_calls += 1
+
+    monkeypatch.setattr(
+        player_merge_service, "_fetch_display_name", fake_fetch_display_name
+    )
+    monkeypatch.setattr(
+        player_search_service, "find_candidate_players", fake_find_candidates
+    )
+
+    await player_merge_service.find_duplicate_candidates(  # type: ignore[arg-type]
+        object(), 1
+    )
+    assert boundary_calls == 0
+
+    await player_merge_service.find_duplicate_candidates(  # type: ignore[arg-type]
+        object(),
+        1,
+        before_candidate_search=caller_boundary,
+    )
+    assert boundary_calls == 1
 
 
 # ---------------------------------------------------------------------------

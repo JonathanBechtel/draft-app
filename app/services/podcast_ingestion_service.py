@@ -37,7 +37,9 @@ from app.utils.draft_relevance import (
     DRAFT_RELEVANCE_KEYWORDS,
     check_keyword_relevance,
 )
+from app.utils.network_guard import guarded_async_httpx_event_hooks
 
+# discipline: file-size cross-cutting transport guard; no service logic added
 __all__ = [
     "DRAFT_RELEVANCE_KEYWORDS",
     "check_keyword_relevance",
@@ -333,6 +335,7 @@ async def fetch_podcast_rss_feed(url: str) -> list[dict[str, Any]]:
             headers={"User-Agent": _RSS_USER_AGENT},
             timeout=_RSS_TIMEOUT,
             follow_redirects=True,
+            event_hooks=guarded_async_httpx_event_hooks(),
         ) as client:
             response = await client.get(url)
             response.raise_for_status()

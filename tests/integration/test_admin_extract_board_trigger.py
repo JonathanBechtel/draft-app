@@ -30,6 +30,7 @@ from app.services.board_extraction_service import (
     ExtractedBoardEntry,
     PaywallDetectedError,
 )
+from app.utils.network_guard import transaction_depth
 from tests.integration.auth_helpers import create_auth_user, login_staff
 
 
@@ -269,6 +270,98 @@ async def test_extract_board_creates_pending_board_and_redirects(
     assert board is not None
     assert board.status == BoardStatus.PENDING
     assert board.kind == BoardKind.BIG_BOARD
+
+
+@pytest.mark.asyncio
+async def test_extract_board_fetches_article_outside_database_transaction(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_logged_in: None,
+    big_board_item: NewsItem,
+    sample_player: PlayerMaster,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The route closes its read transaction before article and AI I/O."""
+    fetch_transaction_depths: list[int] = []
+    extraction_transaction_depths: list[int] = []
+
+    async def _recording_fetcher(_url: str) -> str:
+        fetch_transaction_depths.append(transaction_depth())
+        return "article content"
+
+    async def _recording_extract(
+        _article_text: str, *, client=None
+    ) -> ExtractedBoard:
+        extraction_transaction_depths.append(transaction_depth())
+        return ExtractedBoard(
+            draft_year=2026,
+            entries=[ExtractedBoardEntry(player_name="Cooper Flagg", rank=1)],
+        )
+
+    monkeypatch.setattr(
+        board_extraction_service, "_default_fetcher", _recording_fetcher
+    )
+    monkeypatch.setattr(
+        board_extraction_service, "_extract_via_gemini", _recording_extract
+    )
+    _stub_vector_search(monkeypatch)
+
+    assert big_board_item.id is not None
+    await db_session.commit()
+    response = await app_client.post(
+        f"/admin/news-items/{big_board_item.id}/extract-board",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert fetch_transaction_depths == [0]
+    assert extraction_transaction_depths == [0]
+
+
+@pytest.mark.asyncio
+async def test_extract_board_candidate_search_runs_outside_database_transaction(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+    admin_logged_in: None,
+    big_board_item: NewsItem,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unresolved-name embeddings run only after exact/alias reads are closed."""
+    candidate_transaction_depths: list[int] = []
+
+    async def _recording_candidate_search(
+        db,
+        query: str,
+        k: int = 5,
+        *,
+        before_vector_search=None,
+    ):
+        candidate_transaction_depths.append(transaction_depth())
+        return []
+
+    _stub_fetcher(monkeypatch)
+    _stub_extraction(
+        monkeypatch,
+        ExtractedBoard(
+            draft_year=2026,
+            entries=[ExtractedBoardEntry(player_name="Unknown Prospect", rank=1)],
+        ),
+    )
+    monkeypatch.setattr(
+        board_extraction_service,
+        "find_candidate_players",
+        _recording_candidate_search,
+    )
+
+    assert big_board_item.id is not None
+    await db_session.commit()
+    response = await app_client.post(
+        f"/admin/news-items/{big_board_item.id}/extract-board",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert candidate_transaction_depths == [0]
 
 
 @pytest.mark.asyncio

@@ -103,6 +103,16 @@ def _stub_extract_board(return_value: Optional[Board]):
     )
 
 
+@pytest.mark.asyncio
+async def test_auto_ingest_rejects_caller_owned_transaction(
+    db_session: AsyncSession,
+) -> None:
+    """The worker fails before scanning or network I/O inside a caller transaction."""
+    async with db_session.begin():
+        with pytest.raises(RuntimeError, match="no active caller transaction"):
+            await run_auto_ingest(db_session, lookback_days=7)
+
+
 # ---------------------------------------------------------------------------
 # Basic extraction: fresh item → PENDING board created
 # ---------------------------------------------------------------------------
@@ -135,11 +145,13 @@ async def test_fresh_big_board_item_gets_extracted(
     )
     await db_session.commit()
 
-    with _stub_extract_board(pending_board):
+    with _stub_extract_board(pending_board) as extract_mock:
         report: AutoIngestReport = await run_auto_ingest(
             db_session, lookback_days=7
         )
 
+    boundary = extract_mock.await_args.kwargs["before_network_io"]
+    assert boundary.__self__ is db_session
     assert report.scanned == 1
     assert report.extracted_boards == 1
     assert report.extracted_mocks == 0
@@ -325,6 +337,7 @@ async def test_run_twice_is_idempotent(
     await db_session.refresh(item)
     assert item.last_extraction_attempted_at is not None
     assert item.last_extraction_result == BoardExtractionResult.SUCCESS
+    await db_session.commit()
 
     # Second run — stub returns the "old" board (dedup: already existed).
     # SUCCESS from first run means item is still eligible but dedup fires.
@@ -657,3 +670,66 @@ async def test_extract_board_returns_none_recorded_as_no_entries(
 
     await db_session.refresh(item)
     assert item.last_extraction_result == BoardExtractionResult.NO_ENTRIES
+
+
+@pytest.mark.asyncio
+async def test_each_result_is_committed_before_later_item_closes_session(
+    db_session: AsyncSession,
+    news_source: NewsSource,
+) -> None:
+    """A later network boundary cannot roll back an earlier dedup outcome."""
+    assert news_source.id is not None
+    existing_item = await _make_news_item(
+        db_session,
+        source_id=news_source.id,
+        published_at=_RECENT - timedelta(hours=1),
+    )
+    network_item = await _make_news_item(
+        db_session,
+        source_id=news_source.id,
+        published_at=_RECENT,
+    )
+    assert existing_item.id is not None
+    assert network_item.id is not None
+    existing_board = await _make_board(
+        db_session,
+        news_source_id=news_source.id,
+        news_item_id=existing_item.id,
+        status=BoardStatus.APPROVED,
+    )
+    await db_session.commit()
+
+    async def fake_extract(
+        db: AsyncSession,
+        *,
+        news_item_id: int,
+        kind: BoardKind,
+        before_network_io,
+    ) -> Board | None:
+        del kind
+        if news_item_id == existing_item.id:
+            result = await db.execute(
+                select(Board).where(Board.id == existing_board.id)
+            )
+            return result.scalar_one()
+        await before_network_io()
+        return None
+
+    with patch(
+        "app.services.board_auto_ingest_service.board_extraction_service.extract_board",
+        side_effect=fake_extract,
+    ):
+        report = await run_auto_ingest(db_session, lookback_days=7)
+
+    assert report.scanned == 2
+    results = (
+        await db_session.execute(
+            select(NewsItem.id, NewsItem.last_extraction_result).where(
+                NewsItem.id.in_([existing_item.id, network_item.id])  # type: ignore[union-attr]
+            )
+        )
+    ).all()
+    assert dict(results) == {
+        existing_item.id: BoardExtractionResult.SUCCESS,
+        network_item.id: BoardExtractionResult.NO_ENTRIES,
+    }

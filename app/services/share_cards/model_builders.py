@@ -42,6 +42,8 @@ from app.services.share_cards.render_models import (
 )
 from app.services.similarity_service import get_similar_players
 
+# discipline: file-size cross-cutting image-I/O boundary; no model logic added
+
 
 def _build_win_summary(rows: list[VSRow], name_a: str, name_b: str) -> str:
     """Build win summary text from rows.
@@ -146,7 +148,9 @@ async def _build_player_badge(db: AsyncSession, player_id: int) -> PlayerBadge:
         db, player_id
     )
 
-    photo_uri, has_photo = await fetch_and_embed_image(image_url, display_name)
+    photo_uri, has_photo = await fetch_and_embed_image(
+        image_url, display_name, before_fetch=db.commit
+    )
 
     return PlayerBadge(
         name=display_name,
@@ -572,7 +576,9 @@ async def build_comps_model(
             else None
         )
 
-        photo_uri, has_photo = await fetch_and_embed_image(image_url, comp_name)
+        photo_uri, has_photo = await fetch_and_embed_image(
+            image_url, comp_name, before_fetch=db.commit
+        )
 
         # Build subtitle
         position = comp.get("position", "")
@@ -722,7 +728,7 @@ async def build_metric_leaders_model(
             db, player_id=entry.player_id, style="default"
         )
         photo_uri, has_photo = await fetch_and_embed_image(
-            image_url, entry.display_name
+            image_url, entry.display_name, before_fetch=db.commit
         )
 
         # Build subtitle
@@ -870,7 +876,7 @@ async def build_draft_year_model(
             db, player_id=leader.player_id, style="default"
         )
         photo_uri, has_photo = await fetch_and_embed_image(
-            image_url, leader.display_name
+            image_url, leader.display_name, before_fetch=db.commit
         )
 
         formatted_val = leader.formatted_metrics.get(metric_key) or str(

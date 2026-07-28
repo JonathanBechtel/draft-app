@@ -1382,13 +1382,26 @@ async def test_refresh_schedule_calls_run_scoreboard_ingest_when_in_window(
     fake_report = _FakeScoreboardReport()
 
     async def _fake_scoreboard_ingest(
-        _db: object, *, today: object, client: object
+        _db: object,
+        *,
+        today: object,
+        client: object,
+        before_fetch: object,
+        before_upsert: object,
     ) -> object:
         calls.append({"today": today, "client": client})
+        await before_fetch()  # type: ignore[operator]
+        await before_upsert()  # type: ignore[operator]
         return fake_report
+
+    async def _fake_try_lock(_db: object) -> bool:
+        return True
 
     monkeypatch.setattr(runner, "_schedule_pull_in_window", _fake_in_window)
     monkeypatch.setattr(runner, "run_scoreboard_ingest", _fake_scoreboard_ingest)
+    monkeypatch.setattr(
+        runner, "try_acquire_summer_league_writer_lock", _fake_try_lock
+    )
 
     fake_client = _FakeClient()
     now = datetime(2026, 7, 12, 18, 0, tzinfo=timezone.utc)  # 2:00pm ET (EDT)

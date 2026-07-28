@@ -191,6 +191,10 @@ EVENT_BATCH_SIZE = 8
 RESOLUTION_BATCH_SIZE = 8
 
 
+class SummerLeagueScheduleLockUnavailable(RuntimeError):
+    """Raised internally when schedule persistence cannot acquire the writer lock."""
+
+
 def _telemetry_step(telemetry: PipelineTelemetry | None, name: str, **fields: object):
     """Return a timing context only when a production telemetry run is active.
 
@@ -425,13 +429,19 @@ async def _refresh_schedule(
         if not in_window:
             logger.info("Schedule refresh: skipped (off-window)")
             return None
-        async with db.begin():
+
+        async def _acquire_before_upsert() -> None:
             if not await try_acquire_summer_league_writer_lock(db):
-                logger.info("Schedule refresh: skipped (Desk writer is active)")
-                return None
-            report = await run_scoreboard_ingest(
-                db, today=to_eastern_date(now), client=client
-            )
+                raise SummerLeagueScheduleLockUnavailable
+
+        report = await run_scoreboard_ingest(
+            db,
+            today=to_eastern_date(now),
+            client=client,
+            before_fetch=db.commit,
+            before_upsert=_acquire_before_upsert,
+        )
+        await db.commit()
         logger.info(
             "Schedule refresh: competitions_checked=%d games_seen=%d "
             "created=%d updated=%d errors=%s unresolved_team_ids=%s",
@@ -443,6 +453,10 @@ async def _refresh_schedule(
             report.unresolved_team_ids,
         )
         return report
+    except SummerLeagueScheduleLockUnavailable:
+        logger.info("Schedule refresh: skipped (Desk writer is active)")
+        await db.rollback()
+        return None
     except Exception as exc:
         logger.warning(
             "Schedule refresh failed (%s: %s); continuing", type(exc).__name__, exc

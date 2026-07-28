@@ -4,6 +4,8 @@ Provides list, create, read, update, and delete for player records.
 Routes are thin wrappers; business logic lives in admin_player_service.
 """
 
+# discipline: file-size cross-cutting network boundary; no new route domain logic
+
 from __future__ import annotations
 
 import logging
@@ -49,6 +51,7 @@ from app.services.admin_combine_service import (
 )
 from app.services.player_search_service import (
     Candidate,
+    candidate_search_boundary,
     compare_names,
     find_candidate_players,
 )
@@ -416,7 +419,8 @@ async def player_compare(
 
     if q and q.strip():
         try:
-            similar_results = await find_candidate_players(db, q.strip(), k=k)
+            with candidate_search_boundary(db.close):
+                similar_results = await find_candidate_players(db, q.strip(), k=k)
         except Exception as exc:
             logger.warning("find_candidate_players failed for query %r: %s", q, exc)
             compare_error = f"Search failed: {exc}"

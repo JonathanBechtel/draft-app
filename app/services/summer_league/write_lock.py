@@ -6,6 +6,8 @@ from time import monotonic
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.utils.network_guard import mark_summer_league_writer_lock_acquired
+
 # "SLDE" as a signed 32-bit advisory-lock namespace. The first lock key is
 # PostgreSQL's hash of current_schema(): production writers share ``public``,
 # while pytest-xdist's isolated schemas do not unnecessarily serialize.
@@ -43,6 +45,7 @@ async def acquire_summer_league_writer_lock(db: AsyncSession) -> None:
         text("SELECT pg_advisory_xact_lock(hashtext(current_schema()), :lock_key)"),
         {"lock_key": _SUMMER_LEAGUE_WRITER_LOCK_KEY},
     )
+    mark_summer_league_writer_lock_acquired(db)
 
 
 async def try_acquire_summer_league_writer_lock(db: AsyncSession) -> bool:
@@ -51,7 +54,10 @@ async def try_acquire_summer_league_writer_lock(db: AsyncSession) -> bool:
         text("SELECT pg_try_advisory_xact_lock(hashtext(current_schema()), :lock_key)"),
         {"lock_key": _SUMMER_LEAGUE_WRITER_LOCK_KEY},
     )
-    return bool(result.scalar_one())
+    acquired = bool(result.scalar_one())
+    if acquired:
+        mark_summer_league_writer_lock_acquired(db)
+    return acquired
 
 
 async def acquire_summer_league_writer_lock_bounded(

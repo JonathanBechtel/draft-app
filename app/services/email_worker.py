@@ -11,6 +11,7 @@ from sqlalchemy import select, update
 from app.config import settings
 from app.schemas.auth import AuthEmailOutbox
 from app.utils.db_async import SessionLocal
+from app.utils.network_guard import guarded_async_httpx_event_hooks
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,9 @@ async def _send_via_resend(
         logger.warning("Resend API key not configured, skipping email to %s", to)
         return False
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(
+        event_hooks=guarded_async_httpx_event_hooks()
+    ) as client:
         try:
             response = await client.post(
                 "https://api.resend.com/emails",

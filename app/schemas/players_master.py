@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import logging
 import re
 from typing import Any, Optional
@@ -208,7 +209,10 @@ def _schedule_player_embedding(snapshot: dict[str, Any]) -> None:
                 exc_info=True,
             )
 
-    asyncio.ensure_future(_embed())
+    # ``after_commit`` fires before ``after_transaction_end`` clears the
+    # runtime network guard. Start the detached task with a clean context so
+    # it cannot inherit the just-committed transaction marker.
+    loop.create_task(_embed(), context=contextvars.Context())
 
 
 @event.listens_for(Session, "after_flush")

@@ -23,6 +23,7 @@ from google.genai import types
 
 from app.config import settings
 from app.schemas.players_master import PlayerMaster
+from app.utils.network_guard import guard_network_io
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +160,7 @@ async def embed_text(
         raise ValueError("embed_text received an empty string.")
 
     _c = client or _get_client()
+    guard_network_io("Gemini embedding request")
     try:
         response = await asyncio.wait_for(
             _c.aio.models.embed_content(
@@ -207,6 +209,7 @@ async def embed_players_batch(
 
     texts = [build_player_embed_input(p) for p in players]
     _c = client or _get_client()
+    guard_network_io("Gemini batch embedding request")
     try:
         response = await asyncio.wait_for(
             _c.aio.models.embed_content(

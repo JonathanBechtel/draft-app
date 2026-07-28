@@ -321,10 +321,14 @@ async def _run_venue(
             diff_report.cut,
         )
 
-        async with db.begin():
-            resolution_report = await resolve_summer_league_players(
-                db, year=year, league_id=league_id, create_stubs=True
-            )
+        resolution_report = await resolve_summer_league_players(
+            db,
+            year=year,
+            league_id=league_id,
+            create_stubs=True,
+            before_candidate_search=db.commit,
+        )
+        await db.commit()
         logger.info(
             "L%s resolve: total=%d resolved=%d unresolved=%d stubs=%d",
             league_id,
