@@ -97,11 +97,36 @@ section, P2 compliance, and the time axis Phase 3 consumes — but shipping it f
 the phase's riskiest change on a path #669 does not indict. Migration safety goes first instead.
 The scoping subtlety still holds and is still worth fixing (`compute()` loads and refits the full
 historical dataset regardless of scope, so scoping bounds neither compute cost nor transaction
-length) — but it is a cost finding, not the lock finding.
+length) — but it is a cost finding, not the lock finding. **That cost finding is now fixed**
+(#694): `app/services/summer_league/metrics_rebuild_gate.py` compares a durable input watermark
+and skips the rebuild entirely when nothing upstream changed, so `compute()` still loads the full
+pool when it runs — which is required for the fits to be correct — but now rarely runs at all.
+
+### Status
+
+**Shipped:** migration safety and the readiness probe · deploy-freshness alarm · import
+contract 4 · `DatedVersionMixin` (definition only) · metric-model fit-history retention ·
+runtime network/writer-lock guards · ingestion identity guard · the metrics rebuild gate.
+
+**Remaining**, and all three are tracked as their own tickets:
+
+| Remaining item | Why it is still open |
+|---|---|
+| **Version-flip publish** (#697) | The largest change in the phase, and the entry gate removed its urgency by exonerating the path it converts. Still owed: it retires the last two unscoped-delete waivers in `metrics.py` and creates Phase 3's time axis |
+| **Intra-day compaction** (#698) | Cannot precede the version-flip — there are no hourly versions to compact until versions exist |
+| **Latency-class partitioning** (#699) | Buildable now but **not verifiable** until there are live games to poll; shipping it off-season means unverified code lying dormant until July |
+
+**Also open, but a decision rather than work:** auto-deploy on merge to `main`. The freshness
+alarm observes and deliberately cannot deploy.
+
+**The exit criteria below cannot be met off-season.** They require tick completion measured
+*inside live-game windows* across several overlapping cycles. Summer League ended 2026-07-19, so
+closing them needs either the next event or a deliberate staging replay — which is a property of
+the criteria, not an outstanding task.
 
 | Item | Spec |
 |---|---|
-| Runtime guards: no network I/O while a transaction is open or the writer lock is held (ContextVar + client checks; hard-fail dev/test, warn+stack in prod) | discipline §2.1–2.2 |
+| Runtime guards: no network I/O while a transaction is open or the writer lock is held (ContextVar + client checks; hard-fail dev/test, warn+stack in prod) — **SHIPPED** (#692 via PR #696): `app/utils/network_guard.py`; transaction depth from SQLAlchemy `after_begin`/`after_transaction_end`, writer-lock depth marked at both acquire sites in `write_lock.py`, and the guard *called* from the NBA-stats client rather than merely defined | discipline §2.1–2.2 |
 | `DatedVersionMixin` (`version` / `registry_version` / `calculation_version` / `is_current` / `as_of`) — defined **here** so the version-flip tables inherit it from day one — **SHIPPED**: definition only in `app/schemas/base.py`; nothing adopts it and no table is created (verified by autogenerate against a scratch DB). Process time is deliberately excluded so job-run time cannot be rendered as a user-facing "as of" (P4) | alignment §5b |
 | **Version-flip publish replacing the mega-transaction** — build the new metrics version outside any lock, materialize variants, flip the pointer in a tiny transaction (`app/cli/summer_league_ingest_runner.py:1308-1348`) | desk §5, stat-engine §5 |
 | Intra-day compaction policy for hourly rebuild versions (retain daily close + current) — lands with the version-flip so retention is bounded from the first event | stat-engine §5 |
@@ -109,7 +134,7 @@ length) — but it is a cost finding, not the lock finding.
 | Latency-class partitioning: fast live poller / medium projection builder / slow backbone | desk §2 |
 | **Migration safety** (from #669) — **ship this first.** Short `lock_timeout`; `transaction_per_migration=True` so a blocked revision cannot hold earlier revisions' `ACCESS EXCLUSIVE` locks chain-wide (the entry gate's mechanism #1 — `lock_timeout` alone does not bound lock *lifetime*); `CREATE INDEX CONCURRENTLY` via `autocommit_block()`; the §1.7 checker enforcing both halves on new revisions; a DB-exercising readiness probe so `/health` cannot stay green through a database outage | desk §5a, discipline §1.7 |
 | **Deploy freshness** (new, from the entry gate) — prod ran 3.5 days behind `main` through the entire Vegas window, and "the chunking fixes shipped" was true of `main` and false of production — **PARTLY SHIPPED**: `scripts/check_deploy_freshness.py` + a daily workflow now measure and report the gap (app machines vs `origin/main`, via the `GH_SHA` image label). Auto-deploy on merge remains an open owner decision — the alarm observes, it does not deploy | #669 |
-| Ingestion-side identity guard: suffix/diacritic/variant-aware matching **before** a new `players_master` row is created — the Jr./II/accent dup class has been re-fixed downstream at least three times | backlog 4.3 |
+| Ingestion-side identity guard: suffix/diacritic/variant-aware matching **before** a new `players_master` row is created — the Jr./II/accent dup class has been re-fixed downstream at least three times — **SHIPPED** (#693 via PR #696): variant-aware matching in the resolution path, with ambiguous variants left reviewable rather than resolved into competing identities (the father/son namesake trap) | backlog 4.3 |
 | Import contract 4 (`event_desk` ↛ SL) with its `ignore_imports` baseline — lands here so the list shrinks across Phases 1 and 5 rather than being written after the decoupling — **SHIPPED**: baseline is **4 entries across 3 of 9 modules**, not the "fails broadly" wall the spec predicted; Phase 5 starts from a much shorter list | discipline §3.1 |
 
 **Note:** the version-flip lands here, not in Phase 3, because it satisfies P2 and creates the
@@ -206,7 +231,9 @@ The live issue queue and this plan describe the same work; keep them pointing at
 
 | Ticket(s) | Relationship |
 |---|---|
-| **#669** (incident record) | The observed evidence behind Phase 1's entry gate, and the source of the migration-safety items. **Entry gate closed** — the diagnosis is a comment on the issue; migration safety shipped as the phase's first change. Remaining open follow-ups on the issue: genuinely scoping the metrics compute, a maximum transaction/writer-lock lifetime per cron phase, alerting on old transactions and pool saturation, and per-stage cron telemetry that survives machine restarts |
+| **#669** (incident record) | The observed evidence behind Phase 1's entry gate, and the source of the migration-safety items. **Entry gate closed** — the diagnosis is a comment on the issue; migration safety shipped as the phase's first change. Remaining open follow-ups on the issue (metrics-compute scoping is now closed by #694's rebuild gate): a maximum transaction/writer-lock lifetime per cron phase, alerting on old transactions and pool saturation, and per-stage cron telemetry that survives machine restarts |
+| **#697, #698, #699** (Phase 1 remainder) | The three build items left in this phase: version-flip publish, its compaction policy, and latency-class partitioning. #698 is blocked on #697; #699 is blocked on a live event or a staging replay, not on code |
+| **#692, #693, #694** | **Closed** (PR #696): runtime network/writer-lock guards, the ingestion identity guard, and the metrics rebuild gate that stopped the hourly full recompute |
 | **#661** (scheduler success ≠ data refresh) | Implements the operational half of desk §1's watermark contract — scheduler / source / projection / snapshot signals kept distinct. Complements Phase 5's user-facing contract; ship whenever ready |
 | **#662–#667** (Desk decomposition) | Phase 5 material. **Sequencing guard:** execute after Phase 2's stat consolidation, or restrict each ticket to pure moves — otherwise duplicated math gets scattered into more files (sequencing rule 3) |
 | **#645, #646, #648** (Explorer/environment modularization) | Same Phase 5 guard applies |
