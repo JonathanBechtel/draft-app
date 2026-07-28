@@ -49,6 +49,8 @@ this call assembles.
 
 from __future__ import annotations
 
+# discipline: file-size candidate-version Desk assembly; no new page service surface
+
 from collections import defaultdict
 from dataclasses import dataclass, replace as dataclass_replace
 from datetime import date, datetime, timezone

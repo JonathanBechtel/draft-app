@@ -13,6 +13,8 @@ No composite/derived metrics are computed here.
 
 from __future__ import annotations
 
+# discipline: file-size current-projection read predicate; no new stats service surface
+
 from dataclasses import asdict, dataclass
 from typing import Optional
 

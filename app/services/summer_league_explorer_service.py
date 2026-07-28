@@ -38,6 +38,8 @@ as SQL arithmetic inside a CTE/subquery so they can be sorted in SQL.
 
 from __future__ import annotations
 
+# discipline: file-size current-projection read predicate; no new explorer surface
+
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime

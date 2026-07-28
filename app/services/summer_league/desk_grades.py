@@ -30,6 +30,8 @@ cohort has no history), not a fallback to compute one on the fly.
 
 from __future__ import annotations
 
+# discipline: file-size version-aware Desk read compatibility; no new service surface
+
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone

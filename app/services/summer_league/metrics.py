@@ -25,6 +25,8 @@ offline by ``scripts/rebuild_sl_metrics.py``, not on the request path.
 
 from __future__ import annotations
 
+# discipline: file-size version-flip persistence seam; staged in adjacent publisher module
+
 import math
 from collections import defaultdict
 from collections.abc import Mapping, Sequence

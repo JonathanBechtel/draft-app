@@ -47,6 +47,8 @@ documented judgment call, not invented data.
 
 from __future__ import annotations
 
+# discipline: file-size version-aware Desk read compatibility; no new service surface
+
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta

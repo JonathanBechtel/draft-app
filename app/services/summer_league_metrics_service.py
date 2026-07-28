@@ -22,6 +22,8 @@ em-dashes — non-eligible pools still appear in the raw box-score table elsewhe
 
 from __future__ import annotations
 
+# discipline: file-size current-projection read predicate; no new metrics service surface
+
 from dataclasses import dataclass
 from typing import Optional
 

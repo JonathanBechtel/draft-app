@@ -22,6 +22,8 @@ The dataset deliberately contains, per the frozen implementation contract §10:
 
 from __future__ import annotations
 
+# discipline: file-size versioned metric fixture compatibility; no new fixture surface
+
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Optional
