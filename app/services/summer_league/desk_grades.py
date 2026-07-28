@@ -298,6 +298,7 @@ async def grade_player_event(
         SummerLeaguePlayerSeason.gp,
     ).where(
         SummerLeaguePlayerSeason.player_id == player_id,
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year == competition.year,
     )
     rows = (await session.execute(season_stmt)).all()
@@ -436,6 +437,7 @@ async def grade_players_bulk(
         SummerLeaguePlayerSeason.gp,
     ).where(
         SummerLeaguePlayerSeason.player_id.in_(unique_ids),  # type: ignore[attr-defined]
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year == competition.year,
     )
     season_rows = (await session.execute(season_stmt)).all()

@@ -34,6 +34,11 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
+from app.schemas.base import DatedVersionMixin
+
+DEFAULT_METRIC_REGISTRY_VERSION = "2026.07.1"
+DEFAULT_METRIC_CALCULATION_VERSION = "2026.07.1"
+
 
 class SummerLeagueMetricModel(SQLModel, table=True):  # type: ignore[call-arg]
     """One versioned fit of the league-wide SL metric coefficients."""
@@ -85,19 +90,38 @@ class SummerLeagueMetricModel(SQLModel, table=True):  # type: ignore[call-arg]
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
-class SummerLeagueMetricContext(SQLModel, table=True):  # type: ignore[call-arg]
+class SummerLeagueMetricContext(DatedVersionMixin, SQLModel, table=True):  # type: ignore[call-arg]
     """Recalibration constants for one (year, venue) competition pool."""
 
     __tablename__ = "summer_league_metric_contexts"
     __table_args__ = (
         UniqueConstraint(
             "competition_id",
-            name="uq_summer_league_metric_contexts_competition",
+            "version",
+            name="uq_summer_league_metric_contexts_competition_version",
+        ),
+        Index(
+            "uq_summer_league_metric_contexts_current",
+            "competition_id",
+            unique=True,
+            postgresql_where=text("is_current = true"),
         ),
         Index("ix_summer_league_metric_contexts_year_venue", "year", "venue_slug"),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    # Direct fixture/manual construction predates dated metrics. The rebuild path
+    # always supplies an inactive candidate explicitly; these defaults keep legacy
+    # seed helpers readable while the migration backfills their equivalent v1 row.
+    version: int = Field(default=1, nullable=False)
+    is_current: bool = Field(default=True, nullable=False)
+    registry_version: str = Field(
+        default=DEFAULT_METRIC_REGISTRY_VERSION, nullable=False
+    )
+    calculation_version: str = Field(
+        default=DEFAULT_METRIC_CALCULATION_VERSION, nullable=False
+    )
+    as_of: Optional[datetime] = Field(default=None)
     competition_id: int = Field(
         sa_column=Column(
             Integer,
@@ -123,7 +147,7 @@ class SummerLeagueMetricContext(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
-class SummerLeaguePlayerSeason(SQLModel, table=True):  # type: ignore[call-arg]
+class SummerLeaguePlayerSeason(DatedVersionMixin, SQLModel, table=True):  # type: ignore[call-arg]
     """Materialized per-(player, competition) box totals and computed metrics.
 
     ``adv_eligible`` mirrors the pool's flag: when ``False`` only the
@@ -136,7 +160,15 @@ class SummerLeaguePlayerSeason(SQLModel, table=True):  # type: ignore[call-arg]
         UniqueConstraint(
             "competition_id",
             "player_id",
-            name="uq_summer_league_player_seasons_competition_player",
+            "version",
+            name="uq_summer_league_player_seasons_competition_player_version",
+        ),
+        Index(
+            "uq_summer_league_player_seasons_current",
+            "competition_id",
+            "player_id",
+            unique=True,
+            postgresql_where=text("is_current = true"),
         ),
         Index("ix_summer_league_player_seasons_player_id", "player_id"),
         Index("ix_summer_league_player_seasons_year_venue", "year", "venue_slug"),
@@ -144,6 +176,18 @@ class SummerLeaguePlayerSeason(SQLModel, table=True):  # type: ignore[call-arg]
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    # See the compatibility note on SummerLeagueMetricContext above. Candidate
+    # rows written by the versioned rebuild override these defaults with
+    # is_current=False and their publication metadata.
+    version: int = Field(default=1, nullable=False)
+    is_current: bool = Field(default=True, nullable=False)
+    registry_version: str = Field(
+        default=DEFAULT_METRIC_REGISTRY_VERSION, nullable=False
+    )
+    calculation_version: str = Field(
+        default=DEFAULT_METRIC_CALCULATION_VERSION, nullable=False
+    )
+    as_of: Optional[datetime] = Field(default=None)
     competition_id: int = Field(
         sa_column=Column(
             Integer,

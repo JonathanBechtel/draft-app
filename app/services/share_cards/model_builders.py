@@ -1017,11 +1017,15 @@ async def build_sl_shot_chart_model(
         diet_stmt = select(SummerLeaguePlayerSeason).where(  # type: ignore[call-overload]
             SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
             SummerLeaguePlayerSeason.competition_id == competition_id,  # type: ignore[arg-type]
+            SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         )
     else:
         diet_stmt = (
             select(SummerLeaguePlayerSeason)  # type: ignore[call-overload]
-            .where(SummerLeaguePlayerSeason.player_id == player_id)  # type: ignore[arg-type]
+            .where(
+                SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
+                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            )
             .order_by(
                 desc(SummerLeaguePlayerSeason.year),  # type: ignore[arg-type]
                 SummerLeaguePlayerSeason.venue_slug,

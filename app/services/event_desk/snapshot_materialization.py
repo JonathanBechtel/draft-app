@@ -19,19 +19,29 @@ from app.services.event_desk.render_snapshots import (
 from app.services.summer_league.desk_read import build_desk_render_variants
 
 
-async def materialize_desk_render_snapshots(db: AsyncSession) -> int:
-    """Rebuild the homepage Desk variants from the current materialized data.
+async def prepare_desk_render_snapshots(
+    db: AsyncSession,
+    *,
+    metrics_version: int | None = None,
+) -> list[RenderSnapshotWrite]:
+    """Build homepage variants without persisting them.
 
-    Returns zero outside the active Desk window; otherwise atomically upserts
-    every daily-state, cohort, and stat-view variant. The caller owns the
-    surrounding transaction.
+    The full-ingestion version-flip uses this staging seam to assemble against an
+    inactive metric version, then writes the resulting variants in the same short
+    transaction as the metric pointer flip. This keeps the public metrics tables and
+    homepage cache coherent if either phase fails.
     """
-    result = await build_desk_render_variants(db, scheduled_write=True)
+    if metrics_version is None:
+        result = await build_desk_render_variants(db, scheduled_write=True)
+    else:
+        result = await build_desk_render_variants(
+            db, scheduled_write=True, metrics_version=metrics_version
+        )
     if result is None:
-        return 0
+        return []
 
     event_id, variants = result
-    writes = [
+    return [
         RenderSnapshotWrite(
             event_id=event_id,
             daily_state=variant.daily_state,
@@ -51,9 +61,28 @@ async def materialize_desk_render_snapshots(db: AsyncSession) -> int:
         )
         for variant in variants
     ]
+
+
+async def materialize_desk_render_snapshots(
+    db: AsyncSession,
+    *,
+    metrics_version: int | None = None,
+) -> int:
+    """Rebuild and persist homepage Desk variants from materialized data.
+
+    Returns zero outside the active Desk window; otherwise atomically upserts
+    every daily-state, cohort, and stat-view variant. The caller owns the
+    surrounding transaction.
+    """
+    writes = await prepare_desk_render_snapshots(db, metrics_version=metrics_version)
+    if not writes:
+        return 0
     now_naive_utc = datetime.now(timezone.utc).replace(tzinfo=None)
     await upsert_render_snapshots(db, writes, now=now_naive_utc)
     return len(writes)
 
 
-__all__ = ["materialize_desk_render_snapshots"]
+__all__ = [
+    "materialize_desk_render_snapshots",
+    "prepare_desk_render_snapshots",
+]

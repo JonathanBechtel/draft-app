@@ -8,14 +8,16 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.event_desk.render_snapshots import upsert_render_snapshots
 from app.services.event_desk.snapshot_materialization import (
-    materialize_desk_render_snapshots,
+    prepare_desk_render_snapshots,
 )
 from app.services.summer_league.environment_refresh import (
     refresh_environment_profiles_for_year,
     resolve_environment_refresh_scope,
 )
-from app.services.summer_league.metrics import rebuild as rebuild_sl_metrics
+from app.services.summer_league.metrics import rebuild_staged as rebuild_sl_metrics
+from app.services.summer_league.metric_publish import publish_metric_version
 from app.services.summer_league.metrics_input import calculate_metrics_input_watermark
 from app.services.summer_league.pipeline_state import (
     SummerLeaguePipelineJob,
@@ -115,6 +117,31 @@ async def run_metrics_stage(
     )
     try:
         with context.telemetry.step("metrics_and_snapshots") as step_fields:
+            # Build the candidate projection in its own transaction. This is the
+            # expensive part of a rebuild, so it deliberately runs without the
+            # shared writer lock; current rows remain readable throughout.
+            async with db.begin():
+                summary = await rebuild_sl_metrics(db)
+
+            metrics_version = int(summary["version"])
+            # Render variants must be assembled from the same candidate metrics
+            # version that will be published. They are kept in memory until the
+            # final short transaction so a failed build cannot affect the live
+            # homepage cache.
+            async with db.begin():
+                snapshot_writes = await prepare_desk_render_snapshots(
+                    db, metrics_version=metrics_version
+                )
+
+            target_year = resolve_environment_refresh_scope(
+                year=context.year,
+                any_games=context.any_games,
+                pending_reconciliation=pending_reconciliation,
+            )
+            published = False
+            # Only the pointer flip, cache writes, and pipeline bookkeeping are
+            # serialized. If the Desk owns the lock, the candidate stays
+            # inactive and the next scheduled run retries it.
             async with db.begin():
                 if not await try_acquire_summer_league_writer_lock_yielding(
                     db, step_fields
@@ -124,13 +151,26 @@ async def run_metrics_stage(
                         reason="metrics_and_snapshot_lock_contended",
                     )
                     logger.info(
-                        "SL metrics rebuild deferred (Desk writer is active); "
-                        "a later scheduled full run will reconcile it"
+                        "SL metrics publication deferred (Desk writer is active); "
+                        "the candidate remains invisible for a later scheduled run"
                     )
-                    return False
+                else:
+                    await publish_metric_version(
+                        db,
+                        version=metrics_version,
+                        model_version=str(summary["model_version"]),
+                    )
+                    await upsert_render_snapshots(db, snapshot_writes)
+                    await complete_pipeline(
+                        db,
+                        job=SummerLeaguePipelineJob.FULL_INGESTION,
+                        metrics_rebuilt=True,
+                        snapshots_materialized=bool(snapshot_writes),
+                        metrics_input_watermark=current_input_watermark,
+                    )
+                    published = True
 
-                summary = await rebuild_sl_metrics(db)
-                refreshed_snapshots = await materialize_desk_render_snapshots(db)
+            if published:
                 logger.info(
                     "SL metrics rebuild complete: %s player-seasons, "
                     "%s contexts (%s adv-eligible pools); refreshed "
@@ -138,24 +178,16 @@ async def run_metrics_stage(
                     summary["seasons"],
                     summary["contexts"],
                     summary["adv_pools"],
-                    refreshed_snapshots,
+                    len(snapshot_writes),
                 )
-                target_year = resolve_environment_refresh_scope(
-                    year=context.year,
-                    any_games=context.any_games,
-                    pending_reconciliation=pending_reconciliation,
-                )
+                # Competition Context is an independent, versioned projection.
+                # Its own service acquires the writer lock before reading facts,
+                # so keep it outside the metrics pointer-flip transaction.
                 if target_year is not None:
-                    await refresh_environment_profiles_for_year(
-                        db, year=target_year, telemetry=context.telemetry
-                    )
-                await complete_pipeline(
-                    db,
-                    job=SummerLeaguePipelineJob.FULL_INGESTION,
-                    metrics_rebuilt=True,
-                    snapshots_materialized=True,
-                    metrics_input_watermark=current_input_watermark,
-                )
+                    async with db.begin():
+                        await refresh_environment_profiles_for_year(
+                            db, year=target_year, telemetry=context.telemetry
+                        )
     except Exception as exc:
         logger.error("SL metrics rebuild failed: %s", exc, exc_info=True)
         return True

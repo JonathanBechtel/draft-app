@@ -79,3 +79,22 @@ async def test_full_metrics_rebuild_skips_desk_snapshot_refresh_off_window(
     assert refreshed == 0
     build_variants.assert_awaited_once_with(db, scheduled_write=True)
     upsert_snapshots.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_staged_snapshot_prepare_reads_candidate_metrics_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Candidate Desk variants can be built before the metric pointer flips."""
+    build_variants = AsyncMock(return_value=None)
+    monkeypatch.setattr(
+        snapshot_materialization, "build_desk_render_variants", build_variants
+    )
+
+    db = AsyncMock()
+    writes = await snapshot_materialization.prepare_desk_render_snapshots(
+        db, metrics_version=9
+    )
+
+    assert writes == []
+    build_variants.assert_awaited_once_with(db, scheduled_write=True, metrics_version=9)

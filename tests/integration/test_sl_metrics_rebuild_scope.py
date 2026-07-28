@@ -1,11 +1,9 @@
 """Integration tests for the scoped Summer League metrics rebuild (#523).
 
-`app.services.summer_league.metrics.rebuild` historically wiped and
-recomputed the ENTIRE `summer_league_player_seasons` / `_metric_contexts`
-table on every call -- correct for the offline
-`scripts/rebuild_sl_metrics.py` job, but far too heavy (and destructive to
-directly-seeded rows) for the hourly desk tick (#516), which only wants to
-refresh the competition(s) it just normalized this hour.
+`app.services.summer_league.metrics.rebuild` appends an inactive dated
+projection and flips the selected scopes current after the build. That keeps
+history for the offline job while making the hourly desk tick safe to refresh
+only the competition(s) it normalized this hour.
 
 These tests prove, in two groups:
 
@@ -348,7 +346,8 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
         for s in (
             await db_session.execute(
                 select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == comp_b  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.competition_id == comp_b,  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -359,7 +358,8 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
         (
             await db_session.execute(
                 select(SummerLeagueMetricContext).where(
-                    SummerLeagueMetricContext.competition_id == comp_b  # type: ignore[arg-type]
+                    SummerLeagueMetricContext.competition_id == comp_b,  # type: ignore[arg-type]
+                    SummerLeagueMetricContext.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -384,7 +384,8 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
         (
             await db_session.execute(
                 select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == comp_a  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.competition_id == comp_a,  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -399,7 +400,8 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
         (
             await db_session.execute(
                 select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == comp_b  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.competition_id == comp_b,  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -413,7 +415,8 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
         (
             await db_session.execute(
                 select(SummerLeagueMetricContext).where(
-                    SummerLeagueMetricContext.competition_id == comp_b  # type: ignore[arg-type]
+                    SummerLeagueMetricContext.competition_id == comp_b,  # type: ignore[arg-type]
+                    SummerLeagueMetricContext.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -441,7 +444,8 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
         (
             await db_session.execute(
                 select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == comp_a  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.competition_id == comp_a,  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -479,7 +483,10 @@ async def test_scoped_rebuild_empty_scope_is_a_noop(db_session: AsyncSession) ->
 
     summary = await rebuild(db_session, competition_ids=[])
     await db_session.commit()
-    assert summary == {"seasons": 0, "contexts": 0, "adv_pools": 0}
+    assert summary["seasons"] == 0
+    assert summary["contexts"] == 0
+    assert summary["adv_pools"] == 0
+    assert summary["version"] == 0
 
     seasons_after = (
         (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
@@ -488,15 +495,10 @@ async def test_scoped_rebuild_empty_scope_is_a_noop(db_session: AsyncSession) ->
     assert comp_a  # sanity: the pool used above
 
 
-async def test_unscoped_rebuild_still_does_a_full_wipe_and_rebuild(
+async def test_unscoped_rebuild_retains_projection_history(
     db_session: AsyncSession,
 ) -> None:
-    """Regression guard for the pre-#523 unscoped call.
-
-    ``rebuild(db)`` with no new arguments keeps behaving exactly as before:
-    full wipe-and-rebuild across every pool, with a fresh model row minted
-    each call.
-    """
+    """An unscoped rebuild retains prior versions while publishing one current view."""
     await _seed_pool(
         db_session,
         year=2025,
@@ -526,7 +528,9 @@ async def test_unscoped_rebuild_still_does_a_full_wipe_and_rebuild(
     seasons = (
         (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
     )
-    assert len(seasons) == 24  # not duplicated across the two full rebuilds
+    current_seasons = [season for season in seasons if season.is_current]
+    assert len(seasons) == 48
+    assert len(current_seasons) == 24
 
     # Projections are replaced; fits accumulate. Each unscoped rebuild retains the
     # prior model row and deactivates it rather than deleting it (P2).
@@ -958,6 +962,7 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(
             select(SummerLeaguePlayerSeason).where(
                 SummerLeaguePlayerSeason.competition_id == competition_a.id,  # type: ignore[arg-type]
                 SummerLeaguePlayerSeason.player_id == player.id,  # type: ignore[arg-type]
+                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
             )
         )
     ).scalar_one()
@@ -1002,7 +1007,8 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(
     still_untouched = (
         await db_session.execute(
             select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.competition_id == competition_b.id  # type: ignore[arg-type]
+                SummerLeaguePlayerSeason.competition_id == competition_b.id,  # type: ignore[arg-type]
+                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
             )
         )
     ).scalar_one()
@@ -1022,7 +1028,8 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(
         (
             await db_session.execute(
                 select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == competition_a.id  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.competition_id == competition_a.id,  # type: ignore[arg-type]
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )

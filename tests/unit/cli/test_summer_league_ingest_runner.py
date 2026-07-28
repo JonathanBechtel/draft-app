@@ -916,18 +916,36 @@ def _patch_main(
         events["full_reconcile_flags"].append(full_reconcile)
         return venue_results[league_id]
 
-    async def _fake_rebuild(_db: object) -> dict[str, int]:
+    async def _fake_rebuild(_db: object) -> dict[str, object]:
         events["rebuild_called"] = True
         if rebuild_raises:
             raise RuntimeError("rebuild boom")
-        return {"seasons": 1, "contexts": 1, "adv_pools": 1}
+        return {
+            "seasons": 1,
+            "contexts": 1,
+            "adv_pools": 1,
+            "version": 7,
+            "model_version": "fake-model",
+        }
 
     async def _fake_dispose() -> None:
         events["disposed"] = True
 
-    async def _fake_materialize_snapshots(_db: object) -> int:
+    async def _fake_prepare_snapshots(
+        _db: object, *, metrics_version: int | None = None
+    ) -> list[object]:
         events["snapshots_refreshed"] = True
-        return 72
+        assert metrics_version == 7
+        return [object()] * 72
+
+    async def _fake_publish_metric_version(
+        _db: object, *, version: int, model_version: str
+    ) -> None:
+        assert version == 7
+        assert model_version == "fake-model"
+
+    async def _fake_upsert_snapshots(_db: object, _writes: object) -> None:
+        return None
 
     async def _fake_refresh_schedule(
         _db: object, *, now: object, client: object
@@ -947,9 +965,13 @@ def _patch_main(
     monkeypatch.setattr(metrics_gate, "rebuild_sl_metrics", _fake_rebuild)
     monkeypatch.setattr(
         metrics_gate,
-        "materialize_desk_render_snapshots",
-        _fake_materialize_snapshots,
+        "prepare_desk_render_snapshots",
+        _fake_prepare_snapshots,
     )
+    monkeypatch.setattr(
+        metrics_gate, "publish_metric_version", _fake_publish_metric_version
+    )
+    monkeypatch.setattr(metrics_gate, "upsert_render_snapshots", _fake_upsert_snapshots)
     monkeypatch.setattr(runner, "dispose_engine", _fake_dispose)
     monkeypatch.setattr(runner, "NBAStatsClient", _FakeClient)
     monkeypatch.setattr(runner, "SessionLocal", lambda: _FakeSessionLocal())

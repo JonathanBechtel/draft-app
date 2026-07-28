@@ -149,6 +149,7 @@ async def fetch_cohort_members(
             SummerLeaguePlayerSeason.minutes,
             SummerLeaguePlayerSeason.gp,
         ).where(
+            SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
             SummerLeaguePlayerSeason.year >= start_year,
             SummerLeaguePlayerSeason.year <= end_year,
         )
@@ -437,6 +438,7 @@ async def fetch_prior_events(
         SummerLeaguePlayerSeason.gp,
     ).where(
         SummerLeaguePlayerSeason.player_id.in_(player_ids),  # type: ignore[attr-defined]
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year < before_year,
     )
     rows = (await db.execute(stmt)).all()
@@ -469,6 +471,7 @@ async def fetch_current_event_gp(
         SummerLeaguePlayerSeason.player_id, SummerLeaguePlayerSeason.gp
     ).where(  # type: ignore[call-overload]
         SummerLeaguePlayerSeason.player_id.in_(player_ids),  # type: ignore[attr-defined]
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year == year,
     )
     rows = (await db.execute(stmt)).all()

@@ -32,10 +32,16 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import case, delete, func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.summer_league.metric_publish import publish_metric_model
+from app.services.summer_league.metric_publish import (
+    METRIC_CALCULATION_VERSION,
+    METRIC_REGISTRY_VERSION,
+    next_metric_version,
+    publish_metric_version,
+)
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
@@ -916,6 +922,38 @@ class ComputeResult:
     # Assisted-FG counts per (player_id, competition_id) from PBP made-FG events;
     # value is (ast_fgm, unast_fgm). Empty when no PBP data has been ingested.
     assisted_fg: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)
+    as_of: Optional[datetime] = None
+
+
+@dataclass(frozen=True)
+class RebuildOptions:
+    """Persistence options shared by published and staged metric rebuilds."""
+
+    model_version: Optional[str] = None
+    competition_ids: Optional[Sequence[int]] = None
+    publish: bool = True
+
+
+@dataclass(frozen=True)
+class SeasonProjectionContext:
+    """Version and eligibility metadata carried into one season projection row."""
+
+    model_version: str
+    publication_version: int
+    as_of: Optional[datetime]
+    adv_eligible: bool
+
+
+async def _source_as_of(db: AsyncSession) -> Optional[datetime]:
+    """Return the latest source-row update represented by the metric inputs."""
+    timestamps = [
+        await db.scalar(select(func.max(SummerLeagueGame.updated_at))),
+        await db.scalar(select(func.max(SummerLeagueTeamGameLog.updated_at))),
+        await db.scalar(select(func.max(SummerLeaguePlayerGameLog.updated_at))),
+        await db.scalar(select(func.max(SummerLeagueShotEvent.updated_at))),
+        await db.scalar(select(func.max(SummerLeaguePlayByPlayEvent.updated_at))),
+    ]
+    return max((stamp for stamp in timestamps if stamp is not None), default=None)
 
 
 async def _load_shot_diet(
@@ -1184,6 +1222,7 @@ def _completeness(team_rows) -> dict[int, dict]:
 
 async def compute(db: AsyncSession) -> ComputeResult:
     """Load raw logs and compute every metric in memory."""
+    as_of = await _source_as_of(db)
     comps, games, team_rows, team_mp, player_rows = await _load(db)
     shot_diet = await _load_shot_diet(db)
     assisted_fg = await _load_assisted_fg(db)
@@ -1302,6 +1341,7 @@ async def compute(db: AsyncSession) -> ComputeResult:
         bpm_n_fit=n_fit,
         shot_diet=shot_diet,
         assisted_fg=assisted_fg,
+        as_of=as_of,
     )
 
 
@@ -1310,8 +1350,7 @@ async def compute(db: AsyncSession) -> ComputeResult:
 # --------------------------------------------------------------------------- #
 def _season_columns(
     ps: PlayerSeason,
-    model_version: str,
-    adv_eligible: bool,
+    projection: SeasonProjectionContext,
     zone_fga: dict[str, int],
     pbp_counts: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
@@ -1363,8 +1402,13 @@ def _season_columns(
         "corner3_rate": diet["corner3_rate"],
         "ast_fgm": ast_fgm,
         "unast_fgm": unast_fgm,
-        "adv_eligible": adv_eligible,
-        "model_version": model_version,
+        "adv_eligible": projection.adv_eligible,
+        "model_version": projection.model_version,
+        "version": projection.publication_version,
+        "is_current": False,
+        "registry_version": METRIC_REGISTRY_VERSION,
+        "calculation_version": METRIC_CALCULATION_VERSION,
+        "as_of": projection.as_of,
     }
 
 
@@ -1391,34 +1435,21 @@ async def _active_or_fresh_model_version(db: AsyncSession) -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
 
 
-async def rebuild(
-    db: AsyncSession,
-    *,
-    model_version: Optional[str] = None,
-    competition_ids: Optional[Sequence[int]] = None,
-) -> dict[str, int]:
+async def _rebuild_with_options(
+    db: AsyncSession, options: RebuildOptions
+) -> dict[str, Any]:
     """Recompute materialized SL metric tables -- full rebuild, or scoped by competition.
 
     Two modes, selected by ``competition_ids``:
 
-    * **Unscoped** (default, ``competition_ids=None``) -- a full rebuild: every
-      ``summer_league_player_seasons`` / ``_metric_contexts`` row is deleted and
-      replaced. ``_metric_models`` is **not** deleted; the new fit is published
-      via :func:`~app.services.summer_league.metric_publish.publish_metric_model`, which deactivates prior fits and retains
-      them as auditable history (P2). This is what
-      ``scripts/rebuild_sl_metrics.py`` (the offline full recompute) calls.
+    * **Unscoped** (default, ``competition_ids=None``) -- a full build. New
+      rows are appended as an inactive candidate version; the old current
+      version remains readable until :func:`publish_metric_version` flips it.
     * **Scoped** (``competition_ids`` a sequence of competition ids) -- only
-      ``SummerLeaguePlayerSeason`` / ``SummerLeagueMetricContext`` rows for
-      those competition ids are deleted and replaced; every other
-      competition's materialized rows -- including rows this function never
-      wrote at all -- are left untouched. The global
-      ``SummerLeagueMetricModel`` fit is never written on a scoped call: it
-      isn't scoped data, and refitting the league-wide Pythagorean/BPM
-      coefficients from an hourly per-competition tick would spam model
-      versions for no benefit. Scoped season rows are instead stamped with
-      :func:`_active_or_fresh_model_version`. An empty ``competition_ids``
-      sequence is a safe no-op (nothing loaded, deleted, or written) --
-      mirrors "nothing new to normalize this tick".
+      candidate rows for those competition ids are written. When ``publish``
+      is true (the Desk tick default), those scopes are flipped current before
+      this function returns. When false, the caller can include the flip in a
+      separate short publication transaction.
 
     :func:`compute` always loads and fits over the *entire* raw dataset
     regardless of scope: the league-relative recalibration constants and the
@@ -1429,40 +1460,48 @@ async def rebuild(
     wipe of data outside its scope.
 
     Returns a small summary dict (counts of what was actually written). The
-    caller controls the transaction.
+    caller controls the transaction. :func:`rebuild_staged` is used by the full
+    ingestion pipeline so materialization can finish before publication.
     """
+    model_version = options.model_version
+    competition_ids = options.competition_ids
+    publish = options.publish
     if competition_ids is not None and not competition_ids:
-        return {"seasons": 0, "contexts": 0, "adv_pools": 0}
+        return {
+            "seasons": 0,
+            "contexts": 0,
+            "adv_pools": 0,
+            "version": 0,
+            "model_version": model_version or "",
+            "published": publish,
+        }
 
     result = await compute(db)
     adv_cids = {cid for cid, ctx in result.contexts.items() if ctx.adv_eligible}
     scope = frozenset(competition_ids) if competition_ids is not None else None
+    publication_version = await next_metric_version(db)
+    generated_model_version = model_version or datetime.now(timezone.utc).strftime(
+        "%Y%m%d%H%M%S"
+    )
 
     if scope is None:
-        # Unscoped: full wipe-and-rebuild, unchanged from before #523.
-        # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
-        await db.execute(delete(SummerLeaguePlayerSeason))
-        # discipline: unscoped-delete P2 debt, removed by the Phase 1 version-flip
-        await db.execute(delete(SummerLeagueMetricContext))
-
-        version = model_version or datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        await publish_metric_model(db, version=version, result=result)
+        # Stage the fit inactive. The publication transaction activates it with
+        # both projection tables, so a failed materialization leaves the old fit
+        # active and auditable.
+        await publish_metric_model(
+            db,
+            version=generated_model_version,
+            result=result,
+            activate=False,
+        )
         contexts_to_write = list(result.contexts.values())
         seasons_to_write = result.seasons
     else:
-        # Scoped: delete + write only rows for the given competition ids;
-        # never touch the global model row (see docstring above).
-        await db.execute(
-            delete(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.competition_id.in_(scope)  # type: ignore[attr-defined]
-            )
+        # Scoped ticks reuse the active global fit and only stage the selected
+        # competition scopes.
+        generated_model_version = model_version or await _active_or_fresh_model_version(
+            db
         )
-        await db.execute(
-            delete(SummerLeagueMetricContext).where(
-                SummerLeagueMetricContext.competition_id.in_(scope)  # type: ignore[attr-defined]
-            )
-        )
-        version = model_version or await _active_or_fresh_model_version(db)
         contexts_to_write = [
             ctx for cid, ctx in result.contexts.items() if cid in scope
         ]
@@ -1484,6 +1523,11 @@ async def rebuild(
                 n_team_games=ctx.team_games,
                 n_complete_games=ctx.complete_games,
                 adv_eligible=ctx.adv_eligible,
+                version=publication_version,
+                is_current=False,
+                registry_version=METRIC_REGISTRY_VERSION,
+                calculation_version=METRIC_CALCULATION_VERSION,
+                as_of=result.as_of,
             )
         )
 
@@ -1492,13 +1536,65 @@ async def rebuild(
         zone_fga = result.shot_diet.get((ps.player_id, ps.competition_id), {})
         pbp_counts = result.assisted_fg.get((ps.player_id, ps.competition_id))
         cols = _season_columns(
-            ps, version, ps.competition_id in adv_cids, zone_fga, pbp_counts
+            ps,
+            SeasonProjectionContext(
+                model_version=generated_model_version,
+                publication_version=publication_version,
+                as_of=result.as_of,
+                adv_eligible=ps.competition_id in adv_cids,
+            ),
+            zone_fga,
+            pbp_counts,
         )
         db.add(SummerLeaguePlayerSeason(**cols))
         n_seasons += 1
 
-    return {
+    summary: dict[str, Any] = {
         "seasons": n_seasons,
         "contexts": len(contexts_to_write),
         "adv_pools": len(adv_cids if scope is None else adv_cids & scope),
+        "version": publication_version,
+        "model_version": generated_model_version,
+        "published": publish,
     }
+    if publish:
+        await publish_metric_version(
+            db,
+            version=publication_version,
+            competition_ids=scope,
+            model_version=generated_model_version if scope is None else None,
+        )
+    return summary
+
+
+async def rebuild(
+    db: AsyncSession,
+    *,
+    model_version: Optional[str] = None,
+    competition_ids: Optional[Sequence[int]] = None,
+) -> dict[str, Any]:
+    """Build and publish a full or scoped metric projection."""
+    return await _rebuild_with_options(
+        db,
+        RebuildOptions(
+            model_version=model_version,
+            competition_ids=competition_ids,
+        ),
+    )
+
+
+async def rebuild_staged(
+    db: AsyncSession,
+    *,
+    model_version: Optional[str] = None,
+    competition_ids: Optional[Sequence[int]] = None,
+) -> dict[str, Any]:
+    """Build an inactive metric projection for a later atomic publication."""
+    return await _rebuild_with_options(
+        db,
+        RebuildOptions(
+            model_version=model_version,
+            competition_ids=competition_ids,
+            publish=False,
+        ),
+    )

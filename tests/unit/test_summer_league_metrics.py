@@ -124,6 +124,9 @@ async def test_compute_persists_minute_weighted_nba_source_rates(
     async def empty_dict(_db: object) -> dict[object, object]:
         return {}
 
+    async def no_source_as_of(_db: object) -> None:
+        return None
+
     context = LeagueContext(
         competition_id=1,
         year=2026,
@@ -135,6 +138,7 @@ async def test_compute_persists_minute_weighted_nba_source_rates(
     )
     context.pace = 100.0
     monkeypatch.setattr(metrics_service, "_load", fake_load)
+    monkeypatch.setattr(metrics_service, "_source_as_of", no_source_as_of)
     monkeypatch.setattr(metrics_service, "_load_shot_diet", empty_dict)
     monkeypatch.setattr(metrics_service, "_load_assisted_fg", empty_dict)
     monkeypatch.setattr(

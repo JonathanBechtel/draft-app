@@ -330,6 +330,7 @@ async def get_player_metric_seasons(
     """
     stmt = select(SummerLeaguePlayerSeason).where(
         SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
     )
@@ -507,6 +508,7 @@ async def list_adv_competitions(db: AsyncSession) -> list[tuple[int, str]]:
             SummerLeaguePlayerSeason.venue_slug,
         )  # type: ignore[call-overload]
         .where(
+            SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
             SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
             SummerLeaguePlayerSeason.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
         )
@@ -595,6 +597,7 @@ async def get_competition_leaders(
         )
 
     conds: list[object] = [
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.year == r_year,  # type: ignore[arg-type]
         SummerLeaguePlayerSeason.venue_slug == r_venue,  # type: ignore[arg-type]
     ]
@@ -644,6 +647,7 @@ async def _competition_has_rows(db: AsyncSession, year: int, venue_slug: str) ->
     stmt = (
         select(SummerLeaguePlayerSeason.id)  # type: ignore[call-overload]
         .where(
+            SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
             SummerLeaguePlayerSeason.year == year,  # type: ignore[arg-type]
             SummerLeaguePlayerSeason.venue_slug == venue_slug,  # type: ignore[arg-type]
         )
@@ -756,6 +760,7 @@ async def get_blended_leaders(
         sorts and paginates. ``venue_label`` reads "All venues" when unscoped.
     """
     conds: list[object] = [
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
         SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
     ]
     if year is not None:

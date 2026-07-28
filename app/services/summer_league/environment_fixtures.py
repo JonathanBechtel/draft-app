@@ -624,7 +624,10 @@ async def _seed_leaders_players(session: AsyncSession, *, competition_id: int) -
     existing = (
         await session.execute(
             _select(SummerLeaguePlayerSeason.id)  # type: ignore[call-overload]
-            .where(SummerLeaguePlayerSeason.competition_id == competition_id)
+            .where(
+                SummerLeaguePlayerSeason.competition_id == competition_id,
+                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            )
             .limit(1)
         )
     ).first()
