@@ -208,13 +208,15 @@ async def _build_plan(db: AsyncSession) -> tuple[list[tuple], int]:
     return plan, blocked
 
 
-async def _write_plan(db: AsyncSession, board_id: int, plan: list[tuple]) -> int:
+async def _write_plan(
+    db: AsyncSession, board_id: int, plan: list[tuple]
+) -> tuple[int, int]:
     """Clear the target board and repopulate it from ``plan``.
 
-    Returns the number of stub players minted. Assumes the caller has already
+    Returns ``(minted, reused)`` stub counts. Assumes the caller has already
     opened the write transaction.
     """
-    from app.schemas.boards import Board, BoardEntry, ResolutionMethod
+    from app.schemas.boards import Board, BoardEntry, BoardKind, ResolutionMethod
     from app.schemas.players_master import PlayerMaster
 
     board = (
@@ -222,8 +224,26 @@ async def _write_plan(db: AsyncSession, board_id: int, plan: list[tuple]) -> int
             select(Board).where(Board.id == board_id)  # type: ignore[arg-type]
         )
     ).scalar_one()
+
+    # Everything below deletes this board's entries, so confirm it is the board
+    # this script is *for* -- not merely some pending board. A mistyped
+    # --board-id would otherwise silently replace an unrelated board's contents,
+    # and PENDING alone does not distinguish source, year, or even kind.
+    expected = (BoardKind.BIG_BOARD, SOURCE_ID, DRAFT_YEAR, PUBLISHED_AT)
+    actual = (
+        board.kind,
+        board.news_source_id,
+        board.draft_year,
+        board.published_at.date().isoformat(),
+    )
     if board.status.value != "PENDING":
         raise SystemExit(f"board {board_id} is {board.status.value}, not PENDING")
+    if actual != expected:
+        raise SystemExit(
+            f"board {board_id} identity mismatch; refusing to clear it.\n"
+            f"  expected kind/source/year/published: {expected}\n"
+            f"  actual:                              {actual}"
+        )
 
     # Clear existing entries on the target board.
     await db.execute(
@@ -234,13 +254,38 @@ async def _write_plan(db: AsyncSession, board_id: int, plan: list[tuple]) -> int
     await db.flush()
 
     minted = 0
+    reused = 0
     for rank, tier, name, pid, method, _note in plan:
         if method == ResolutionMethod.STUB:
-            stub = PlayerMaster(display_name=name, is_stub=True)
-            db.add(stub)
-            await db.flush()
-            pid = stub.id
-            minted += 1
+            # Re-running --execute, or another workflow having added the name in
+            # the meantime, must not mint a second canonical identity for the
+            # same person. `display_name` is not unique, so an unconditional
+            # insert silently succeeds and leaves duplicate players behind.
+            existing = (
+                (
+                    await db.execute(
+                        select(PlayerMaster.id).where(  # type: ignore[call-overload]
+                            PlayerMaster.display_name == name
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if len(existing) > 1:
+                raise SystemExit(
+                    f"{name!r} already matches {len(existing)} players "
+                    f"({sorted(existing)}); resolve the ambiguity before ingesting."
+                )
+            if existing:
+                pid = existing[0]
+                reused += 1
+            else:
+                stub = PlayerMaster(display_name=name, is_stub=True)
+                db.add(stub)
+                await db.flush()
+                pid = stub.id
+                minted += 1
         db.add(
             BoardEntry(
                 board_id=board_id,
@@ -253,14 +298,23 @@ async def _write_plan(db: AsyncSession, board_id: int, plan: list[tuple]) -> int
         )
     board.size = len(plan)
     db.add(board)
-    return minted
+    return minted, reused
 
 
 async def _run(args: argparse.Namespace) -> None:
     _load_all_schemas()
 
+    # Normalize before handing the URL to the asyncpg dialect: a Neon-style URL
+    # carries `sslmode`/`channel_binding`, which the driver rejects in that form,
+    # so `--execute` against the documented prod string would fail on its first
+    # query. Same helper the other production-facing scripts use.
+    from app.utils.db_async import _prepare_asyncpg_connection
+
+    normalized_url, connect_args = _prepare_asyncpg_connection(
+        os.environ["DATABASE_URL"]
+    )
     engine = create_async_engine(
-        os.environ["DATABASE_URL"], echo=False, pool_pre_ping=True
+        normalized_url, echo=False, pool_pre_ping=True, connect_args=connect_args
     )
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
@@ -283,10 +337,11 @@ async def _run(args: argparse.Namespace) -> None:
         # so the write block can begin its own.
         await db.rollback()
         async with db.begin():
-            minted = await _write_plan(db, args.board_id, plan)
+            minted, reused = await _write_plan(db, args.board_id, plan)
 
         print(
-            f"\nDONE: board {args.board_id} -> {len(plan)} entries ({minted} stubs minted)."
+            f"\nDONE: board {args.board_id} -> {len(plan)} entries "
+            f"({minted} stubs minted, {reused} existing reused)."
         )
 
 
