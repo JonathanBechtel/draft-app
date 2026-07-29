@@ -204,15 +204,24 @@ operational churn, not analytical history — the meaningful longitudinal grain 
 close**. Without a stated policy the table either grows unboundedly through a multi-week event or
 invites an ad-hoc wipe under deadline pressure — the exact failure P2 exists to prevent.
 
-**Policy: retain each as-of day's final version plus the current version; superseded *intra-day*
-versions may be compacted once a newer version from the same as-of day is current.** Compaction
-is a scoped, explainable delete of redundant intra-day versions — never the daily close, never
-the row the current pointer targets — and is therefore P2-compliant where a TTL or full wipe is
-not. (It will also need an allowlist entry in the unscoped-`delete()` checker, with the
-justifying comment discipline §1.1 requires.)
+**Policy: retain each as-of day's published close plus the current version; superseded *intra-day*
+versions may be compacted once a newer version from the same as-of day is current.** An
+unpublished candidate is retained separately until it is either published or superseded by a
+newer candidate, so an in-flight or abandoned rebuild can never displace the durable close.
+Compaction is a scoped, explainable delete of redundant intra-day versions — never the published
+daily close, never the row the current pointer targets — and is therefore P2-compliant where a
+TTL or full wipe is not. (It will also need an allowlist entry in the unscoped-`delete()` checker,
+with the justifying comment discipline §1.1 requires.)
 
 Revisit only if a sub-daily product surface appears; nothing currently designed needs finer than
 daily history.
+
+Issue 698 implementation note: the retention policy is enforced by a separate daily
+compaction job. It keeps the latest published projection and latest unpublished candidate for
+each closed UTC source day, the current pointer, and any undated legacy rows; it does not run
+inside metric rebuilds. This keeps the dated Summer League projection as a durable spoke in the
+Global Player-Journey Graph while removing only operational hourly churn, so a later trend
+projection can still read one point per event day.
 
 ### Read-switch scope — what the snapshot serves, and what it cannot
 
@@ -244,6 +253,37 @@ is part of this change.
 6. **Within-event daily-trend surface** — the first product payoff of the time series (a small
    player-page trend of GmSc/TS%/BPM across the event). Cross-stage career ledger remains the
    larger, separate initiative in the longitudinal-evidence pitch.
+
+### Status — what Phase 1 already did to this plan
+
+**Step 5's destructive half is done.** Phase 1's version-flip (#697) added dated versioning to
+`summer_league_player_seasons` and `summer_league_metric_contexts` — both now carry
+`DatedVersionMixin`, a partial unique index per scope `WHERE is_current = true`, an atomic
+`publish_metric_version()` pointer flip, and a version sequence. The full-wipe and every unscoped
+delete are gone. What step 5 still owes is the **Explorer read-switch**, which the roadmap places
+in Phase 3, not here.
+
+**Step 2 acquired a dependent: in-event metrics scoping (#701), moved here from Phase 1.**
+`compute()` loads and fits over the entire raw dataset on every rebuild. #694's rebuild gate skips
+the work entirely when the input watermark is unchanged — which removed the off-season cost — but
+when inputs move it calls the unscoped path, so during a live event the full-pool compute runs
+every hour.
+
+It belongs to this doc rather than to the operational phase for two reasons:
+
+* **The promising fix is engine surgery.** The asymmetry worth exploiting is that the league-wide
+  fit changes slowly while inputs change fast, so the fit could refit on its own cadence while
+  per-tick work recomputes only changed competitions against the current fit. That means splitting
+  `compute()` and `ComputeResult`, which today bundle the fit (`pyth_exponent`, `bpm_coef`,
+  `bpm_intercept`) together with the projections (`contexts`, `seasons`).
+* **It cannot be verified before step 2.** Its acceptance is "values identical to a full
+  recompute", and the golden-number harness is precisely the mechanism for that. Attempting it
+  first would change how the numbers are computed before the guard that proves they did not move —
+  the ordering this section exists to prevent.
+
+**Sequence it after step 2 and alongside step 1's lift**, so the engine is restructured once
+rather than twice. Note also that its measurement is in-event: off-season is the case #694 already
+handles, so demonstrating the improvement needs a live window or a faithful replay.
 
 ## How this serves the roadmap
 

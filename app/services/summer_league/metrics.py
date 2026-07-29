@@ -1416,6 +1416,7 @@ def _season_columns(
         "registry_version": METRIC_REGISTRY_VERSION,
         "calculation_version": METRIC_CALCULATION_VERSION,
         "as_of": projection.as_of,
+        "published_at": None,
     }
 
 
@@ -1535,6 +1536,7 @@ async def _rebuild_with_options(
                 registry_version=METRIC_REGISTRY_VERSION,
                 calculation_version=METRIC_CALCULATION_VERSION,
                 as_of=result.as_of,
+                published_at=None,
             )
         )
 

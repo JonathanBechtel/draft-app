@@ -119,8 +119,16 @@ runtime network/writer-lock guards · ingestion identity guard · the metrics re
 |---|---|
 | **Version-flip publish** (#697) | The largest change in the phase, and the entry gate removed its urgency by exonerating the path it converts. Still owed: it retires the last two unscoped-delete waivers in `metrics.py` and creates Phase 3's time axis |
 | **Intra-day compaction** (#698) | Cannot precede the version-flip — there are no hourly versions to compact until versions exist |
-| **In-event metrics scoping** (#701) | #694 skips rebuilds when inputs are unchanged, which is the off-season case. When inputs move, the unscoped full-pool compute still runs — every hour during a live event |
 | **Latency-class partitioning** (#699) | Buildable now but **not verifiable** until there are live games to poll; shipping it off-season means unverified code lying dormant until July |
+
+**Moved to Phase 2: in-event metrics scoping (#701).** The rebuild still does a full-pool
+`compute()` whenever the input watermark moves, which in a live event is every tick. That is real,
+but it is not Phase 1's to fix. Phase 1 needs the cost **contained** — #699's partitioning stops
+the slow class blocking the Desk tick, which is what the exit criterion actually measures.
+**Reducing** the cost means splitting `compute()` and `ComputeResult`, which is the stat engine
+Phase 2 lifts and consolidates, and it cannot be done safely before Phase 2's first item — the
+golden-number parity harness that proves the values did not move. Doing it here would change how
+the numbers are computed before the guard that verifies them, and would touch the same code twice.
 
 **Also open, but a decision rather than work:** auto-deploy on merge to `main`. The freshness
 alarm observes and deliberately cannot deploy.
@@ -162,9 +170,15 @@ verified against a staging reproduction) and **production is not silently behind
 **Why third:** best value/risk ratio in the program, and it gates both Phase 3's read-switch and
 Phase 5's decomposition. Behavior-preserving.
 
+**Part of this phase already landed early.** The spec's phasing step 5 includes "remove the
+full-wipe (coordinates with doc #3's transaction work)" — that shipped in Phase 1 as the
+version-flip (#697), so the metrics tables are already dated and versioned and the unscoped
+deletes are gone. What step 5 still owes is the Explorer read-switch, which is Phase 3.
+
 | Item | Spec |
 |---|---|
 | Golden-number parity harness (offline == live == leaderboard) **before** deleting any copy | stat-engine §4 |
+| **In-event metrics scoping** (#701) — **moved here from Phase 1.** `compute()` loads and fits the full pool on every rebuild; #694's gate only skips when inputs are unchanged, so in a live event the full cost runs hourly. The promising direction is separating the slow-changing league-wide fit from the per-tick projection, which is engine surgery: it splits `compute()` and `ComputeResult`. **Sequence it after the parity harness** — its acceptance is "values identical to a full recompute", which has no mechanism until that harness exists | stat-engine §4, #669 |
 | Lift the engine to `app/services/stats/` (contract 3 already guarding it) | stat-engine §1 |
 | Collapse the ~8 TS%/eFG%/TOV%/GmSc sites and the duplicated per-36/per-100 scaling | backlog 1.1, 1.3 |
 | Unify the two `_percentile` implementations | backlog 1.2 |
@@ -238,7 +252,8 @@ The live issue queue and this plan describe the same work; keep them pointing at
 | Ticket(s) | Relationship |
 |---|---|
 | **#669** (incident record) | The observed evidence behind Phase 1's entry gate, and the source of the migration-safety items. **Entry gate closed** — the diagnosis is a comment on the issue; migration safety shipped as the phase's first change. Remaining open follow-ups on the issue (metrics-compute scoping is only half closed — see #701): a maximum transaction/writer-lock lifetime per cron phase, alerting on old transactions and pool saturation, and per-stage cron telemetry that survives machine restarts |
-| **#697, #698, #699** (Phase 1 remainder) | The three build items left in this phase: version-flip publish, its compaction policy, and latency-class partitioning. #698 is blocked on #697; #699 is blocked on a live event or a staging replay, not on code |
+| **#698, #699** (Phase 1 remainder) | The two build items left: compaction (now unblocked — #697 shipped the versions it compacts) and latency-class partitioning (blocked on a live event or a staging replay, not on code) |
+| **#701** (in-event metrics scoping) | **Phase 2**, re-filed from Phase 1. Its precondition is Phase 2's golden-number harness, and its fix restructures the engine Phase 2 lifts. Phase 1 contains the cost via #699 rather than reducing it |
 | **#692, #693, #694** | **Closed** (PR #696): runtime network/writer-lock guards, the ingestion identity guard, and the metrics rebuild gate. #694 stopped the *unchanged-input* recompute only; the in-event full-pool cost it was meant to bound is still open as #701 |
 | **#661** (scheduler success ≠ data refresh) | Implements the operational half of desk §1's watermark contract — scheduler / source / projection / snapshot signals kept distinct. Complements Phase 5's user-facing contract; ship whenever ready |
 | **#662–#667** (Desk decomposition) | Phase 5 material. **Sequencing guard:** execute after Phase 2's stat consolidation, or restrict each ticket to pure moves — otherwise duplicated math gets scattered into more files (sequencing rule 3) |

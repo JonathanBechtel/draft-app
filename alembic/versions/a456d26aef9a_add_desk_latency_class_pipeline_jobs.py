@@ -1,6 +1,6 @@
 """add desk latency-class summer league pipeline jobs
 
-Revision ID: f1a2b3c4d5e6
+Revision ID: a456d26aef9a
 Revises: d3e4f5a6b7c8
 Create Date: 2026-07-28
 
@@ -30,7 +30,7 @@ matching ``d3e4f5a6b7c8``'s precedent.
 
 from alembic import op  # type: ignore[attr-defined]
 
-revision = "f1a2b3c4d5e6"
+revision = "a456d26aef9a"
 down_revision = "d3e4f5a6b7c8"
 branch_labels = None
 depends_on = None
