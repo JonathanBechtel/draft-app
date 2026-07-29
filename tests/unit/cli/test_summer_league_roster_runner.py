@@ -96,6 +96,20 @@ class _FakeSessionLocal:
         return None
 
 
+class _FakeRowsResult:
+    """Minimal result object for canonical-player ID projection tests."""
+
+    def all(self) -> list[tuple[int | None]]:
+        return [(11,), (None,), (12,)]
+
+
+class _FakeExecuteSession:
+    """Minimal session exposing the one read used by ``_canonical_player_ids``."""
+
+    async def execute(self, _statement: object) -> _FakeRowsResult:
+        return _FakeRowsResult()
+
+
 @dataclass
 class _FakeDiffReport:
     added: int = 1
@@ -135,7 +149,7 @@ class _FakeCollegeResult:
     no_source: list[object] = field(default_factory=list)
 
 
-def _patch_enrichment_steps(
+def _patch_enrichment_steps(  # noqa: C901
     monkeypatch: pytest.MonkeyPatch,
     calls: list[str],
     *,
@@ -178,12 +192,20 @@ def _patch_enrichment_steps(
             raise RuntimeError("college boom")
         return _FakeCollegeResult()
 
+    async def _fake_changed_source_ids(*_args: object, **_kwargs: object) -> set[int]:
+        return set()
+
+    async def _fake_canonical_ids(*_args: object, **_kwargs: object) -> set[int]:
+        return set()
+
     monkeypatch.setattr(runner, "load_roster_snapshot", _fake_load)
     monkeypatch.setattr(runner, "resolve_summer_league_players", _fake_resolve)
     monkeypatch.setattr(runner, "backfill_nba_stats_external_ids", _fake_seed)
     monkeypatch.setattr(runner, "backfill_nba_headshots", _fake_headshots)
     monkeypatch.setattr(runner, "_run_bio_enrichment", _fake_bio)
     monkeypatch.setattr(runner, "run_college_stats_sweep", _fake_college)
+    monkeypatch.setattr(runner, "changed_source_player_ids", _fake_changed_source_ids)
+    monkeypatch.setattr(runner, "canonical_player_ids", _fake_canonical_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +283,15 @@ def test_resolve_league_ids_all_blank_raises(
     monkeypatch.setenv("SL_ROSTER_LEAGUE_IDS", " , , ")
     with pytest.raises(ValueError):
         runner._resolve_league_ids()
+
+
+@pytest.mark.asyncio
+async def test_canonical_player_ids_ignores_unresolved_sources() -> None:
+    """Changed source rows project only resolved canonical IDs downstream."""
+    assert await runner.canonical_player_ids(_FakeExecuteSession(), {1, 2}) == {
+        11,
+        12,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -491,6 +522,7 @@ def _patch_main(
     monkeypatch: pytest.MonkeyPatch,
     *,
     venue_results: dict[str, tuple[bool, bool]],
+    in_window: bool = True,
 ) -> dict[str, object]:
     """Wire up main() so it touches no real DB, network, or engine.
 
@@ -498,6 +530,7 @@ def _patch_main(
         monkeypatch: Pytest monkeypatch fixture.
         venue_results: Map of league_id -> (published, failed) that the fake
             ``_run_venue`` should return per venue.
+        in_window: Whether the fake lifecycle guard permits venue polling.
 
     Returns:
         A mutable ``events`` dict recording observable side effects: the
@@ -520,6 +553,11 @@ def _patch_main(
     async def _fake_dispose() -> None:
         events["disposed"] = True
 
+    async def _fake_window(
+        _db: object, *, now: object, year: int | None = None
+    ) -> bool:
+        return in_window
+
     def _fake_load_schema_modules() -> None:
         events["schema_loaded"] = True
 
@@ -532,6 +570,7 @@ def _patch_main(
     monkeypatch.setattr(runner, "load_schema_modules", _fake_load_schema_modules)
     monkeypatch.setattr(runner, "RosterFetcher", _FakeRosterFetcher)
     monkeypatch.setattr(runner, "SessionLocal", lambda: _FakeSessionLocal())
+    monkeypatch.setattr(runner, "is_summer_league_window_open", _fake_window)
     return events
 
 
@@ -556,6 +595,25 @@ async def test_main_all_not_published_exits_zero(
     assert events["venues"] == ["13", "16", "15"]
     assert events["disposed"] is True
     assert events["schema_loaded"] is True
+
+
+@pytest.mark.asyncio
+async def test_main_off_window_exits_zero_without_fetching(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An off-window run is a dormant no-op and never enters a venue fetch."""
+    monkeypatch.setenv("SL_ROSTER_LEAGUE_IDS", "13,16,15")
+    events = _patch_main(
+        monkeypatch,
+        venue_results={},
+        in_window=False,
+    )
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["venues"] == []
+    assert events["disposed"] is True
 
 
 @pytest.mark.asyncio

@@ -7,18 +7,22 @@ directly against the database, without going through the HTTP API.
 
 For each configured venue (NBA.com LeagueID) it:
 
-1. Force-refreshes the roster snapshot from NBA.com (rosters are published
+1. Resolves the shared Event Desk lifecycle window. Dormant and archived
+   runs exit before opening the roster fetch path; the Announced, Warm-up,
+   Active, and Wind-down phases remain eligible for polling.
+2. Force-refreshes the roster snapshot from NBA.com (rosters are published
    close to each event, so a fresh fetch every run is required -- an empty
    snapshot written before publication is never refreshed otherwise).
-2. If the venue has zero published players this run (pre-announcement, or
+3. If the venue has zero published players this run (pre-announcement, or
    the landing/team pages failed to fetch), logs and skips the rest of the
    pipeline for that venue entirely.
-3. Otherwise loads the roster (idempotent upsert + diff), resolves source
+4. Otherwise loads the roster (idempotent upsert + diff), resolves source
    players to canonical players (creating stubs as needed), seeds NBA Stats
    external ids, backfills reference headshots, scrapes + ingests
-   Basketball-Reference bios, and backfills college stats -- each stage
-   committed independently so a downstream failure does not roll back an
-   already-durable upstream stage.
+   Basketball-Reference bios for changed or previously unsuccessful players,
+   and backfills college stats for changed or still-missing players -- each
+   stage committed independently so a downstream failure does not roll back
+   an already-durable upstream stage.
 
 One venue failing does not abort the others. A roster-fetch failure (e.g.
 NBA.com being unreachable) is treated the same as "not published yet" for
@@ -60,6 +64,7 @@ from app.services.summer_league.endpoints import (
     SUPPORTED_SUMMER_LEAGUES,
     normalize_league_id,
 )
+from app.services.summer_league.event_window import is_summer_league_window_open
 from app.services.player_bio.bbref_parse import PlayerBio
 from app.services.player_bio.bbref_scrape import scrape_letters
 from app.services.player_bio.ingest import ingest as ingest_player_bios_csv
@@ -72,6 +77,10 @@ from app.services.summer_league.roster_fetch import RosterFetcher, RosterRunResu
 from app.services.summer_league.roster_ingest import (
     CompetitionKey,
     load_roster_snapshot,
+)
+from app.services.summer_league.roster_changes import (
+    canonical_player_ids,
+    changed_source_player_ids,
 )
 from app.services.summer_league.roster_parse import RosterEntry
 from app.utils.db_async import SessionLocal, dispose_engine, load_schema_modules
@@ -167,7 +176,9 @@ def _write_bio_csv(rows: list[dict[str, object]], out_path: Path) -> None:
             writer.writerow({key: row.get(key) for key in _BIO_CSV_FIELDNAMES})
 
 
-async def _run_bio_enrichment(*, year: int, league_id: str) -> None:
+async def _run_bio_enrichment(
+    *, year: int, league_id: str, player_ids: set[int] | None = None
+) -> None:
     """Scrape and ingest Basketball-Reference bios for one venue's cohort.
 
     Mirrors ``scripts/bbref_bio_scraper.py --summer-league-year --summer-league
@@ -180,10 +191,16 @@ async def _run_bio_enrichment(*, year: int, league_id: str) -> None:
     Args:
         year: Summer League competition year.
         league_id: NBA.com LeagueID to scope the cohort to.
+        player_ids: Canonical players whose roster change should force enrichment;
+            ``None`` retains the direct helper's all-cohort behavior.
     """
     async with SessionLocal() as db:
         targets = await select_bio_enrichment_targets(
-            db, year=year, league_id=league_id
+            db,
+            year=year,
+            league_id=league_id,
+            player_ids=player_ids,
+            retry_unenriched=player_ids is not None,
         )
 
     if not targets.slugs:
@@ -337,6 +354,19 @@ async def _run_venue(
             resolution_report.unresolved_source_players,
             resolution_report.stubs_created,
         )
+        changed_source_ids = await changed_source_player_ids(
+            db,
+            year=year,
+            league_id=league_id,
+            recorded_at=recorded_at,
+        )
+        changed_player_ids = await canonical_player_ids(db, changed_source_ids)
+        await db.commit()
+        logger.info(
+            "L%s enrichment scope: changed_players=%d",
+            league_id,
+            len(changed_player_ids),
+        )
 
         async with db.begin():
             ext_id_report = await backfill_nba_stats_external_ids(db)
@@ -360,7 +390,9 @@ async def _run_venue(
             len(headshot_report.fallback),
         )
 
-        await _run_bio_enrichment(year=year, league_id=league_id)
+        await _run_bio_enrichment(
+            year=year, league_id=league_id, player_ids=changed_player_ids
+        )
 
         college_result = await run_college_stats_sweep(
             SessionLocal,
@@ -368,6 +400,7 @@ async def _run_venue(
             sl_cohort=True,
             sl_year=year,
             sl_league_id=league_id,
+            sl_player_ids=changed_player_ids,
         )
         logger.info(
             "L%s college stats: attempted=%d scraped=%d skipped=%d failed=%d "
@@ -422,6 +455,17 @@ async def main() -> int:
         )
 
         async with SessionLocal() as db:
+            in_window = await is_summer_league_window_open(
+                db, now=start_time, year=year
+            )
+            # The window check is read-only, but SQLAlchemy opens an ambient
+            # transaction for those reads. Close it before either returning or
+            # entering the venue pipeline, whose stages own their transactions.
+            await db.commit()
+            if not in_window:
+                logger.info("Summer League roster poll: off-window (dormant) -- no-op")
+                return 0
+
             for league_id in league_ids:
                 _published, venue_failed = await _run_venue(
                     db, fetcher, year=year, league_id=league_id
