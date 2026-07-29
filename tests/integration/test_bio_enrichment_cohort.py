@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_external_ids import PlayerExternalId
+from app.schemas.player_status import PlayerStatus
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueParticipation,
@@ -51,7 +52,7 @@ async def _seed_competition(
     return comp, team
 
 
-async def _participate(
+async def _participate(  # noqa: PLR0913
     db: AsyncSession,
     *,
     comp_id: int,
@@ -209,3 +210,83 @@ async def test_bio_targets_all_cohort_players_have_bbref_ids(
 
     assert targets.slugs == {"allmat01"}
     assert targets.manual_review_player_ids == set()
+
+
+@pytest.mark.asyncio
+async def test_bio_targets_force_changes_and_retry_failed_enrichment(
+    db_session: AsyncSession,
+) -> None:
+    """Changed players are forced while prior BBR failures remain retryable."""
+    changed = make_player("Changed", "Player", school="Duke")
+    already_enriched = make_player("Already", "Enriched", school="Kansas")
+    failed = make_player("Failed", "Player", school="UCLA")
+    db_session.add_all([changed, already_enriched, failed])
+    await db_session.flush()
+    assert changed.id is not None
+    assert already_enriched.id is not None
+    assert failed.id is not None
+
+    db_session.add_all(
+        [
+            PlayerExternalId(
+                player_id=changed.id,
+                system="bbr",
+                external_id="changed01",
+            ),
+            PlayerExternalId(
+                player_id=already_enriched.id,
+                system="bbr",
+                external_id="already01",
+            ),
+            PlayerExternalId(
+                player_id=failed.id,
+                system="bbr",
+                external_id="failed01",
+            ),
+            PlayerStatus(player_id=changed.id, source="bbr"),
+            PlayerStatus(player_id=already_enriched.id, source="bbr"),
+        ]
+    )
+    await db_session.flush()
+
+    comp, team = await _seed_competition(
+        db_session, year=2025, league_id="13", venue_slug="california_classic"
+    )
+    assert comp.id is not None
+    assert team.id is not None
+    await _participate(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team.id,
+        name="Changed Player",
+        person_id="bio-5",
+        canonical_player_id=changed.id,
+    )
+    await _participate(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team.id,
+        name="Already Enriched",
+        person_id="bio-6",
+        canonical_player_id=already_enriched.id,
+    )
+    await _participate(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team.id,
+        name="Failed Player",
+        person_id="bio-7",
+        canonical_player_id=failed.id,
+    )
+    await db_session.commit()
+
+    targets = await select_bio_enrichment_targets(
+        db_session,
+        year=2025,
+        league_id="13",
+        player_ids={changed.id},
+        retry_unenriched=True,
+    )
+
+    assert targets.slugs == {"changed01", "failed01"}
+    assert "already01" not in targets.slugs

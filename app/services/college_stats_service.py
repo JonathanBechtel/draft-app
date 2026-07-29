@@ -438,12 +438,51 @@ async def _find_no_source_players(
     return [(row[0], row[1] or "") for row in result.all()]
 
 
+async def _find_existing_college_stats_player_ids(
+    db: AsyncSession, player_ids: set[int]
+) -> set[int]:
+    """Return players with at least one durable sports-reference stats row."""
+    if not player_ids:
+        return set()
+    result = await db.execute(
+        select(PlayerCollegeStats.player_id).where(  # type: ignore[call-overload]
+            PlayerCollegeStats.player_id.in_(player_ids),  # type: ignore[attr-defined]
+            PlayerCollegeStats.source == "sports_reference",
+        )
+    )
+    return {player_id for (player_id,) in result.all()}
+
+
+async def _find_changed_or_missing_players(
+    db: AsyncSession,
+    *,
+    player_id: Optional[int],
+    cohort_player_ids: Optional[set[int]],
+    only_missing: bool,
+    changed_player_ids: set[int],
+) -> list[tuple[int, str, str]]:
+    """Select changed players plus cohort players that still need stats."""
+    eligible_players = await _find_eligible_players(
+        db,
+        player_id=player_id,
+        cohort_player_ids=cohort_player_ids,
+    )
+    eligible_ids = {row[0] for row in eligible_players}
+    forced_ids = changed_player_ids & (cohort_player_ids or set())
+    if only_missing:
+        existing_ids = await _find_existing_college_stats_player_ids(db, eligible_ids)
+        target_ids = (eligible_ids - existing_ids) | forced_ids
+    else:
+        target_ids = eligible_ids | forced_ids
+    return [row for row in eligible_players if row[0] in target_ids]
+
+
 # ---------------------------------------------------------------------------
 # Sweep entry point
 # ---------------------------------------------------------------------------
 
 
-async def run_college_stats_sweep(
+async def run_college_stats_sweep(  # noqa: PLR0915
     session_factory: async_sessionmaker[AsyncSession],
     *,
     limit: Optional[int] = None,
@@ -457,6 +496,7 @@ async def run_college_stats_sweep(
     sl_year: Optional[int] = None,
     sl_league_id: Optional[str] = None,
     sl_venue_slug: Optional[str] = None,
+    sl_player_ids: Optional[set[int]] = None,
 ) -> SweepResult:
     """Scrape BBRef college stats for eligible players and upsert to DB.
 
@@ -481,6 +521,10 @@ async def run_college_stats_sweep(
             ``sl_cohort`` is True.
         sl_venue_slug: Optional venue-slug filter, applied only when
             ``sl_cohort`` is True.
+        sl_player_ids: Optional canonical player IDs whose roster change should
+            force a refresh. When supplied with ``only_missing``, the target set
+            is the union of these players and cohort players still lacking
+            successful sports-reference stats.
 
     Returns:
         Summary of the sweep run.
@@ -496,12 +540,21 @@ async def run_college_stats_sweep(
             )
             cohort_player_ids = cohort.player_ids
 
-        players = await _find_eligible_players(
-            db,
-            player_id=player_id,
-            only_missing=only_missing,
-            cohort_player_ids=cohort_player_ids,
-        )
+        if sl_cohort and sl_player_ids is not None:
+            players = await _find_changed_or_missing_players(
+                db,
+                player_id=player_id,
+                cohort_player_ids=cohort_player_ids,
+                only_missing=only_missing,
+                changed_player_ids=sl_player_ids,
+            )
+        else:
+            players = await _find_eligible_players(
+                db,
+                player_id=player_id,
+                only_missing=only_missing,
+                cohort_player_ids=cohort_player_ids,
+            )
 
         if sl_cohort and cohort_player_ids is not None:
             # Compute no-source from eligibility *ignoring* only_missing: a
