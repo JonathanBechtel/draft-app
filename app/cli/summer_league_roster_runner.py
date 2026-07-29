@@ -455,7 +455,9 @@ async def main() -> int:
         )
 
         async with SessionLocal() as db:
-            in_window = await is_summer_league_window_open(db, now=start_time)
+            in_window = await is_summer_league_window_open(
+                db, now=start_time, year=year
+            )
             # The window check is read-only, but SQLAlchemy opens an ambient
             # transaction for those reads. Close it before either returning or
             # entering the venue pipeline, whose stages own their transactions.

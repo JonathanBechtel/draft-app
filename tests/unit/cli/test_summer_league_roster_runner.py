@@ -553,7 +553,9 @@ def _patch_main(
     async def _fake_dispose() -> None:
         events["disposed"] = True
 
-    async def _fake_window(_db: object, *, now: object) -> bool:
+    async def _fake_window(
+        _db: object, *, now: object, year: int | None = None
+    ) -> bool:
         return in_window
 
     def _fake_load_schema_modules() -> None:

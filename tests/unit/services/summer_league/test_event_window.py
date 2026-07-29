@@ -61,3 +61,50 @@ async def test_window_guard_rejects_archived_event(
         object(),
         now=datetime(2026, 7, 29, tzinfo=timezone.utc),  # type: ignore[arg-type]
     )
+
+
+@pytest.mark.asyncio
+async def test_window_guard_scopes_requested_year(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A requested roster year cannot inherit another season's window."""
+    other_year = SummerLeagueCompetition(
+        year=2025,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2025 Las Vegas",
+        starts_on=date(2025, 7, 9),
+        ends_on=date(2025, 7, 19),
+    )
+
+    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
+        return [_competition(), other_year]
+
+    monkeypatch.setattr(event_window, "resolve_target_competitions", _resolve)
+
+    assert not await event_window.is_summer_league_window_open(
+        object(),
+        now=datetime(2026, 7, 12, tzinfo=timezone.utc),  # type: ignore[arg-type]
+        year=2025,
+    )
+
+
+@pytest.mark.asyncio
+async def test_explicit_year_override_bypasses_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicit roster year permits an operator-directed backfill."""
+    monkeypatch.setenv("SL_ROSTER_YEAR", "2025")
+
+    async def _unexpected_resolve(
+        _db: object, *, today: date
+    ) -> list[SummerLeagueCompetition]:
+        raise AssertionError("explicit overrides should not resolve the active event")
+
+    monkeypatch.setattr(event_window, "resolve_target_competitions", _unexpected_resolve)
+
+    assert await event_window.is_summer_league_window_open(
+        object(),
+        now=datetime(2026, 7, 29, tzinfo=timezone.utc),  # type: ignore[arg-type]
+        year=2025,
+    )

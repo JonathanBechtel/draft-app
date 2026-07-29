@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
+import os
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,12 @@ SCHEDULE_ELIGIBLE_PHASES = frozenset(
 )
 
 
+def has_explicit_year_override() -> bool:
+    """Return whether the operator explicitly selected a roster year."""
+    raw = os.getenv("SL_ROSTER_YEAR")
+    return bool(raw and raw.strip())
+
+
 def synthetic_schedule_dates(
     competitions: Sequence[SummerLeagueCompetition],
 ) -> tuple[date, ...]:
@@ -43,15 +50,28 @@ def synthetic_schedule_dates(
     return tuple(dates)
 
 
-async def is_summer_league_window_open(db: AsyncSession, *, now: datetime) -> bool:
+async def is_summer_league_window_open(
+    db: AsyncSession, *, now: datetime, year: int | None = None
+) -> bool:
     """Return whether a Summer League scheduled job may make network calls.
 
     The check is read-only: it uses the same competition resolver, lifecycle
     state machine, and registration priors as the Event Desk, while synthetic
     competition date windows keep the pre-game polling window available before
     any ``summer_league_games`` rows exist.
+
+    Args:
+        db: Async database session.
+        now: Timestamp used to evaluate the lifecycle phase.
+        year: Optional roster year to scope the resolved competitions.
     """
+    if has_explicit_year_override():
+        return True
     competitions = await resolve_target_competitions(db, today=to_eastern_date(now))
+    if year is not None:
+        competitions = [
+            competition for competition in competitions if competition.year == year
+        ]
     synthetic_dates = synthetic_schedule_dates(competitions)
     if not synthetic_dates:
         return False
