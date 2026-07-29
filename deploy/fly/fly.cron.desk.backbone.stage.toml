@@ -1,0 +1,48 @@
+# fly.cron.desk.backbone.toml - STAGING Summer League Desk BACKBONE class (#699)
+#
+# The slow latency class: normalize audited raw box scores, then rebuild the
+# metrics normalization invalidated.
+#
+#   python -m app.cli.sl_desk_backbone_tick
+#
+# This is the ONLY Desk class that still takes the shared Summer League writer
+# lock. It writes broad canonical state and must stay serialized against the
+# full ingestion cron (fly.cron.sl.toml). Its bounded wait defaults to 300s
+# rather than the Desk's old 30s -- the short bound existed to stop a
+# *user-facing* surface being starved, and that surface is no longer behind
+# this lock, so conceding quickly buys nothing.
+#
+# CADENCE: daily. Fly scheduled machines support hourly/daily/weekly/monthly;
+# daily puts this on the off-peak footing spec §2 asks for ("Hours / off-peak",
+# "may take as long as it needs"). During an active event, raw fetch/audit
+# already runs on its own cadence via fly.cron.sl.toml, and the fast class
+# keeps the live surface current in the meantime.
+#
+# COST WARNING -- #701 is open and this machine inherits it
+# ---------------------------------------------------------
+# The scoped metrics rebuild still does a full-pool `compute()` on every
+# in-event run, because the #694 gate only short-circuits when the input
+# watermark is *unchanged* -- and during an event it changes constantly. The
+# partition CONTAINS that cost's blast radius (nothing user-facing waits on it
+# any more); it does not remove it. Do not read this machine running long as
+# evidence #699 failed -- read it as #701 still being open. They are separate.
+#
+# STAGING GATE: unlike production, staging creates these machines whenever
+# `check_sl_desk_readiness.py preflight` passes -- staging is where the three
+# classes are proven before the prod `enable_desk_class_crons` gate is opened.
+#
+# Promotion, rollback, and the argv-drift warning: see
+# fly.cron.desk.fast.toml's header, the canonical copy for all three machines.
+
+app = 'draft-app'
+primary_region = 'ewr'
+
+[build]
+
+[processes]
+  cron = "/app/.venv/bin/python -m app.cli.sl_desk_backbone_tick"
+
+[[vm]]
+  memory = '2048mb'
+  cpu_kind = 'shared'
+  cpus = 1

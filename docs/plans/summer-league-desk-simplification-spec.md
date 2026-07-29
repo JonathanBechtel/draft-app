@@ -149,6 +149,48 @@ Three producers, three schedules, no shared global writer lock:
 
 The Desk render remains a **pure reader** over the latest coherent projection.
 
+### Status — SHIPPED (#699), promotion still gated
+
+The partition is implemented and merged. What exists:
+
+| Class | Module | Entrypoint | Cron machine | Lock |
+|---|---|---|---|---|
+| Fast | `app/services/summer_league/desk_tick/fast.py` | `app.cli.sl_desk_fast_tick` | `summer-league-desk-fast-cron` | none |
+| Medium | `.../desk_tick/projection.py` | `app.cli.sl_desk_projection_tick` | `summer-league-desk-projection-cron` | none |
+| Slow | `.../desk_tick/backbone.py` | `app.cli.sl_desk_backbone_tick` | `summer-league-desk-backbone-cron` | shared, bounded |
+| *(composite)* | `.../desk_tick/composite.py` | `app.cli.sl_desk_tick` | `summer-league-desk-cron` | shared, bounded |
+
+Three things about this are load-bearing and easy to undo by accident:
+
+1. **The composite still exists and still holds the lock.** It is the rollback
+   path and the equivalence oracle for the split. Production runs it until the
+   three class machines are proven; the promotion sequence — including the
+   final, deliberately un-automated step of *stopping* it — is in
+   `deploy/fly/fly.cron.desk.fast.toml`. Leaving it running alongside the
+   classes partly re-creates the starvation this section removes.
+2. **Cadence is hourly for the fast class, not "minutes."** Fly scheduled
+   machines support only hourly/daily/weekly/monthly, so "minutes" is not
+   expressible as a scheduled machine at all. This is consistent with the
+   settled product decision below (hourly is the promise; sub-hourly is out of
+   scope) — the reliability win comes from removing the lock, not from polling
+   more often. Sub-hourly would need a long-lived loop machine started and
+   stopped around the event, which is deliberately not built.
+3. **Verified off-season by replay, not by assertion.** Since the event ended
+   2026-07-19 there are no live games to prove this against, so
+   `tests/integration/_desk_replay.py` replays a real captured 2026 live window
+   through the classes while a stand-in backbone holds the writer lock.
+   `tests/integration/test_sl_desk_latency_classes.py` asserts the fast class
+   lands 100% of live-window frames — *and* that the composite, the fast class
+   given a lock, and the backbone under the same contention all fail. The
+   matched pair is the point: the success test alone would pass vacuously if
+   nothing ever contended.
+
+**Not fixed by this, and not conflated with it:** #701 — the metrics rebuild
+still does a full-pool `compute()` on every in-event run, because the gate only
+short-circuits when the input watermark is unchanged. The partition contains
+that cost's blast radius (nothing user-facing waits on it now); it does not
+remove the cost.
+
 ---
 
 ## 3. Layer collapse — and why partitioning enables it
@@ -418,11 +460,12 @@ and unlocks longitudinal history. Coordinates with doc #2 Issue B.
 user-facing badge to show source currency, make "next update" honest. Ship with the degraded-state
 vocabulary (§4), since an honest badge is only useful if staleness renders honestly.
 
-**Phase 3 — latency partition (§2).** Separate fast poller / medium projection builder / slow
-backbone, so the hourly tick lands reliably during live games. Prerequisite for Phase 4. **This
-addresses the most user-visible failure** — missed updates while games were in progress — so it
-may warrant moving ahead of Phase 2 if reliability during the next event matters more than badge
-honesty.
+**Phase 3 — latency partition (§2). SHIPPED (#699), promotion gated.** Separate fast poller /
+medium projection builder / slow backbone, so the hourly tick lands reliably during live games.
+Prerequisite for Phase 4. **This addressed the most user-visible failure** — missed updates while
+games were in progress — and was taken ahead of Phase 2 on exactly the grounds anticipated here:
+reliability during the next event matters more than badge honesty. See §2 "Status" for what
+exists, what is still gated behind a manual promotion, and how it was verified off-season.
 
 **Phase 4 — layer collapse (§3).** Remove request-time splicing; rebuild coherent projections
 instead. Only possible once Phase 3 makes rebuilds cheap.

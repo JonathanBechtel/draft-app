@@ -1,0 +1,73 @@
+# fly.cron.desk.fast.toml - STAGING Summer League Desk FAST latency class (#699)
+#
+# One of three machines that replace the single `summer-league-desk-cron` when
+# the #699 latency-class partition is promoted
+# (docs/plans/summer-league-desk-simplification-spec.md §2). This one runs the
+# live poller: scoreboard ingest + targeted live raw refresh, and NOTHING else.
+#
+#   python -m app.cli.sl_desk_fast_tick
+#
+# WHY IT IS THE IMPORTANT ONE: it takes no shared writer lock, so it cannot be
+# starved by a long backbone/ingestion run. That is the entire point of the
+# partition -- the production failure was an ~88-minute venue ingest starving a
+# ~38-second Desk tick, most often while games were live.
+#
+# CADENCE -- read this before "fixing" it to something faster
+# -----------------------------------------------------------
+# Fly.io scheduled machines support ONLY hourly/daily/weekly/monthly. There is
+# no `*/5 * * * *`. So the spec's "minutes" cadence for the fast class is NOT
+# expressible as a Fly scheduled machine, and this runs **hourly**.
+#
+# That is not a compromise on the goal. The spec's settled product decision is
+# explicit: "Cadence -- SETTLED: hourly. Sub-hourly near-live updating is
+# explicitly out of scope. The work in §2 is aimed entirely at making the
+# hourly promise *reliable under peak load*, not at increasing frequency."
+# Decoupling this class from the backbone lock delivers that reliability at
+# hourly cadence; going sub-hourly would need a long-lived loop machine started
+# and stopped around the event, which is deliberately not built here.
+#
+# Cost: this class is far cheaper than the old composite tick -- two provider
+# calls plus a narrow `summer_league_games` upsert, no normalization, no metric
+# rebuild, no render-variant matrix.
+#
+# PROMOTION -- this machine is NOT created automatically
+# ------------------------------------------------------
+# Creation is gated behind the `enable_desk_class_crons` workflow_dispatch
+# input on `.github/workflows/fly-deploy-prod.yml`, default false, exactly like
+# #536 gated the original Desk cron. The promotion sequence is:
+#
+#   1. Prove the three classes on staging (fly.cron.desk.fast.stage.toml and
+#      siblings) across at least one full day, including an overlapping
+#      backbone run.
+#   2. Deploy prod normally, then re-run with `enable_desk_class_crons=true`.
+#   3. Verify each class reports its own `summer_league_pipeline_states` row
+#      (`DESK_FAST` / `DESK_PROJECTION` / `DESK_BACKBONE`).
+#   4. ONLY THEN stop the old composite machine:
+#      flyctl machine stop <summer-league-desk-cron id> --app draft-app
+#      Leaving both running is safe but does duplicate work -- the composite
+#      still holds the lock, which would partly re-create the starvation this
+#      change removes. Do not skip step 4.
+#
+# Rollback: stop the three class machines and start `summer-league-desk-cron`
+# again. The composite entrypoint is unchanged and still does all the work.
+#
+# ARGV DRIFT (PR #686 -- this bit production once)
+# ------------------------------------------------
+# `flyctl machine update` does NOT preserve a machine's command unless it is
+# re-declared. A cron machine once kept invoking a script path that had moved,
+# behind a fully green deploy. Every update path for this machine must pass
+# `--command "-m app.cli.sl_desk_fast_tick"`, and
+# `scripts/verify_cron_image_digests.py` must list it post-deploy.
+
+app = 'draft-app'
+primary_region = 'ewr'
+
+[build]
+
+[processes]
+  cron = "/app/.venv/bin/python -m app.cli.sl_desk_fast_tick"
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

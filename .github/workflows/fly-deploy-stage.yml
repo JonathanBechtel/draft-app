@@ -218,3 +218,71 @@ jobs:
               --entrypoint "/app/.venv/bin/python" \
               -- -m app.cli.sl_desk_tick
           fi
+
+      # #699 -- the Desk latency-class machines (fast / projection / backbone).
+      # See docs/plans/summer-league-desk-simplification-spec.md §2 and
+      # deploy/fly/fly.cron.desk.fast.toml for why the split exists and what each
+      # class does. Staging creates all three whenever the same preflight above
+      # passes: staging is where the partition is proven before the production
+      # `enable_desk_class_crons` gate is opened.
+      #
+      # These run ALONGSIDE `summer-league-desk-cron` on staging. That duplicates
+      # work but is deliberate -- it lets one environment show the composite and
+      # the three classes producing the same result, which is the equivalence
+      # check the split is only trustworthy with. On production the composite is
+      # stopped once the classes are proven (see the toml header's step 4).
+      #
+      # Fly scheduled machines support only hourly/daily/weekly/monthly, so the
+      # fast class runs hourly, not the spec's aspirational "minutes" -- which is
+      # consistent with the settled product decision that hourly is the promise
+      # and sub-hourly is explicitly out of scope.
+      #
+      # `--command` is re-declared on every update path: `flyctl machine update`
+      # does not preserve a machine's argv, which bit production once (PR #686).
+      - name: Deploy/update Summer League Desk latency-class cron machines (preflight-gated)
+        if: steps.desk_preflight.outputs.ready == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          APP_IMAGE=$(flyctl machine list --app draft-app --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
+          if [ -z "$APP_IMAGE" ] || [ "$APP_IMAGE" == "null" ]; then
+            echo "Could not determine app image; skipping Desk latency-class machines"
+            exit 0
+          fi
+          # name|module|schedule|memory
+          for SPEC in \
+            "summer-league-desk-fast-cron|app.cli.sl_desk_fast_tick|hourly|512" \
+            "summer-league-desk-projection-cron|app.cli.sl_desk_projection_tick|hourly|1024" \
+            "summer-league-desk-backbone-cron|app.cli.sl_desk_backbone_tick|daily|2048"; do
+            NAME="${SPEC%%|*}"; REST="${SPEC#*|}"
+            MODULE="${REST%%|*}"; REST="${REST#*|}"
+            SCHEDULE="${REST%%|*}"; MEMORY="${REST##*|}"
+            MACHINE_ID=$(flyctl machine list --app draft-app --json | jq -r --arg n "$NAME" '.[] | select(.name == $n) | .id')
+            if [ -n "$MACHINE_ID" ]; then
+              echo "Waiting for $NAME ($MACHINE_ID) to stop before updating"
+              if flyctl machine wait "$MACHINE_ID" --app draft-app --state stopped --wait-timeout 15m; then
+                flyctl machine update "$MACHINE_ID" \
+                  --app draft-app \
+                  --image "$APP_IMAGE" \
+                  --command "-m $MODULE" \
+                  --skip-start \
+                  --yes
+                # `machine update` does not reliably re-arm the schedule for a
+                # machine left stopped; starting it re-arms and runs once now.
+                flyctl machine start "$MACHINE_ID" --app draft-app
+              else
+                echo "::warning::$NAME did not stop within 15m; skipping its image update this deploy."
+              fi
+            else
+              echo "Creating $NAME (schedule=$SCHEDULE)"
+              flyctl machine run "$APP_IMAGE" \
+                --app draft-app \
+                --schedule "$SCHEDULE" \
+                --name "$NAME" \
+                --region ewr \
+                --memory "$MEMORY" \
+                --cpus 1 \
+                --entrypoint "/app/.venv/bin/python" \
+                -- -m "$MODULE"
+            fi
+          done
