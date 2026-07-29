@@ -211,6 +211,7 @@ deploy/fly/<file>.toml` pointing at the relevant file.
 | `deploy/fly/fly.cron.sl.stage.toml` / `deploy/fly/fly.cron.sl.toml` | Staging / production Summer League ingestion cron |
 | `deploy/fly/fly.cron.roster.stage.toml` / `deploy/fly/fly.cron.roster.toml` | Staging / production Summer League roster cron |
 | `deploy/fly/fly.cron.desk.stage.toml` / `deploy/fly/fly.cron.desk.toml` | Staging / production Summer League Desk cron (readiness-gated -- see below) |
+| `deploy/fly/fly.cron.metrics-compact.stage.toml` / `deploy/fly/fly.cron.metrics-compact.toml` | Staging / production daily Summer League metric-version compaction cron |
 
 ---
 
@@ -336,6 +337,7 @@ The command per machine, matching the `cron =` lines in `deploy/fly/*.toml`:
 | `summer-league-ingestion-cron` | `-m app.cli.summer_league_ingest_runner` |
 | `summer-league-roster-cron` | `-m app.cli.summer_league_roster_runner` |
 | `summer-league-desk-cron` | `-m app.cli.sl_desk_tick` |
+| `summer-league-metrics-compact-cron` | `-m app.cli.summer_league_metrics_compact` |
 
 Verify afterwards — a green `machine update` does not mean the cron runs:
 

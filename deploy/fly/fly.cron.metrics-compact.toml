@@ -1,0 +1,30 @@
+# fly.cron.metrics-compact.toml - Daily Summer League metric-version compaction
+#
+# This is intentionally a separate scheduled machine from the hourly ingestion
+# and Desk jobs. It removes only superseded closed-day projection rows, under
+# the same writer lock used by publication.
+#
+# One-time production setup:
+#   IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
+#   flyctl machine run "$IMAGE" \
+#     --app draft-app-prod \
+#     --schedule daily \
+#     --name summer-league-metrics-compact-cron \
+#     --region ewr \
+#     --memory 256 \
+#     --cpus 1 \
+#     --entrypoint "/app/.venv/bin/python" \
+#     -- -m app.cli.summer_league_metrics_compact
+
+app = 'draft-app-prod'
+primary_region = 'ewr'
+
+[build]
+
+[processes]
+  cron = "/app/.venv/bin/python -m app.cli.summer_league_metrics_compact"
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

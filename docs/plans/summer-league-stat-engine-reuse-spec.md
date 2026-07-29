@@ -214,6 +214,13 @@ justifying comment discipline §1.1 requires.)
 Revisit only if a sub-daily product surface appears; nothing currently designed needs finer than
 daily history.
 
+Issue 698 implementation note: the retention policy is enforced by a separate daily
+compaction job. It keeps the latest projection for each closed UTC source day, the current
+pointer, and any undated legacy rows; it does not run inside metric rebuilds. This keeps the
+dated Summer League projection as a durable spoke in the Global Player-Journey Graph while
+removing only operational hourly churn, so a later trend projection can still read one point
+per event day.
+
 ### Read-switch scope — what the snapshot serves, and what it cannot
 
 The dated snapshot is **(player, competition)-grain**. It serves the Explorer's default
