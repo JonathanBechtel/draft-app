@@ -90,7 +90,9 @@ async def _delete_superseded_closed_day_rows(
         model.id.in_(select(ranked.c.row_id).where(ranked.c.daily_rank > 1))
     )
     result = await db.execute(statement)
-    return int(result.rowcount or 0)
+    # AsyncSession.execute is typed as Result, while DELETE returns a
+    # CursorResult with rowcount at runtime.
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 async def compact_metric_versions(
