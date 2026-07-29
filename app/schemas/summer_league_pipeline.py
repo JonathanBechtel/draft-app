@@ -17,9 +17,26 @@ from sqlmodel import Field, SQLModel
 
 
 class SummerLeaguePipelineJob(str, Enum):
-    """A scheduled writer participating in the Summer League pipeline."""
+    """A scheduled writer participating in the Summer League pipeline.
+
+    ``DESK`` is the pre-#699 single orchestrator. The three ``DESK_*`` members
+    are its latency-class successors
+    (`docs/plans/summer-league-desk-simplification-spec.md` §2): each is
+    scheduled independently, reports its own freshness/outcome row, and fails
+    without stopping the others. Keeping them as distinct jobs -- rather than
+    one row with a class column -- is what makes "the tick was slow" resolve
+    to *which* class, and lets the live-window completion-rate metric be
+    measured for the fast class alone.
+    """
 
     DESK = "desk"
+    #: Live score/box poller. Minutes cadence, seconds budget, no writer lock.
+    DESK_FAST = "desk_fast"
+    #: Desk projection builder. ~Hourly, <1 min budget, no writer lock.
+    DESK_PROJECTION = "desk_projection"
+    #: Backbone normalize + scoped metrics rebuild. Hours, unbounded, holds
+    #: the shared writer lock.
+    DESK_BACKBONE = "desk_backbone"
     FULL_INGESTION = "full_ingestion"
     ENVIRONMENT_REFRESH = "environment_refresh"
 
