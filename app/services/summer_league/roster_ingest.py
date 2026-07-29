@@ -82,15 +82,12 @@ class RosterDiffReport:
         added: Total players newly added across all teams.
         unchanged: Total players unchanged across all teams.
         cut: Total players cut across all teams.
-        changed_source_player_ids: Source-player IDs whose roster status changed
-            during this load (adds and cuts, including empty-team cuts).
     """
 
     per_team: dict[str, TeamDiff] = field(default_factory=dict)
     added: int = 0
     unchanged: int = 0
     cut: int = 0
-    changed_source_player_ids: set[int] = field(default_factory=set)
 
 
 # ---------------------------------------------------------------------------
@@ -646,8 +643,6 @@ async def load_roster_snapshot(
             await _announce_player(
                 db, competition_id, team_entry_id, source_player, entry, recorded_at
             )
-            if source_player.id is not None:
-                report.changed_source_player_ids.add(source_player.id)
             team_diff.added += 1
 
         # 4e. Handle unchanged: update source-player metadata; refresh denormalized
@@ -675,7 +670,6 @@ async def load_roster_snapshot(
         for person_id in cut_ids:
             participation = current_by_person_id[person_id]
             await _cut_player(db, participation, recorded_at)
-            report.changed_source_player_ids.add(participation.source_player_id)
             team_diff.cut += 1
 
         report.per_team[nba_stats_team_id] = team_diff
@@ -706,9 +700,7 @@ async def load_roster_snapshot(
 
         absent_diff = TeamDiff()
         for person_id in absent_by_person_id:
-            participation = absent_by_person_id[person_id]
-            await _cut_player(db, participation, recorded_at)
-            report.changed_source_player_ids.add(participation.source_player_id)
+            await _cut_player(db, absent_by_person_id[person_id], recorded_at)
             absent_diff.cut += 1
 
         report.per_team[absent_team.nba_stats_team_id] = absent_diff

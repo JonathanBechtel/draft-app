@@ -45,6 +45,7 @@ from app.services.summer_league.roster_ingest import (
     _upsert_roster_team_entry,
     load_roster_snapshot,
 )
+from app.services.summer_league.roster_changes import changed_source_player_ids
 from app.services.summer_league.roster_parse import RosterEntry
 
 # ---------------------------------------------------------------------------
@@ -207,7 +208,6 @@ async def test_first_load(db_session: AsyncSession) -> None:
     assert report.added == 2
     assert report.unchanged == 0
     assert report.cut == 0
-    assert len(report.changed_source_player_ids) == 2
 
 
 @pytest.mark.asyncio
@@ -237,7 +237,6 @@ async def test_reload_idempotent(db_session: AsyncSession) -> None:
     assert report.added == 0
     assert report.unchanged == 2
     assert report.cut == 0
-    assert report.changed_source_player_ids == set()
 
 
 @pytest.mark.asyncio
@@ -281,7 +280,6 @@ async def test_late_add(db_session: AsyncSession) -> None:
     assert report.added == 1
     assert report.unchanged == 2
     assert report.cut == 0
-    assert len(report.changed_source_player_ids) == 1
 
 
 @pytest.mark.asyncio
@@ -349,7 +347,6 @@ async def test_drop_supersedes_not_deletes(db_session: AsyncSession) -> None:
     assert report.added == 0
     assert report.unchanged == 1
     assert report.cut == 1
-    assert len(report.changed_source_player_ids) == 1
 
 
 @pytest.mark.asyncio
@@ -457,7 +454,13 @@ async def test_diff_report(db_session: AsyncSession) -> None:
     assert report2.added == 1
     assert report2.unchanged == 2
     assert report2.cut == 1
-    assert len(report2.changed_source_player_ids) == 2
+    changed_ids = await changed_source_player_ids(
+        db_session,
+        year=COMPETITION.year,
+        league_id=COMPETITION.league_id,
+        recorded_at=T1,
+    )
+    assert len(changed_ids) == 2
 
 
 @pytest.mark.asyncio

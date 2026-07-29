@@ -54,10 +54,8 @@ from dataclasses import fields as dataclass_fields
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.summer_league import SummerLeagueSourcePlayer
 from app.services.college_stats_service import run_college_stats_sweep
 from app.services.summer_league.bio_enrichment_targets import (
     select_bio_enrichment_targets,
@@ -79,6 +77,10 @@ from app.services.summer_league.roster_fetch import RosterFetcher, RosterRunResu
 from app.services.summer_league.roster_ingest import (
     CompetitionKey,
     load_roster_snapshot,
+)
+from app.services.summer_league.roster_changes import (
+    canonical_player_ids,
+    changed_source_player_ids,
 )
 from app.services.summer_league.roster_parse import RosterEntry
 from app.utils.db_async import SessionLocal, dispose_engine, load_schema_modules
@@ -352,10 +354,13 @@ async def _run_venue(
             resolution_report.unresolved_source_players,
             resolution_report.stubs_created,
         )
-        changed_source_player_ids: set[int] = getattr(
-            diff_report, "changed_source_player_ids", set()
+        changed_source_ids = await changed_source_player_ids(
+            db,
+            year=year,
+            league_id=league_id,
+            recorded_at=recorded_at,
         )
-        changed_player_ids = await _canonical_player_ids(db, changed_source_player_ids)
+        changed_player_ids = await canonical_player_ids(db, changed_source_ids)
         await db.commit()
         logger.info(
             "L%s enrichment scope: changed_players=%d",
@@ -413,22 +418,6 @@ async def _run_venue(
         return True, True
 
     return True, False
-
-
-async def _canonical_player_ids(
-    db: AsyncSession, source_player_ids: set[int]
-) -> set[int]:
-    """Resolve changed source-player IDs to canonical IDs after resolution."""
-    if not source_player_ids:
-        return set()
-    result = await db.execute(
-        select(SummerLeagueSourcePlayer.canonical_player_id).where(  # type: ignore[call-overload]
-            SummerLeagueSourcePlayer.id.in_(  # type: ignore[attr-defined, union-attr]
-                source_player_ids
-            ),
-        )
-    )
-    return {player_id for (player_id,) in result.all() if player_id is not None}
 
 
 async def main() -> int:

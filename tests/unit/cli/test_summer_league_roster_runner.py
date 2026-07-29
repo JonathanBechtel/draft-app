@@ -192,12 +192,20 @@ def _patch_enrichment_steps(  # noqa: C901
             raise RuntimeError("college boom")
         return _FakeCollegeResult()
 
+    async def _fake_changed_source_ids(*_args: object, **_kwargs: object) -> set[int]:
+        return set()
+
+    async def _fake_canonical_ids(*_args: object, **_kwargs: object) -> set[int]:
+        return set()
+
     monkeypatch.setattr(runner, "load_roster_snapshot", _fake_load)
     monkeypatch.setattr(runner, "resolve_summer_league_players", _fake_resolve)
     monkeypatch.setattr(runner, "backfill_nba_stats_external_ids", _fake_seed)
     monkeypatch.setattr(runner, "backfill_nba_headshots", _fake_headshots)
     monkeypatch.setattr(runner, "_run_bio_enrichment", _fake_bio)
     monkeypatch.setattr(runner, "run_college_stats_sweep", _fake_college)
+    monkeypatch.setattr(runner, "changed_source_player_ids", _fake_changed_source_ids)
+    monkeypatch.setattr(runner, "canonical_player_ids", _fake_canonical_ids)
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +288,7 @@ def test_resolve_league_ids_all_blank_raises(
 @pytest.mark.asyncio
 async def test_canonical_player_ids_ignores_unresolved_sources() -> None:
     """Changed source rows project only resolved canonical IDs downstream."""
-    assert await runner._canonical_player_ids(_FakeExecuteSession(), {1, 2}) == {
+    assert await runner.canonical_player_ids(_FakeExecuteSession(), {1, 2}) == {
         11,
         12,
     }
