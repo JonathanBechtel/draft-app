@@ -17,6 +17,19 @@ on:
         required: false
         type: boolean
         default: false
+      enable_desk_class_crons:
+        description: >-
+          Create/update the three Summer League Desk latency-class cron machines on
+          prod (#699: fast / projection / backbone). Only set true after staging has
+          run all three alongside the composite for at least a full day, including an
+          overlapping backbone run. Even when true, production's own Desk preflight
+          must still pass or the step is skipped. NOTE: once these are proven, stop
+          `summer-league-desk-cron` -- leaving the composite running keeps taking the
+          shared writer lock and partly re-creates the starvation #699 removes (see
+          deploy/fly/fly.cron.desk.fast.toml step 4).
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   deploy:
@@ -257,7 +270,12 @@ jobs:
       # docs/plans/summer-league-desk-536-deploy-runbook.md).
       - name: Check Summer League Desk readiness (preflight)
         id: desk_preflight
-        if: inputs.enable_desk_cron == true
+        # Either promotion flag needs this producer. Gating it on
+        # `enable_desk_cron` alone meant a dispatch with only
+        # `enable_desk_class_crons=true` skipped preflight, left `ready` unset,
+        # and silently created nothing -- the operator would follow the
+        # documented promotion sequence and get a green deploy with no machines.
+        if: inputs.enable_desk_cron == true || inputs.enable_desk_class_crons == true
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
@@ -297,6 +315,105 @@ jobs:
               -- -m app.cli.sl_desk_tick
           fi
 
+      # #699 -- the Desk latency-class machines (fast / projection / backbone).
+      #
+      # CREATION is gated; UPDATES are not. That split is deliberate and was a
+      # real bug when it was one gated step: `enable_desk_class_crons` defaults
+      # to false, so once these machines existed, every ordinary deploy skipped
+      # them and left them on a stale image -- and the unconditional digest
+      # verifier below only excuses a machine being *absent*, never drifted, so
+      # every subsequent production deploy would have failed while the scheduled
+      # jobs quietly ran old code. Mirrors how the composite Desk cron already
+      # separates its "update (if exists)" step from its gated "create" step.
+      #
+      # `--command` is re-declared on every update path, because
+      # `flyctl machine update` does not preserve a machine's argv -- that bit
+      # production once (PR #686).
+      - name: Update Summer League Desk latency-class cron machines (if exist)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          APP_IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
+          if [ -z "$APP_IMAGE" ] || [ "$APP_IMAGE" == "null" ]; then
+            echo "Could not determine app image; skipping Desk latency-class updates"
+            exit 0
+          fi
+          for SPEC in \
+            "summer-league-desk-fast-cron|app.cli.sl_desk_fast_tick" \
+            "summer-league-desk-projection-cron|app.cli.sl_desk_projection_tick" \
+            "summer-league-desk-backbone-cron|app.cli.sl_desk_backbone_tick"; do
+            NAME="${SPEC%%|*}"; MODULE="${SPEC##*|}"
+            MACHINE_ID=$(flyctl machine list --app draft-app-prod --json | jq -r --arg n "$NAME" '.[] | select(.name == $n) | .id')
+            if [ -z "$MACHINE_ID" ]; then
+              echo "$NAME not present yet -- nothing to update (creation is gated below)"
+              continue
+            fi
+            echo "Waiting for $NAME ($MACHINE_ID) to stop before updating"
+            if flyctl machine wait "$MACHINE_ID" --app draft-app-prod --state stopped --wait-timeout 30m; then
+              flyctl machine update "$MACHINE_ID" \
+                --app draft-app-prod \
+                --image "$APP_IMAGE" \
+                --command "-m $MODULE" \
+                --skip-start \
+                --yes
+              # `machine update` does not reliably re-arm the schedule for a
+              # machine left stopped; starting it re-arms and runs once now.
+              flyctl machine start "$MACHINE_ID" --app draft-app-prod
+            else
+              echo "::warning::$NAME did not stop within 30m; retrying via reconcile_cron_image.py"
+              python scripts/reconcile_cron_image.py \
+                --app draft-app-prod \
+                --machine "$NAME" \
+                --command "-m $MODULE" \
+                --wait-timeout-s 600 || \
+                echo "::warning::$NAME reconciliation retry did not land; the digest verification step below will fail the check if it is still drifted."
+            fi
+          done
+
+      # Creation only -- double-gated exactly like #536 gated the composite Desk
+      # cron: `enable_desk_class_crons` must be explicitly true for this run (a
+      # human attesting staging has proven all three), AND production's own Desk
+      # preflight must pass. See
+      # docs/plans/summer-league-desk-simplification-spec.md §2 and
+      # deploy/fly/fly.cron.desk.fast.toml for the promotion sequence -- including
+      # step 4, stopping `summer-league-desk-cron` afterward, which is NOT
+      # automated here on purpose: it is the point of no return and belongs to a
+      # human who has just read the three classes' pipeline-state rows.
+      - name: Create Summer League Desk latency-class cron machines (double-gated)
+        if: inputs.enable_desk_class_crons == true && steps.desk_preflight.outputs.ready == 'true'
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          APP_IMAGE=$(flyctl machine list --app draft-app-prod --json | jq -r '[.[] | select(.config.metadata.fly_process_group == "app")] | first | .config.image')
+          if [ -z "$APP_IMAGE" ] || [ "$APP_IMAGE" == "null" ]; then
+            echo "Could not determine app image; skipping Desk latency-class creation"
+            exit 0
+          fi
+          # name|module|schedule|memory
+          for SPEC in \
+            "summer-league-desk-fast-cron|app.cli.sl_desk_fast_tick|hourly|512" \
+            "summer-league-desk-projection-cron|app.cli.sl_desk_projection_tick|hourly|1024" \
+            "summer-league-desk-backbone-cron|app.cli.sl_desk_backbone_tick|daily|2048"; do
+            NAME="${SPEC%%|*}"; REST="${SPEC#*|}"
+            MODULE="${REST%%|*}"; REST="${REST#*|}"
+            SCHEDULE="${REST%%|*}"; MEMORY="${REST##*|}"
+            MACHINE_ID=$(flyctl machine list --app draft-app-prod --json | jq -r --arg n "$NAME" '.[] | select(.name == $n) | .id')
+            if [ -n "$MACHINE_ID" ]; then
+              echo "$NAME already exists ($MACHINE_ID) -- the update step above owns it"
+              continue
+            fi
+            echo "Creating $NAME (schedule=$SCHEDULE)"
+            flyctl machine run "$APP_IMAGE" \
+              --app draft-app-prod \
+              --schedule "$SCHEDULE" \
+              --name "$NAME" \
+              --region ewr \
+              --memory "$MEMORY" \
+              --cpus 1 \
+              --entrypoint "/app/.venv/bin/python" \
+              -- -m "$MODULE"
+          done
+
       # Post-deploy verification (spec: docs/plans/summer-league-cron-desk-starvation-spec.md
       # proposed work #5) -- fails this deploy check, rather than a silent ::warning::, if
       # any Summer League cron machine is left on a stale image digest after every
@@ -316,5 +433,11 @@ jobs:
             --machine summer-league-desk-cron \
             --machine summer-league-roster-cron \
             --machine summer-league-metrics-compact-cron \
+            --machine summer-league-desk-fast-cron \
+            --machine summer-league-desk-projection-cron \
+            --machine summer-league-desk-backbone-cron \
             --optional-machine summer-league-desk-cron \
-            --optional-machine summer-league-metrics-compact-cron
+            --optional-machine summer-league-metrics-compact-cron \
+            --optional-machine summer-league-desk-fast-cron \
+            --optional-machine summer-league-desk-projection-cron \
+            --optional-machine summer-league-desk-backbone-cron

@@ -792,3 +792,76 @@ async def test_post_tick_newer_unfinished_scheduler_run_fails(
     scheduler = _result_for(report, "scheduler")
     assert scheduler.status == ReadinessStatus.FAIL
     assert "incomplete_newer_run=true" in scheduler.message
+
+
+async def test_post_tick_reads_the_latency_class_rows_once_the_composite_retires(
+    db_session: AsyncSession,
+) -> None:
+    """#699 promotion: readiness must follow whichever Desk scheduler is running.
+
+    After the latency-class machines are proven, `summer-league-desk-cron` (the
+    composite) is stopped and stops reporting -- its ``DESK`` row freezes at
+    whatever it last wrote. The projection class owns content freshness from
+    then on, and the fast class owns source freshness.
+
+    A checker pinned to ``DESK`` would read that frozen row and report a stale
+    scheduler on a perfectly healthy system -- and since this script gates
+    deploys, it would block them. This proves it follows the class rows
+    instead.
+    """
+    competition = await _seed_competition(db_session, year=_NOW.year)
+    await _seed_all_required_baselines(db_session)
+    event = await _seed_event(db_session, competition=competition)
+    await _seed_state(db_session, event=event, freshness_tick_at=_NOW)
+    await _seed_full_render_snapshot_matrix(db_session, event=event)
+
+    # The composite retired hours ago and its row is frozen well past the
+    # staleness bound.
+    retired_at = _NOW - timedelta(hours=9)
+    composite = (
+        await db_session.execute(
+            select(SummerLeaguePipelineState).where(
+                SummerLeaguePipelineState.job == SummerLeaguePipelineJob.DESK  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    composite.last_completed_at = retired_at
+    composite.last_succeeded_at = retired_at
+    composite.last_source_refreshed_at = retired_at
+
+    # ...and the two class machines are running normally.
+    db_session.add(
+        SummerLeaguePipelineState(
+            job=SummerLeaguePipelineJob.DESK_PROJECTION,
+            last_outcome=SummerLeaguePipelineOutcome.SUCCEEDED,
+            last_started_at=_NOW,
+            last_completed_at=_NOW,
+            last_job_image="registry/app:test",
+            last_succeeded_at=_NOW,
+            last_projection_refreshed_at=_NOW,
+            last_snapshots_materialized_at=_NOW,
+            last_content_updated=True,
+        )
+    )
+    db_session.add(
+        SummerLeaguePipelineState(
+            job=SummerLeaguePipelineJob.DESK_FAST,
+            last_outcome=SummerLeaguePipelineOutcome.SUCCEEDED,
+            last_started_at=_NOW,
+            last_completed_at=_NOW,
+            last_job_image="registry/app:test",
+            last_succeeded_at=_NOW,
+            last_source_refreshed_at=_NOW,
+            last_source_advanced_at=_NOW,
+            last_content_updated=False,
+        )
+    )
+    await db_session.commit()
+
+    report = await build_readiness_report(db_session, mode="post-tick", now=_NOW)
+
+    scheduler = _result_for(report, "scheduler")
+    assert scheduler.status == ReadinessStatus.PASS, scheduler.message
+    source = _result_for(report, "source_freshness")
+    assert source.status == ReadinessStatus.PASS, source.message
+    assert _NOW.isoformat() in source.message

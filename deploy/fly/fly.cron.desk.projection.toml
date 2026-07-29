@@ -1,0 +1,41 @@
+# fly.cron.desk.projection.toml - production Summer League Desk PROJECTION class (#699)
+#
+# The medium latency class: rebuild the Desk projection from canonical data.
+# Grades -> storylines -> commentary -> `event_desk_state` -> render snapshots.
+#
+#   python -m app.cli.sl_desk_projection_tick
+#
+# Takes NO shared writer lock (spec §2: "a *pure reader* of canonical data plus
+# a writer of its own projection -- its only writes are to Desk projection
+# tables it exclusively owns"), so a long backbone run cannot stop the hourly
+# projection from landing.
+#
+# CADENCE: hourly. This is a correctness requirement, not a preference --
+# `app/services/event_desk/controller.py` hardcodes `TICK_INTERVAL =
+# timedelta(hours=1)` and stamps `next_tick_eta = now + TICK_INTERVAL` on every
+# `event_desk_state` upsert, which the Desk UI shows users. Running this at any
+# other cadence would make the displayed freshness promise false. This is the
+# machine that owns that promise now that the composite is retired.
+#
+# ORDERING vs the fast class: none required. The projection reads whatever
+# canonical state exists when it runs; it does not wait on the poller. If they
+# collide, the projection simply reads the pre-poll state and the next hour
+# picks up the difference -- which is strictly better than the pre-#699
+# behavior, where a collision meant the whole tick was skipped.
+#
+# Promotion, rollback, and the argv-drift warning: identical to
+# fly.cron.desk.fast.toml -- see that file's header, which is the canonical
+# copy for all three class machines.
+
+app = 'draft-app-prod'
+primary_region = 'ewr'
+
+[build]
+
+[processes]
+  cron = "/app/.venv/bin/python -m app.cli.sl_desk_projection_tick"
+
+[[vm]]
+  memory = '1024mb'
+  cpu_kind = 'shared'
+  cpus = 1
