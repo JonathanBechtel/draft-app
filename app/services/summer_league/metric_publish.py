@@ -153,6 +153,7 @@ async def publish_metric_version(
     candidate rows promoted. A failed caller transaction therefore leaves the previous
     current version untouched.
     """
+    published_at = datetime.now(timezone.utc).replace(tzinfo=None)
     season_scope = (
         SummerLeaguePlayerSeason.competition_id.in_(  # type: ignore[attr-defined]
             competition_ids
@@ -179,8 +180,8 @@ async def publish_metric_version(
     if context_scope is not None:
         context_demote = context_demote.where(context_scope)
 
-    await db.execute(season_demote.values(is_current=False))
-    await db.execute(context_demote.values(is_current=False))
+    await db.execute(season_demote.values(is_current=False, published_at=published_at))
+    await db.execute(context_demote.values(is_current=False, published_at=published_at))
     # The partial unique indexes require the demotion to reach the database before the
     # candidate rows are promoted in the same transaction.
     await db.flush()
@@ -195,8 +196,8 @@ async def publish_metric_version(
         season_promote = season_promote.where(season_scope)
     if context_scope is not None:
         context_promote = context_promote.where(context_scope)
-    await db.execute(season_promote.values(is_current=True))
-    await db.execute(context_promote.values(is_current=True))
+    await db.execute(season_promote.values(is_current=True, published_at=published_at))
+    await db.execute(context_promote.values(is_current=True, published_at=published_at))
 
     # The global fit is staged inactive alongside a full rebuild. Scoped ticks reuse the
     # already-active fit and therefore do not touch this table.

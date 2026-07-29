@@ -44,6 +44,7 @@ async def _seed_versions(db: AsyncSession) -> int:
         11: datetime(2026, 7, 6, 8),
         12: datetime(2026, 7, 6, 9),
     }
+    published_versions = {1, 2, 3, 4, 5, 10}
     for version, as_of in version_dates.items():
         is_current = version == 10
         db.add(
@@ -54,6 +55,7 @@ async def _seed_versions(db: AsyncSession) -> int:
                 version=version,
                 is_current=is_current,
                 as_of=as_of,
+                published_at=as_of if version in published_versions else None,
             )
         )
         for player in players:
@@ -67,6 +69,7 @@ async def _seed_versions(db: AsyncSession) -> int:
                     version=version,
                     is_current=is_current,
                     as_of=as_of,
+                    published_at=as_of if version in published_versions else None,
                     model_version=f"fit-{version}",
                 )
             )
@@ -75,7 +78,7 @@ async def _seed_versions(db: AsyncSession) -> int:
 
 
 @pytest.mark.asyncio
-async def test_compaction_keeps_daily_closes_current_and_inflight_candidate(
+async def test_compaction_keeps_published_close_current_and_inflight_candidate(
     db_session: AsyncSession,
 ) -> None:
     """Closed-day duplicates are removed without losing the trend series or candidate."""
@@ -89,9 +92,9 @@ async def test_compaction_keeps_daily_closes_current_and_inflight_candidate(
         )
 
     assert summary.cutoff == datetime(2026, 7, 6)
-    assert summary.context_rows_deleted == 2
-    assert summary.season_rows_deleted == 4
-    assert summary.rows_deleted == 6
+    assert summary.context_rows_deleted == 1
+    assert summary.season_rows_deleted == 2
+    assert summary.rows_deleted == 3
 
     contexts = (
         (
@@ -104,8 +107,16 @@ async def test_compaction_keeps_daily_closes_current_and_inflight_candidate(
         .scalars()
         .all()
     )
-    assert [context.version for context in contexts] == [2, 3, 4, 6, 10, 11, 12]
+    assert [context.version for context in contexts] == [2, 3, 4, 5, 6, 10, 11, 12]
     assert [context.version for context in contexts if context.is_current] == [10]
+    assert (
+        next(context for context in contexts if context.version == 5).published_at
+        is not None
+    )
+    assert (
+        next(context for context in contexts if context.version == 6).published_at
+        is None
+    )
 
     seasons = (
         (
@@ -121,14 +132,14 @@ async def test_compaction_keeps_daily_closes_current_and_inflight_candidate(
         .scalars()
         .all()
     )
-    assert {season.version for season in seasons} == {2, 3, 4, 6, 10, 11, 12}
+    assert {season.version for season in seasons} == {2, 3, 4, 5, 6, 10, 11, 12}
     assert [season.version for season in seasons if season.is_current] == [10, 10]
 
     # The daily history remains readable at the player-season grain after compaction.
     assert {
         season.as_of.date()
         for season in seasons
-        if season.version in {2, 3, 4, 6, 10}
+        if season.version in {2, 3, 4, 5, 6, 10}
     } == {
         datetime(2026, 7, 1).date(),
         datetime(2026, 7, 2).date(),

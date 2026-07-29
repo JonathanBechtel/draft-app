@@ -122,6 +122,9 @@ class SummerLeagueMetricContext(DatedVersionMixin, SQLModel, table=True):  # typ
         default=DEFAULT_METRIC_CALCULATION_VERSION, nullable=False
     )
     as_of: Optional[datetime] = Field(default=None)
+    # Set when this projection version is exposed to readers. A nullable value
+    # distinguishes an abandoned/in-flight candidate from a published daily close.
+    published_at: Optional[datetime] = Field(default=None)
     competition_id: int = Field(
         sa_column=Column(
             Integer,
@@ -188,6 +191,9 @@ class SummerLeaguePlayerSeason(DatedVersionMixin, SQLModel, table=True):  # type
         default=DEFAULT_METRIC_CALCULATION_VERSION, nullable=False
     )
     as_of: Optional[datetime] = Field(default=None)
+    # Set when this projection version is exposed to readers. A nullable value
+    # distinguishes an abandoned/in-flight candidate from a published daily close.
+    published_at: Optional[datetime] = Field(default=None)
     competition_id: int = Field(
         sa_column=Column(
             Integer,

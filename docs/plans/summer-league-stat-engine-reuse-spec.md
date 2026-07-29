@@ -204,22 +204,24 @@ operational churn, not analytical history — the meaningful longitudinal grain 
 close**. Without a stated policy the table either grows unboundedly through a multi-week event or
 invites an ad-hoc wipe under deadline pressure — the exact failure P2 exists to prevent.
 
-**Policy: retain each as-of day's final version plus the current version; superseded *intra-day*
-versions may be compacted once a newer version from the same as-of day is current.** Compaction
-is a scoped, explainable delete of redundant intra-day versions — never the daily close, never
-the row the current pointer targets — and is therefore P2-compliant where a TTL or full wipe is
-not. (It will also need an allowlist entry in the unscoped-`delete()` checker, with the
-justifying comment discipline §1.1 requires.)
+**Policy: retain each as-of day's published close plus the current version; superseded *intra-day*
+versions may be compacted once a newer version from the same as-of day is current.** An
+unpublished candidate is retained separately until it is either published or superseded by a
+newer candidate, so an in-flight or abandoned rebuild can never displace the durable close.
+Compaction is a scoped, explainable delete of redundant intra-day versions — never the published
+daily close, never the row the current pointer targets — and is therefore P2-compliant where a
+TTL or full wipe is not. (It will also need an allowlist entry in the unscoped-`delete()` checker,
+with the justifying comment discipline §1.1 requires.)
 
 Revisit only if a sub-daily product surface appears; nothing currently designed needs finer than
 daily history.
 
 Issue 698 implementation note: the retention policy is enforced by a separate daily
-compaction job. It keeps the latest projection for each closed UTC source day, the current
-pointer, and any undated legacy rows; it does not run inside metric rebuilds. This keeps the
-dated Summer League projection as a durable spoke in the Global Player-Journey Graph while
-removing only operational hourly churn, so a later trend projection can still read one point
-per event day.
+compaction job. It keeps the latest published projection and latest unpublished candidate for
+each closed UTC source day, the current pointer, and any undated legacy rows; it does not run
+inside metric rebuilds. This keeps the dated Summer League projection as a durable spoke in the
+Global Player-Journey Graph while removing only operational hourly churn, so a later trend
+projection can still read one point per event day.
 
 ### Read-switch scope — what the snapshot serves, and what it cannot
 
