@@ -74,7 +74,7 @@ async def _seed_competition(
     return comp, team
 
 
-async def _participate(
+async def _participate(  # noqa: PLR0913
     db: AsyncSession,
     *,
     comp_id: int,
@@ -416,3 +416,72 @@ async def test_only_missing_does_not_report_enriched_players_as_no_source(
     no_source_text = "\n".join(result.no_source)
     assert "Cohort Intl" in no_source_text
     assert "Cohort Enriched" not in no_source_text
+
+
+async def test_changed_player_is_forced_alongside_missing_stats_players(
+    db_session: AsyncSession,
+) -> None:
+    """Roster changes refresh even an eligible player with prior stats."""
+    forced = make_player("Cohort", "Forced", school="Duke")
+    missing = make_player("Cohort", "Missing", school="Kansas")
+    db_session.add_all([forced, missing])
+    await db_session.flush()
+    assert forced.id is not None
+    assert missing.id is not None
+
+    db_session.add_all(
+        [
+            PlayerExternalId(
+                player_id=forced.id,
+                system="bbr",
+                external_id="forced01",
+            ),
+            PlayerExternalId(
+                player_id=missing.id,
+                system="bbr",
+                external_id="missing01",
+            ),
+            PlayerCollegeStats(
+                player_id=forced.id,
+                season="2024-25",
+                source="sports_reference",
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    comp, team = await _seed_competition(
+        db_session, year=2025, league_id="13", venue_slug="california_classic"
+    )
+    assert comp.id is not None
+    assert team.id is not None
+    await _participate(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team.id,
+        name="Cohort Forced",
+        person_id="ccf-1",
+        canonical_player_id=forced.id,
+    )
+    await _participate(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team.id,
+        name="Cohort Missing",
+        person_id="ccf-2",
+        canonical_player_id=missing.id,
+    )
+    await db_session.commit()
+
+    result = await run_college_stats_sweep(
+        _session_factory_for(db_session),
+        dry_run=True,
+        only_missing=True,
+        sl_cohort=True,
+        sl_year=2025,
+        sl_league_id="13",
+        sl_player_ids={forced.id},
+    )
+
+    assert result.players_attempted == 2
+    assert result.players_skipped == 2
