@@ -65,6 +65,8 @@ from app.services.summer_league.write_lock import (
     acquire_summer_league_writer_lock,
 )
 import app.cli.sl_desk_tick as desk_tick_module
+import app.services.summer_league.desk_tick.composite as desk_composite_module
+import app.services.summer_league.desk_tick.shared as desk_shared_module
 from app.cli.sl_desk_tick import run_desk_tick
 
 _FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "summer_league"
@@ -615,7 +617,7 @@ async def test_tick_precheck_treats_winddown_as_content_active(
         status=SummerLeagueGameStatus.FINAL,
     )
 
-    daily_state = await desk_tick_module._resolve_daily_state(
+    daily_state = await desk_shared_module.resolve_daily_state(
         db_session, now=datetime(2026, 7, 21, 16, 0)
     )
 
@@ -723,12 +725,15 @@ async def test_desk_tick_reads_runtime_clock_after_writer_lock(
             assert lock_acquired is True
             return post_lock_now
 
+    # Since #699 the bounded acquire lives behind `WriterLockPolicy.acquire`
+    # in the shared module, and the composite orchestrator is what reads the
+    # runtime clock after it. The invariant under test is unchanged.
     monkeypatch.setattr(
-        desk_tick_module,
+        desk_shared_module,
         "acquire_summer_league_writer_lock_bounded_timed",
         _acquire_writer_lock_bounded_timed,
     )
-    monkeypatch.setattr(desk_tick_module, "datetime", _PostLockClock)
+    monkeypatch.setattr(desk_composite_module, "datetime", _PostLockClock)
 
     result = await desk_tick_module.run_desk_tick(db_session)
     await db_session.commit()

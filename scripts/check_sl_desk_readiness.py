@@ -76,6 +76,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from collections.abc import Callable
 from typing import Literal, Optional, Sequence
 
 from dotenv import load_dotenv
@@ -96,6 +97,7 @@ from app.schemas.summer_league import SummerLeagueCompetition  # noqa: E402
 from app.schemas.summer_league_pipeline import (  # noqa: E402
     SummerLeaguePipelineJob,
     SummerLeaguePipelineOutcome,
+    SummerLeaguePipelineState,
 )
 from app.schemas.summer_league_desk import (  # noqa: E402
     SummerLeagueCohortBaseline,
@@ -594,6 +596,57 @@ async def _resolve_lifecycle(
     return lifecycle_phase(now, desk_event)
 
 
+async def _newest_pipeline_state(
+    db: AsyncSession,
+    *jobs: SummerLeaguePipelineJob,
+    key: Callable[[SummerLeaguePipelineState], datetime | None] | None = None,
+) -> SummerLeaguePipelineState | None:
+    """The most recently-advanced state row among ``jobs``.
+
+    #699 split the single Desk cron into three independently scheduled
+    latency classes, each with its own ``summer_league_pipeline_states`` row.
+    During promotion the composite (``DESK``) and the classes both run; after
+    promotion the composite machine is stopped and only the classes report.
+    A readiness check pinned to one job would therefore read a stale row --
+    and since this script gates deploys, that would block them on a perfectly
+    healthy system.
+
+    Picking the *newest* is the conservative reading in both directions: it
+    can never make a stale system look fresh (every candidate row would have
+    to be stale for the result to be), and it cannot make a fresh system look
+    stale just because a retired job stopped reporting.
+
+    Args:
+        db: Active database session.
+        *jobs: Candidate jobs, in no particular order.
+        key: Which timestamp decides recency. Defaults to
+            ``last_completed_at``; the source-freshness check passes
+            ``last_source_refreshed_at`` instead, since that is the column it
+            actually reasons about.
+
+    Returns:
+        The winning state row, or ``None`` when none of ``jobs`` has ever run.
+    """
+    resolved_key = key or (lambda state: state.last_completed_at)
+    best: SummerLeaguePipelineState | None = None
+    best_at: datetime | None = None
+    for job in jobs:
+        state = await get_pipeline_freshness(db, job)
+        if state is None:
+            continue
+        stamped_at = resolved_key(state)
+        if stamped_at is None:
+            # Keep a row with no timestamp only as a last resort, so "started
+            # but never completed" still surfaces as a failure rather than
+            # being silently reported as "never ran".
+            if best is None:
+                best = state
+            continue
+        if best_at is None or stamped_at > best_at:
+            best, best_at = state, stamped_at
+    return best
+
+
 async def _check_scheduler(
     db: AsyncSession,
     *,
@@ -603,7 +656,17 @@ async def _check_scheduler(
     lifecycle: EventLifecyclePhase | None,
 ) -> CheckResult:
     """Report scheduler health independently from content freshness."""
-    state = await get_pipeline_freshness(db, SummerLeaguePipelineJob.DESK)
+    # #699 -- whichever Desk scheduler is actually running. Before the
+    # latency-class partition is promoted this is the composite (`DESK`);
+    # after, the composite machine is stopped and the projection class owns
+    # content freshness. Reading only `DESK` would report a false stale the
+    # moment promotion completes -- and this check gates deploys, so that
+    # would block them on a healthy system.
+    state = await _newest_pipeline_state(
+        db,
+        SummerLeaguePipelineJob.DESK,
+        SummerLeaguePipelineJob.DESK_PROJECTION,
+    )
     if state is None:
         return CheckResult(
             category="scheduler",
@@ -669,7 +732,15 @@ async def _check_source_freshness(
             status=ReadinessStatus.SKIP,
             message="Source ingestion is intentionally inactive outside the event window.",
         )
-    state = await get_pipeline_freshness(db, SummerLeaguePipelineJob.DESK)
+    # #699 -- source freshness is the *fast* class's column once the partition
+    # is promoted, and the composite's before that. The projection class never
+    # stamps it (it talks to no provider), so it is deliberately not consulted.
+    state = await _newest_pipeline_state(
+        db,
+        SummerLeaguePipelineJob.DESK,
+        SummerLeaguePipelineJob.DESK_FAST,
+        key=lambda s: s.last_source_refreshed_at,
+    )
     refreshed_at = state.last_source_refreshed_at if state else None
     if refreshed_at is None:
         return CheckResult(
