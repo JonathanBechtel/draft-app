@@ -254,6 +254,37 @@ is part of this change.
    player-page trend of GmSc/TS%/BPM across the event). Cross-stage career ledger remains the
    larger, separate initiative in the longitudinal-evidence pitch.
 
+### Status — what Phase 1 already did to this plan
+
+**Step 5's destructive half is done.** Phase 1's version-flip (#697) added dated versioning to
+`summer_league_player_seasons` and `summer_league_metric_contexts` — both now carry
+`DatedVersionMixin`, a partial unique index per scope `WHERE is_current = true`, an atomic
+`publish_metric_version()` pointer flip, and a version sequence. The full-wipe and every unscoped
+delete are gone. What step 5 still owes is the **Explorer read-switch**, which the roadmap places
+in Phase 3, not here.
+
+**Step 2 acquired a dependent: in-event metrics scoping (#701), moved here from Phase 1.**
+`compute()` loads and fits over the entire raw dataset on every rebuild. #694's rebuild gate skips
+the work entirely when the input watermark is unchanged — which removed the off-season cost — but
+when inputs move it calls the unscoped path, so during a live event the full-pool compute runs
+every hour.
+
+It belongs to this doc rather than to the operational phase for two reasons:
+
+* **The promising fix is engine surgery.** The asymmetry worth exploiting is that the league-wide
+  fit changes slowly while inputs change fast, so the fit could refit on its own cadence while
+  per-tick work recomputes only changed competitions against the current fit. That means splitting
+  `compute()` and `ComputeResult`, which today bundle the fit (`pyth_exponent`, `bpm_coef`,
+  `bpm_intercept`) together with the projections (`contexts`, `seasons`).
+* **It cannot be verified before step 2.** Its acceptance is "values identical to a full
+  recompute", and the golden-number harness is precisely the mechanism for that. Attempting it
+  first would change how the numbers are computed before the guard that proves they did not move —
+  the ordering this section exists to prevent.
+
+**Sequence it after step 2 and alongside step 1's lift**, so the engine is restructured once
+rather than twice. Note also that its measurement is in-event: off-season is the case #694 already
+handles, so demonstrating the improvement needs a live window or a faithful replay.
+
 ## How this serves the roadmap
 
 - **Second spoke:** a new competition needs only a `StatInputs` adapter + a capability
