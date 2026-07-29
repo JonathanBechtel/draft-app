@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -81,7 +81,6 @@ class BackboneTickResult:
     normalized_competition_ids: tuple[int, ...] = ()
     #: Whether the scoped metrics rebuild was invoked at all.
     metrics_rebuilt: bool = False
-    competitions: tuple[SummerLeagueCompetition, ...] = field(default=())
 
     @property
     def source_advanced(self) -> bool:
@@ -139,7 +138,7 @@ async def run_backbone_tick(
     ctx: TickContext,
     *,
     competitions: Optional[tuple[SummerLeagueCompetition, ...]] = None,
-    acquire_lock: bool = True,
+    daily_state: Optional[EventDailyState] = None,
 ) -> BackboneTickResult:
     """Normalize audited raw data and rebuild the metrics it invalidated.
 
@@ -151,9 +150,9 @@ async def run_backbone_tick(
         competitions: Pre-resolved target competitions, so the composite
             entrypoint can resolve them once and share them with the
             projection class rather than issuing the query twice.
-        acquire_lock: Whether to acquire the lock at entry. The composite
-            passes ``False`` because it already holds the lock from its own
-            earlier phase.
+        daily_state: Pre-resolved daily state, for the same reason -- the
+            composite resolves the window once and shares it across all three
+            classes. Resolved here when omitted.
 
     Returns:
         A :class:`BackboneTickResult`.
@@ -167,11 +166,14 @@ async def run_backbone_tick(
     """
     now = ctx.now
     telemetry = ctx.telemetry
-    if acquire_lock:
-        await ctx.lock.acquire(db)
-    started_at = ctx.executed_at
+    # Unconditional: the shared lock is a re-entrant transaction-scoped
+    # advisory lock, so the composite (which already holds it) pays nothing
+    # here, and a standalone run gets the acquire it needs.
+    await ctx.lock.acquire(db)
+    started_at = ctx.started_at
 
-    daily_state = await resolve_daily_state(db, now=now)
+    if daily_state is None:
+        daily_state = await resolve_daily_state(db, now=now)
     if daily_state is None:
         with (
             telemetry.step(
@@ -234,5 +236,4 @@ async def run_backbone_tick(
         daily_state=daily_state,
         normalized_competition_ids=tuple(normalized_ids),
         metrics_rebuilt=metrics_rebuilt,
-        competitions=tuple(competitions),
     )

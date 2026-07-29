@@ -157,7 +157,7 @@ async def test_fast_class_lands_every_live_window_tick_while_backbone_holds_lock
     async def _run_frame(frame: object) -> object:
         result = await run_fast_tick(
             db_session,
-            TickContext.for_run(
+            TickContext(
                 now=frame.now,  # type: ignore[attr-defined]
                 raw_root=tmp_path,
                 client=client,
@@ -277,7 +277,7 @@ async def test_the_lock_policy_is_what_saves_the_fast_class(
         with pytest.raises(SummerLeagueWriterLockTimeout):
             await run_fast_tick(
                 db_session,
-                TickContext.for_run(
+                TickContext(
                     now=CAPTURE_REFERENCE_NOW,
                     raw_root=tmp_path,
                     client=client,
@@ -326,7 +326,7 @@ async def test_fast_class_advances_scores_for_a_live_game_under_contention(
         session.use(live_frame)
         result = await run_fast_tick(
             db_session,
-            TickContext.for_run(
+            TickContext(
                 now=live_frame.now,
                 raw_root=tmp_path,
                 client=client,
@@ -367,7 +367,7 @@ async def test_projection_class_rebuilds_the_desk_while_backbone_holds_lock(
     ) as holder:
         result = await run_projection_tick(
             db_session,
-            TickContext.for_run(now=CAPTURE_REFERENCE_NOW, lock=NO_WRITER_LOCK),
+            TickContext(now=CAPTURE_REFERENCE_NOW, lock=NO_WRITER_LOCK),
         )
         await db_session.commit()
         assert not holder.done()
@@ -411,7 +411,7 @@ async def test_backbone_lock_timeout_leaves_fast_and_projection_unaffected(
         with pytest.raises(SummerLeagueWriterLockTimeout):
             await run_backbone_tick(
                 db_session,
-                TickContext.for_run(
+                TickContext(
                     now=CAPTURE_REFERENCE_NOW,
                     raw_root=tmp_path,
                     lock=WriterLockPolicy(enabled=True, max_wait_seconds=0.5),
@@ -421,7 +421,7 @@ async def test_backbone_lock_timeout_leaves_fast_and_projection_unaffected(
 
         fast_result = await run_fast_tick(
             db_session,
-            TickContext.for_run(
+            TickContext(
                 now=CAPTURE_REFERENCE_NOW,
                 raw_root=tmp_path,
                 client=client,
@@ -432,7 +432,7 @@ async def test_backbone_lock_timeout_leaves_fast_and_projection_unaffected(
 
         projection_result = await run_projection_tick(
             db_session,
-            TickContext.for_run(now=CAPTURE_REFERENCE_NOW, lock=NO_WRITER_LOCK),
+            TickContext(now=CAPTURE_REFERENCE_NOW, lock=NO_WRITER_LOCK),
         )
         await db_session.commit()
 
@@ -466,7 +466,7 @@ async def test_each_class_reports_under_its_own_telemetry_job(
     with caplog.at_level(logging.INFO, logger=telemetry_logger.name):
         await run_fast_tick(
             db_session,
-            TickContext.for_run(
+            TickContext(
                 now=CAPTURE_REFERENCE_NOW,
                 raw_root=tmp_path,
                 client=client,
@@ -480,7 +480,7 @@ async def test_each_class_reports_under_its_own_telemetry_job(
 
         await run_backbone_tick(
             db_session,
-            TickContext.for_run(
+            TickContext(
                 now=CAPTURE_REFERENCE_NOW,
                 raw_root=tmp_path,
                 lock=NO_WRITER_LOCK,

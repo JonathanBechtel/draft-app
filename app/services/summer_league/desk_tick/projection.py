@@ -49,7 +49,6 @@ overwritten with a partial result.
 
 from __future__ import annotations
 
-import logging
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -82,8 +81,6 @@ from app.services.summer_league.desk_tick.shared import (
     resolve_daily_state,
 )
 from app.services.summer_league.scoreboard_ingest import resolve_target_competitions
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -163,7 +160,6 @@ async def run_projection_tick(
     *,
     competitions: Optional[tuple[SummerLeagueCompetition, ...]] = None,
     daily_state: Optional[EventDailyState] = None,
-    acquire_lock: bool = True,
 ) -> ProjectionTickResult:
     """Rebuild the Desk projection from canonical data (spec §2, medium class).
 
@@ -176,8 +172,6 @@ async def run_projection_tick(
             resolve them once and share across classes.
         daily_state: Pre-resolved daily state, for the same reason. When
             omitted this class resolves it itself.
-        acquire_lock: Whether to acquire the lock at entry. The composite
-            passes ``False`` because it already holds the lock.
 
     Returns:
         A :class:`ProjectionTickResult`.
@@ -188,9 +182,12 @@ async def run_projection_tick(
     """
     now = ctx.now
     telemetry = ctx.telemetry
-    if acquire_lock:
-        await ctx.lock.acquire(db)
-    started_at = ctx.executed_at
+    # Unconditional: the shared lock is a re-entrant transaction-scoped
+    # advisory lock, so the composite (which already holds it) pays nothing
+    # here, and a standalone run gets the acquire it needs. Cheaper than a
+    # special-case flag that only the composite ever sets.
+    await ctx.lock.acquire(db)
+    started_at = ctx.started_at
 
     if daily_state is None:
         daily_state = await resolve_daily_state(db, now=now)

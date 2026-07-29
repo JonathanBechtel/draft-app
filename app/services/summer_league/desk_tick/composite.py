@@ -27,7 +27,6 @@ Order (the behavior spec's Job B, §10):
 
 from __future__ import annotations
 
-import logging
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -62,8 +61,6 @@ from app.services.summer_league.scoreboard_ingest import (
     ScoreboardIngestReport,
     resolve_target_competitions,
 )
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -239,9 +236,10 @@ async def run_desk_tick(
             await resolve_target_competitions(db, today=to_eastern_date(resolved_now))
         )
 
-    # Backbone class -- steps 2 and 2b. `acquire_lock=False`: already held.
+    # Backbone class -- steps 2 and 2b. Handed the already-resolved window so
+    # it does not re-issue the daily-state queries the composite just paid for.
     backbone_result = await run_backbone_tick(
-        db, ctx, competitions=competitions, acquire_lock=False
+        db, ctx, competitions=competitions, daily_state=window.daily_state
     )
 
     # Projection class -- steps 3 through 7.
@@ -250,7 +248,6 @@ async def run_desk_tick(
         ctx,
         competitions=competitions,
         daily_state=window.daily_state,
-        acquire_lock=False,
     )
 
     return DeskTickResult(

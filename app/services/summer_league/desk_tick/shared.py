@@ -36,9 +36,8 @@ pass :data:`NO_WRITER_LOCK` for fast/projection.
 
 from __future__ import annotations
 
-import logging
 from contextlib import nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from enum import Enum
 from pathlib import Path
@@ -67,8 +66,6 @@ from app.services.summer_league.scoreboard_ingest import resolve_target_competit
 from app.services.summer_league.write_lock import (
     acquire_summer_league_writer_lock_bounded_timed,
 )
-
-logger = logging.getLogger(__name__)
 
 DEFAULT_RAW_ROOT = Path("data/raw/nba_stats/summer_league")
 
@@ -192,9 +189,11 @@ class TickContext:
     Attributes:
         now: The resolved reference instant (naive UTC), after any
             ``SL_DESK_FORCE_DATE`` override.
-        executed_at: The real wall-clock instant the run began. Differs from
-            ``now`` only under that override; kept separate because operational
-            telemetry must report when the job ran, never the pretend clock.
+        executed_at: The real wall-clock instant the run began, or ``None``
+            for "same as ``now``". It differs from ``now`` only under that
+            override, and is kept separate because operational telemetry must
+            report when the job actually ran, never the pretend clock. Read it
+            through :attr:`started_at`, which resolves the ``None`` case.
         raw_root: Root directory of audited raw Summer League snapshots.
         client: Optional injected NBA Stats client (tests, and the composite
             sharing one session across steps 0 and 1).
@@ -218,7 +217,7 @@ class TickContext:
     """
 
     now: datetime
-    executed_at: datetime
+    executed_at: Optional[datetime] = None
     raw_root: Path = DEFAULT_RAW_ROOT
     client: Optional[NBAStatsClient] = None
     transaction_boundary: Optional[Callable[[], Awaitable[None]]] = None
@@ -235,47 +234,10 @@ class TickContext:
         if self.transaction_boundary is not None:
             await self.transaction_boundary()
 
-    @classmethod
-    def for_run(
-        cls,
-        *,
-        now: datetime,
-        executed_at: Optional[datetime] = None,
-        **overrides: object,
-    ) -> "TickContext":
-        """Build a context, defaulting ``executed_at`` to ``now``.
-
-        Args:
-            now: The resolved reference instant.
-            executed_at: Real wall-clock start; defaults to ``now``.
-            **overrides: Any other :class:`TickContext` field.
-
-        Returns:
-            The constructed context.
-        """
-        return cls(
-            now=now,
-            executed_at=executed_at if executed_at is not None else now,
-            **overrides,  # type: ignore[arg-type]
-        )
-
-
-@dataclass
-class ClassTickOutcome:
-    """What one latency class did, before the composite folds classes together.
-
-    Every per-class runner returns one of these so the composite can assemble
-    the unchanged :class:`~app.services.summer_league.desk_tick.composite.DeskTickResult`
-    and each standalone CLI can report its own pipeline state without knowing
-    about the other two.
-    """
-
-    latency_class: DeskLatencyClass
-    now: datetime
-    executed_at: datetime
-    dormant: bool
-    daily_state: Optional[EventDailyState] = None
-    extras: dict[str, object] = field(default_factory=dict)
+    @property
+    def started_at(self) -> datetime:
+        """When the run actually began, falling back to :attr:`now`."""
+        return self.executed_at if self.executed_at is not None else self.now
 
 
 async def resolve_daily_state(

@@ -44,7 +44,6 @@ gracefully for the unresolved remainder.
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -70,8 +69,6 @@ from app.services.summer_league.scoreboard_ingest import (
     ScoreboardIngestReport,
     run_scoreboard_ingest,
 )
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -216,7 +213,7 @@ async def run_fast_tick(
     telemetry = ctx.telemetry
 
     await lock.acquire(db)
-    started_at = ctx.executed_at
+    started_at = ctx.started_at
 
     async def reacquire_writer_lock() -> None:
         """Start a short serialized write phase after external provider I/O.
