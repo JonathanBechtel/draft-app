@@ -382,7 +382,10 @@ async def replay_frames(
         started_at = perf_counter()
         try:
             result = await run_frame(frame)
-        except BaseException as exc:  # noqa: BLE001 -- recorded, then reported
+        except Exception as exc:  # noqa: BLE001 -- recorded, then reported
+            # Deliberately not BaseException: a lock timeout is an Exception,
+            # while KeyboardInterrupt/CancelledError must abort the replay
+            # rather than be recorded as a "failed frame" and swallowed.
             outcome.frames.append(
                 FrameOutcome(
                     label=frame.label,
