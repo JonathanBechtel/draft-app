@@ -958,9 +958,23 @@ async def _source_as_of(db: AsyncSession) -> Optional[datetime]:
     return max((stamp for stamp in timestamps if stamp is not None), default=None)
 
 
+async def set_rebuild_idle_timeout(db: AsyncSession) -> None:
+    """Disable the role idle timeout for the active metrics transaction."""
+    await db.execute(text("SET LOCAL idle_in_transaction_session_timeout = 0"))
+
+
 async def set_repeatable_read_snapshot(db: AsyncSession) -> None:
-    """Pin the following unlocked metric build to one committed source snapshot."""
+    """Configure the unlocked metric build's transaction safeguards.
+
+    The rebuild can spend several minutes fitting metrics in Python between SQL
+    statements. The role-level ``idle_in_transaction_session_timeout`` from
+    #576 is valuable for leaked sessions, but would terminate this legitimate
+    ``REPEATABLE READ`` transaction during that compute gap. ``SET LOCAL``
+    disables the reaper only until this transaction ends, preserving the role
+    default for every other application session and pooled connection.
+    """
     await db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
+    await set_rebuild_idle_timeout(db)
 
 
 async def _load_shot_diet(
@@ -1484,6 +1498,11 @@ async def _rebuild_with_options(
             "published": publish,
         }
 
+    # Both full and scoped rebuilds fit the entire source pool in Python. Keep
+    # the role-level leak guard from terminating a legitimate transaction when
+    # this path is called directly by the Desk tick without the full-ingestion
+    # snapshot helper.
+    await set_rebuild_idle_timeout(db)
     result = await compute(db)
     adv_cids = {cid for cid, ctx in result.contexts.items() if ctx.adv_eligible}
     scope = frozenset(competition_ids) if competition_ids is not None else None
