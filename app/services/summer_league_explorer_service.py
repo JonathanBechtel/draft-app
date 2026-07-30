@@ -76,6 +76,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
+from app.services.stats.scaling import scale_python, scale_sql
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_environment_registry import (
@@ -1400,8 +1401,15 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
             float(getattr(r, "pace", None) or 0) * float(getattr(r, "minutes", 0) or 0)
             for r in rows
         )
-        poss = (pace_min_sum / MINUTES_PER_GAME) * (total_min / covered_min)
-        return 100.0 * pts / poss if poss else None
+        # Feed the extrapolated pace-weighted minutes into the shared per-mode
+        # scaler (app.services.stats.scaling.scale_python) as an "effective
+        # pace_sec": pace_min_sum * 60 converts to pace-weighted seconds, and
+        # * (total_min / covered_min) is the same extrapolation the comment above
+        # describes. gp/seconds are unused by scale_python's per_100 branch.
+        pace_sec_effective = pace_min_sum * 60.0 * total_min / covered_min
+        return scale_python(
+            pts, "per_100", gp=0, seconds=0.0, pace_seconds=pace_sec_effective
+        )
     # Unknown key — callers should only pass recombinable keys from the catalog.
     return None
 
@@ -2474,25 +2482,20 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
     gp = int(r.gp)
     sec = float(r.sec or 0)
     minutes = sec / 60.0
-    poss = (r.pace_sec or 0) / (60.0 * _MINUTES_PER_GAME)
+    pace_sec = float(r.pace_sec or 0)
 
-    if mode == "per_game":
-        factor: Optional[float] = _safe_div(1.0, gp)
-        min_val: Optional[float] = round(minutes / gp, 1) if gp else None
-    elif mode == "per_36":
-        factor = _safe_div(36.0, minutes)
+    if mode == "totals":
+        min_val: Optional[float] = round(minutes, 1)
+    else:  # per_game, per_36, per_100 all display per-game minutes
         min_val = round(minutes / gp, 1) if gp else None
-    elif mode == "per_100":
-        factor = _safe_div(100.0, poss) if poss else None
-        min_val = round(minutes / gp, 1) if gp else None
-    else:  # totals
-        factor = 1.0
-        min_val = round(minutes, 1)
 
     def scaled(total: float) -> Optional[float]:
-        if factor is None:
+        # app.services.stats.scaling.scale_python is the single per-mode scaling
+        # definition (shared with the SQL sort path via scale_sql); this closure
+        # only layers on this view's display rounding.
+        v = scale_python(total, mode, gp=gp, seconds=sec, pace_seconds=pace_sec)
+        if v is None:
             return None
-        v = total * factor
         return round(v) if mode == "totals" else round(v, 1)
 
     fga, fta = float(r.fga or 0), float(r.fta or 0)
@@ -2546,20 +2549,14 @@ def _astd_pct(r: Any) -> Optional[float]:
 def _scaled_sort_expr(num: str, gp: str, sec: str, pace_sec: str, mode: str) -> str:
     """Scale a counting-stat numerator into the displayed per-mode rate.
 
-    Mirrors the arithmetic in :func:`_compute_player_values` so ORDER BY ranks on
+    Thin wrapper over :func:`app.services.stats.scaling.scale_sql` — the single
+    scaling definition shared with the Python display path
+    (:func:`_compute_player_values`, via ``scale_python``) — so ORDER BY ranks on
     exactly what the cell shows.  ``num``/``gp``/``sec``/``pace_sec`` are SQL
     fragments (aggregates for career, raw labels for per_competition); ``sec`` is
     seconds played and ``pace_sec`` the pace-weighted seconds.
     """
-    if mode == "per_game":
-        # * 1.0 forces float division (counts/totals are integers in Postgres,
-        # and integer division would truncate the rate into non-monotonic ties).
-        return f"{num} * 1.0 / NULLIF({gp}, 0)"
-    if mode == "per_36":  # 36 min / (sec/60) = num * 36 * 60 / sec
-        return f"{num} * 2160.0 / NULLIF({sec}, 0)"
-    if mode == "per_100":  # 100 poss; poss = pace_sec / (60 * 48)
-        return f"{num} * 288000.0 / NULLIF({pace_sec}, 0)"
-    return num  # totals
+    return scale_sql(num, gp, sec, pace_sec, mode)
 
 
 def _game_score_sql(box: Callable[[str], str]) -> str:
