@@ -76,6 +76,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
+from app.services.stats.capabilities import is_computable
 from app.services.stats.formulas import (
     efg_pct_line,
     efg_pct_ratio,
@@ -94,6 +95,7 @@ from app.services.stats.registry import (
     tov_pct_sql_text,
 )
 from app.services.stats.scaling import scale_python, scale_sql
+from app.services.summer_league.capabilities import row_provides, rows_provide
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_environment_registry import (
@@ -1393,7 +1395,13 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
         # Free-throw rate: FTA per FGA (ability to draw fouls). 0-1 fraction.
         return ftr_ratio(fga=fga, fta=fta)
     if key == "astd_pct":
-        # Assisted share of made FGs from PBP counts; None outside the PBP era.
+        # Assisted share of made FGs from PBP counts. Availability comes from the
+        # T8 capability model (#728) -- metric.requires <= source.provides, resolved
+        # from the registry's astd_pct.requires (ast_fgm/unast_fgm) rather than a
+        # hand-rolled "outside the PBP era" check -- so a pool that never had PBP
+        # normalized is structurally absent instead of merely dividing by zero.
+        if not is_computable("astd_pct", rows_provide(rows)):
+            return None
         ast_fgm = _sum_attr(rows, "ast_fgm")
         unast_fgm = _sum_attr(rows, "unast_fgm")
         made = ast_fgm + unast_fgm
@@ -2551,13 +2559,23 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
 
 
 def _astd_pct(r: Any) -> Optional[float]:
-    """Assisted share of made FGs from PBP counts; ``None`` outside the PBP era."""
-    ast_fgm = getattr(r, "ast_fgm", None)
-    unast_fgm = getattr(r, "unast_fgm", None)
-    made = float(ast_fgm or 0) + float(unast_fgm or 0)
+    """Assisted share of made FGs from PBP counts.
+
+    Availability is derived from the T8 capability model (#728) -- the registry's
+    ``astd_pct.requires`` (``ast_fgm``/``unast_fgm``) tested against this row's
+    provides (:func:`app.services.summer_league.capabilities.row_provides`) --
+    rather than this function's own hand-rolled "is PBP data present" check, so a
+    row from a competition that never had PBP normalized is structurally absent
+    instead of merely dividing by zero.
+    """
+    if not is_computable("astd_pct", row_provides(r)):
+        return None
+    ast_fgm = float(getattr(r, "ast_fgm", None) or 0)
+    unast_fgm = float(getattr(r, "unast_fgm", None) or 0)
+    made = ast_fgm + unast_fgm
     if made <= 0:
         return None
-    return round(100.0 * float(ast_fgm or 0) / made, 1)
+    return round(100.0 * ast_fgm / made, 1)
 
 
 def _scaled_sort_expr(num: str, gp: str, sec: str, pace_sec: str, mode: str) -> str:
