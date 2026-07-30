@@ -35,12 +35,15 @@ async def main() -> None:
             )
         async with db.begin():
             await acquire_summer_league_writer_lock(db)
-            await publish_metric_version(
+            skipped_competition_ids = await publish_metric_version(
                 db,
                 version=int(summary["version"]),
                 model_version=str(summary["model_version"]),
             )
-            await upsert_render_snapshots(db, snapshot_writes)
+            if skipped_competition_ids:
+                snapshot_writes = []
+            else:
+                await upsert_render_snapshots(db, snapshot_writes)
     print(
         f"Rebuilt SL metrics: {summary['seasons']} player-seasons, "
         f"{summary['contexts']} contexts ({summary['adv_pools']} ADV-eligible); "

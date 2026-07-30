@@ -184,7 +184,7 @@ async def publish_metric_version(
     version: int,
     competition_ids: set[int] | frozenset[int] | None = None,
     model_version: str | None = None,
-) -> None:
+) -> set[int]:
     """Atomically expose one staged metric version to all eligible readers.
 
     The caller owns a short transaction and, in production, the Summer League writer
@@ -194,6 +194,11 @@ async def publish_metric_version(
     flip. Demoted rows retain their original ``published_at``; only newly promoted rows
     receive the flip timestamp. A failed caller transaction therefore leaves the
     previous current version untouched.
+
+    Returns:
+        Competition IDs whose newer current publication prevented this candidate
+        from flipping that scope. Callers that materialize dependent read models
+        should discard candidate-derived writes when this set is non-empty.
     """
     published_at = datetime.now(timezone.utc).replace(tzinfo=None)
     newer_competition_ids = await _newer_current_competition_ids(
@@ -284,3 +289,5 @@ async def publish_metric_version(
                 )
                 .values(is_active=True)
             )
+
+    return newer_competition_ids

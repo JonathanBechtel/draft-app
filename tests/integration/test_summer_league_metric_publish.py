@@ -99,10 +99,13 @@ async def test_older_full_flip_keeps_newer_scoped_publication_current(
 
     # The newer scoped Desk publication wins the race for competition A.
     async with db_session.begin():
-        await publish_metric_version(
-            db_session,
-            version=3,
-            competition_ids={competition_a_id},
+        assert (
+            await publish_metric_version(
+                db_session,
+                version=3,
+                competition_ids={competition_a_id},
+            )
+            == set()
         )
 
     a_v3_published_at = (
@@ -118,7 +121,8 @@ async def test_older_full_flip_keeps_newer_scoped_publication_current(
 
     # The older full rebuild may still publish competition B, but not A.
     async with db_session.begin():
-        await publish_metric_version(db_session, version=2)
+        skipped_competition_ids = await publish_metric_version(db_session, version=2)
+        assert skipped_competition_ids == {competition_a_id}
 
     contexts = (
         (
