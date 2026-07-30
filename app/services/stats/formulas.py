@@ -127,6 +127,19 @@ def game_score_from_row(row: Any) -> float:
 # season columns store 0.0 via ``_d``.
 
 
+def ftr_ratio(*, fga: Any, fta: Any) -> Optional[float]:
+    """Free-throw rate (FTA / FGA), unrounded — the 0–1 fraction, or ``None``.
+
+    Unrounded twin of :func:`ftr_line`, for callers that pool several box
+    lines (or several grains) and apply their own display rounding once, at
+    the end — e.g. the Explorer's cross-competition ``rollup_recombinable``.
+    """
+    fga_f = float(fga or 0)
+    if fga_f <= 0:
+        return None
+    return float(fta or 0) / fga_f
+
+
 def ftr_line(*, fga: Any, fta: Any) -> Optional[float]:
     """Free-throw rate (FTA / FGA) for one box line, ``None``-coalescing to 0.
 
@@ -134,10 +147,20 @@ def ftr_line(*, fga: Any, fta: Any) -> Optional[float]:
         The 0–1 fraction rounded to 3 decimals (the scale ``compute_metrics``
         stores), or ``None`` when the line has no field-goal attempts.
     """
-    fga_f = float(fga or 0)
-    if fga_f <= 0:
+    ratio = ftr_ratio(fga=fga, fta=fta)
+    return round(ratio, 3) if ratio is not None else None
+
+
+def tov_pct_ratio(*, fga: Any, fta: Any, tov: Any) -> Optional[float]:
+    """Turnover % — 100 · TOV / (FGA + 0.44 · FTA + TOV) — unrounded.
+
+    Unrounded twin of :func:`tov_pct_line`; see :func:`ftr_ratio` for why a
+    pooling caller wants the raw value.
+    """
+    den = float(fga or 0) + 0.44 * float(fta or 0) + float(tov or 0)
+    if den <= 0:
         return None
-    return round(float(fta or 0) / fga_f, 3)
+    return 100.0 * float(tov or 0) / den
 
 
 def tov_pct_line(*, fga: Any, fta: Any, tov: Any) -> Optional[float]:
@@ -147,10 +170,79 @@ def tov_pct_line(*, fga: Any, fta: Any, tov: Any) -> Optional[float]:
         The 0–100 percentage rounded to 1 decimal, or ``None`` when the line
         has no true-shooting attempts or turnovers to divide by.
     """
-    den = float(fga or 0) + 0.44 * float(fta or 0) + float(tov or 0)
-    if den <= 0:
+    ratio = tov_pct_ratio(fga=fga, fta=fta, tov=tov)
+    return round(ratio, 1) if ratio is not None else None
+
+
+def ts_pct_ratio(*, pts: Any, fga: Any, fta: Any) -> Optional[float]:
+    """True Shooting % — 100 · PTS / (2 · (FGA + 0.44 · FTA)) — unrounded.
+
+    Unrounded twin of :func:`ts_pct_line`; see :func:`ftr_ratio` for why a
+    pooling caller wants the raw value.
+    """
+    denom = 2.0 * (float(fga or 0) + 0.44 * float(fta or 0))
+    if denom <= 0:
         return None
-    return round(100.0 * float(tov or 0) / den, 1)
+    return 100.0 * float(pts or 0) / denom
+
+
+def ts_pct_line(*, pts: Any, fga: Any, fta: Any) -> Optional[float]:
+    """True Shooting % for one box line, ``None``-coalescing to 0.
+
+    Returns:
+        The 0–100 percentage rounded to 1 decimal (matches the scale
+        ``compute_metrics`` stores), or ``None`` when the line has no
+        true-shooting attempts.
+    """
+    ratio = ts_pct_ratio(pts=pts, fga=fga, fta=fta)
+    return round(ratio, 1) if ratio is not None else None
+
+
+def efg_pct_ratio(*, fgm: Any, fga: Any, fg3m: Any) -> Optional[float]:
+    """Effective FG% — 100 · (FGM + 0.5 · FG3M) / FGA — unrounded.
+
+    Unrounded twin of :func:`efg_pct_line`; see :func:`ftr_ratio` for why a
+    pooling caller wants the raw value.
+    """
+    fga_f = float(fga or 0)
+    if fga_f <= 0:
+        return None
+    return 100.0 * (float(fgm or 0) + 0.5 * float(fg3m or 0)) / fga_f
+
+
+def efg_pct_line(*, fgm: Any, fga: Any, fg3m: Any) -> Optional[float]:
+    """Effective FG% for one box line, ``None``-coalescing to 0.
+
+    Returns:
+        The 0–100 percentage rounded to 1 decimal (matches the scale
+        ``compute_metrics`` stores), or ``None`` when the line has no
+        field-goal attempts.
+    """
+    ratio = efg_pct_ratio(fgm=fgm, fga=fga, fg3m=fg3m)
+    return round(ratio, 1) if ratio is not None else None
+
+
+def fg3ar_ratio(*, fg3a: Any, fga: Any) -> Optional[float]:
+    """3-point attempt rate (FG3A / FGA), unrounded — the 0–1 fraction, or ``None``.
+
+    Unrounded twin of :func:`fg3ar_line`; see :func:`ftr_ratio` for why a
+    pooling caller wants the raw value.
+    """
+    fga_f = float(fga or 0)
+    if fga_f <= 0:
+        return None
+    return float(fg3a or 0) / fga_f
+
+
+def fg3ar_line(*, fg3a: Any, fga: Any) -> Optional[float]:
+    """3-point attempt rate (FG3A / FGA) for one box line, ``None``-coalescing to 0.
+
+    Returns:
+        The 0–1 fraction rounded to 3 decimals (the scale ``compute_metrics``
+        stores), or ``None`` when the line has no field-goal attempts.
+    """
+    ratio = fg3ar_ratio(fg3a=fg3a, fga=fga)
+    return round(ratio, 3) if ratio is not None else None
 
 
 def game_advanced_line(

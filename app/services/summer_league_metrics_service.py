@@ -32,6 +32,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.stats.formulas import (
+    efg_pct_line,
+    fg3ar_line,
+    ftr_line,
+    tov_pct_line,
+    ts_pct_line,
+)
 
 # Minimum total minutes in a competition before its rate composites are
 # trustworthy enough to surface. Small-sample pools blow PER/BPM up well past
@@ -194,15 +201,17 @@ def _weighted_mean(
 def _pooled_ts(seasons: list[PlayerMetricSeason]) -> Optional[float]:
     """Career True Shooting % pooled from raw shot totals across competitions.
 
-    TS% = PTS / (2 · (FGA + 0.44 · FTA)). Aggregating it correctly means summing
-    the underlying possessions, not minute-weighting each pool's percentage — a
-    player with uneven shot volume per minute would otherwise read a misstated
-    career mark. Returned on the same 0-100 scale as the stored per-pool values;
-    ``None`` when there are no true-shooting attempts to divide by.
+    Delegates the formula to :func:`app.services.stats.formulas.ts_pct_line`.
+    Aggregating it correctly means summing the underlying possessions first,
+    not minute-weighting each pool's percentage — a player with uneven shot
+    volume per minute would otherwise read a misstated career mark. Returned
+    on the same 0-100 scale as the stored per-pool values; ``None`` when there
+    are no true-shooting attempts to divide by.
     """
     pts = sum(s.pts for s in seasons)
-    tsa = 2.0 * sum(s.fga + 0.44 * s.fta for s in seasons)
-    return _round1(100.0 * pts / tsa) if tsa > 0 else None
+    fga = sum(s.fga for s in seasons)
+    fta = sum(s.fta for s in seasons)
+    return ts_pct_line(pts=pts, fga=fga, fta=fta)
 
 
 def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
@@ -218,7 +227,6 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
     fg3a = sum(s.fg3a for s in seasons)
     fta = sum(s.fta for s in seasons)
     tov = sum(s.tov for s in seasons)
-    tov_den = fga + 0.44 * fta + tov
     ows_vals = [s.ows for s in seasons if s.ows is not None]
     dws_vals = [s.dws for s in seasons if s.dws is not None]
     return PlayerMetricCareer(
@@ -233,9 +241,9 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
         bpm_avg=_round1(_weighted_mean([(s.bpm, s.minutes) for s in seasons])),
         ws82_avg=_round1(_weighted_mean([(s.ws82, s.minutes) for s in seasons])),
         vorp82_avg=_round1(_weighted_mean([(s.vorp82, s.minutes) for s in seasons])),
-        ftr=_round3(fta / fga) if fga > 0 else None,
-        tov_pct=_round1(100.0 * tov / tov_den) if tov_den > 0 else None,
-        fg3ar=_round3(fg3a / fga) if fga > 0 else None,
+        ftr=ftr_line(fga=fga, fta=fta),
+        tov_pct=tov_pct_line(fga=fga, fta=fta, tov=tov),
+        fg3ar=fg3ar_line(fg3a=fg3a, fga=fga),
         astd_pct=_assisted_share(
             sum((s.ast_fgm or 0) for s in seasons),
             sum((s.unast_fgm or 0) for s in seasons),
@@ -721,11 +729,10 @@ def _blend_leader_values(
     fgm = sum(s.fgm for s in seasons)
     fg3m = sum((s.fg3m or 0) for s in seasons)
     fg3a = sum((s.fg3a or 0) for s in seasons)
-    tsa = 2.0 * (fga + 0.44 * fta)
-    out["ts_pct"] = _round1(100.0 * pts / tsa) if tsa > 0 else None
-    out["efg_pct"] = _round1(100.0 * (fgm + 0.5 * fg3m) / fga) if fga > 0 else None
-    out["fg3ar"] = _round3(fg3a / fga) if fga > 0 else None
-    out["ftr"] = _round3(fta / fga) if fga > 0 else None
+    out["ts_pct"] = ts_pct_line(pts=pts, fga=fga, fta=fta)
+    out["efg_pct"] = efg_pct_line(fgm=fgm, fga=fga, fg3m=fg3m)
+    out["fg3ar"] = fg3ar_line(fg3a=fg3a, fga=fga)
+    out["ftr"] = ftr_line(fga=fga, fta=fta)
 
     # WS/40 recomputed from summed shares so it stays internally consistent.
     ws_total = out["ws"]

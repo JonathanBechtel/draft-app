@@ -76,6 +76,17 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
+from app.services.stats.formulas import (
+    efg_pct_line,
+    efg_pct_ratio,
+    fg3ar_line,
+    fg3ar_ratio,
+    ftr_line,
+    ftr_ratio,
+    ts_pct_line,
+    ts_pct_ratio,
+    tov_pct_line,
+)
 from app.services.stats.scaling import scale_python, scale_sql
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
@@ -1359,10 +1370,9 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
     pts = _sum_attr(rows, "pts")
 
     if key == "ts_pct":
-        denom = 2.0 * (fga + 0.44 * fta)
-        return 100.0 * pts / denom if denom else None
+        return ts_pct_ratio(pts=pts, fga=fga, fta=fta)
     if key == "efg_pct":
-        return 100.0 * (fgm + 0.5 * fg3m) / fga if fga else None
+        return efg_pct_ratio(fgm=fgm, fga=fga, fg3m=fg3m)
     if key == "fg_pct":
         return 100.0 * fgm / fga if fga else None
     if key == "fg3_pct":
@@ -1372,10 +1382,10 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
     if key == "fg3ar":
         # 3-point attempt rate: share of field-goal attempts that are 3-pointers.
         # 0-1 fraction (BBRef scale), matching the stored season column.
-        return fg3a / fga if fga else None
+        return fg3ar_ratio(fg3a=fg3a, fga=fga)
     if key == "ftr":
         # Free-throw rate: FTA per FGA (ability to draw fouls). 0-1 fraction.
-        return fta / fga if fga else None
+        return ftr_ratio(fga=fga, fta=fta)
     if key == "astd_pct":
         # Assisted share of made FGs from PBP counts; None outside the PBP era.
         ast_fgm = _sum_attr(rows, "ast_fgm")
@@ -2519,18 +2529,16 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
         "min": min_val,
         **{c: scaled(float(getattr(r, c) or 0)) for c in _COUNTING},
         "plus_minus": plus_minus_val,
-        "efg_pct": _pct(_safe_div(float(r.fgm or 0) + 0.5 * float(r.fg3m or 0), fga)),
+        "efg_pct": efg_pct_line(fgm=r.fgm, fga=fga, fg3m=r.fg3m),
         "fg_pct": _pct(_safe_div(float(r.fgm or 0), fga)),
         "fg3_pct": _pct(_safe_div(float(r.fg3m or 0), float(r.fg3a or 0))),
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
-        "ts_pct": _pct(_safe_div(float(r.pts or 0), 2.0 * (fga + 0.44 * fta))),
+        "ts_pct": ts_pct_line(pts=r.pts, fga=fga, fta=fta),
         # Attempt rates: 0-1 fractions at 3 decimals (recombinable — exact from
         # the summed box at any grain, like the shooting percentages above).
-        "fg3ar": (round(float(r.fg3a or 0) / fga, 3) if fga else None),
-        "ftr": (round(fta / fga, 3) if fga else None),
-        "tov_pct": _pct(
-            _safe_div(float(r.tov or 0), fga + 0.44 * fta + float(r.tov or 0))
-        ),
+        "fg3ar": fg3ar_line(fg3a=r.fg3a, fga=fga),
+        "ftr": ftr_line(fga=fga, fta=fta),
+        "tov_pct": tov_pct_line(fga=fga, fta=fta, tov=r.tov),
         "astd_pct": _astd_pct(r),
         "gmsc": scaled(gmsc_total),
     }

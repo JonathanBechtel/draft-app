@@ -29,6 +29,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.stats.formulas import ts_pct_ratio
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_shotchart_service import (
@@ -254,8 +255,7 @@ def _aggregate_season(
     fg_pct = _pct(_safe_div(sums["fgm"], sums["fga"]))
     fg3_pct = _pct(_safe_div(sums["fg3m"], sums["fg3a"]))
     ft_pct = _pct(_safe_div(sums["ftm"], sums["fta"]))
-    ts_denom = 2.0 * (sums["fga"] + 0.44 * sums["fta"])
-    ts_pct = _pct(_safe_div(sums["pts"], ts_denom))
+    ts_pct = ts_pct_ratio(pts=sums["pts"], fga=sums["fga"], fta=sums["fta"])
 
     # Per-game average Game Score: Game Score is linear in the box stats, so the
     # mean per-game value equals game_score(summed box) / gp.

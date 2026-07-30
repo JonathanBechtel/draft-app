@@ -24,9 +24,12 @@ golden-number parity harness in ``tests/unit/test_stat_engine_parity.py`` and
   :class:`PlayerSeason`.
 * :mod:`app.services.stats.formulas` — the pure formula functions: :func:`game_score`,
   :func:`game_score_line`, :func:`game_score_from_row`, the line-grain rate helpers
-  (:func:`ftr_line`, :func:`tov_pct_line`, :func:`ast_pct_line`, :func:`game_advanced_line`),
-  the Dean Oliver rating builders (:func:`compute_uper`, :func:`compute_ortg`,
-  :func:`compute_drtg`), and the season-basket assembler :func:`compute_metrics`.
+  (:func:`ts_pct_line`, :func:`efg_pct_line`, :func:`fg3ar_line`, :func:`ftr_line`,
+  :func:`tov_pct_line`, :func:`ast_pct_line`, :func:`game_advanced_line` — each with an
+  unrounded ``*_ratio`` twin for callers that pool several box lines before applying
+  display rounding once), the Dean Oliver rating builders (:func:`compute_uper`,
+  :func:`compute_ortg`, :func:`compute_drtg`), and the season-basket assembler
+  :func:`compute_metrics`.
 
 ``app.services.summer_league.metrics`` re-exports every one of these names under their
 historical names (``Box``, ``LeagueContext``, ``_d``, ...) so no caller outside the engine had
@@ -42,12 +45,20 @@ from app.services.stats.formulas import (
     compute_metrics,
     compute_ortg,
     compute_uper,
+    efg_pct_line,
+    efg_pct_ratio,
+    fg3ar_line,
+    fg3ar_ratio,
     game_advanced_line,
     game_score,
     game_score_from_row,
     game_score_line,
     ftr_line,
+    ftr_ratio,
+    ts_pct_line,
+    ts_pct_ratio,
     tov_pct_line,
+    tov_pct_ratio,
 )
 from app.services.stats.inputs import PlayerSeason, PoolContext, StatInputs
 
@@ -60,10 +71,18 @@ __all__ = [
     "compute_metrics",
     "compute_ortg",
     "compute_uper",
+    "efg_pct_line",
+    "efg_pct_ratio",
+    "fg3ar_line",
+    "fg3ar_ratio",
     "ftr_line",
+    "ftr_ratio",
     "game_advanced_line",
     "game_score",
     "game_score_from_row",
     "game_score_line",
+    "ts_pct_line",
+    "ts_pct_ratio",
     "tov_pct_line",
+    "tov_pct_ratio",
 ]
