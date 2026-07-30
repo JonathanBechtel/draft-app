@@ -1045,6 +1045,27 @@ def requires_for(key: str) -> tuple[str, ...]:
     return get_metric(key).requires
 
 
+def rollup_class_matches(key: str, *expected: RollupClass) -> bool:
+    """True when ``key`` is declared in the registry under one of ``expected``.
+
+    This is the live read T8b (#729) exists to introduce at the five sites that
+    used to hand-derive the recombinable/additive_share/pool_recalibrated
+    taxonomy: a small `assert`/gate against this function instead of a local
+    comment or tuple asserting the same fact.
+
+    Returns ``False`` for a key with **no** registry entry as well as for one
+    declared under a *different* class -- the two cases are deliberately not
+    distinguished here (callers that need to tell "undeclared" from "declared
+    differently" apart should use :data:`METRICS_BY_KEY` directly). Most
+    metric keys these call sites handle -- ``fg_pct``/``fg3_pct``/``ft_pct``,
+    ``per``/``obpm``/``dbpm`` -- are not yet in the registry at all (T7 scoped
+    it to the metrics T4/T5/T6 actually consolidated), so an undeclared key is
+    the common, unremarkable case, not a defect.
+    """
+    entry = METRICS_BY_KEY.get(key)
+    return entry is not None and entry.rollup_class in expected
+
+
 @dataclass(frozen=True)
 class RegistrySummary:
     """Small structured summary of the current registry (for diagnostics)."""

@@ -89,6 +89,9 @@ from app.services.stats.formulas import (
     tov_pct_line,
 )
 from app.services.stats.registry import (
+    METRICS_BY_KEY,
+    RollupClass,
+    rollup_class_matches,
     ts_pct_denom_expr,
     ts_pct_sql_text,
     tov_pct_denom_expr,
@@ -1288,6 +1291,10 @@ _ADV_COMPOSITE_SORT_KEYS: frozenset[str] = frozenset(
 #   additive       → rollup_additive       (sum values, skip None)
 #   rate_composite → rollup_rate_composite (minute-weighted avg, skip None pools)
 #
+# ``rollup_recombinable`` reads ``app.services.stats.registry``'s ``rollup_class``
+# as a live gate rather than re-deriving which keys are recombinable in a comment
+# (T8b / #729) -- see its docstring.
+#
 # All percentage columns are stored as percentages (e.g. 60.6 not 0.606) and
 # the roll-up output preserves that convention.
 # --------------------------------------------------------------------------- #
@@ -1356,7 +1363,13 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
     box sheet.
 
     Supported keys: ``ts_pct``, ``efg_pct``, ``fg_pct``, ``fg3_pct``, ``ft_pct``,
-    ``fg3ar``, ``ftr``, ``pts_per100``.
+    ``fg3ar``, ``ftr``, ``astd_pct``, ``pts_per100``. Of these,
+    ``app.services.stats.registry`` declares ``ts_pct``/``efg_pct``/``fg3ar``/
+    ``ftr``/``astd_pct``/``pts_per100`` as ``RollupClass.RECOMBINABLE`` --
+    ``fg_pct``/``fg3_pct``/``ft_pct`` are raw shooting splits the registry
+    hasn't been extended to cover yet (T7 scoped it to the metrics T4-T6
+    consolidated). A key the registry *does* declare under a different class
+    is refused below, the same as an unrecognised key.
 
     Args:
         rows: Per-competition rows with box-total attributes (``pts``, ``fgm``, …).
@@ -1364,9 +1377,17 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
 
     Returns:
         Recomputed metric value (stored as a percentage, e.g. 60.6), or ``None``
-        when the denominator sums to zero (no attempts).
+        when the denominator sums to zero (no attempts), or when ``key`` is
+        declared in the registry under a rollup_class other than recombinable.
     """
     if not rows:
+        return None
+    if key in METRICS_BY_KEY and not rollup_class_matches(
+        key, RollupClass.RECOMBINABLE
+    ):
+        # T8b (#729): a registry-declared key under a different rollup_class must
+        # not be recomputed here -- same graceful-None contract as an unrecognised
+        # key, but derived from the live registry instead of an implicit omission.
         return None
 
     fgm = _sum_attr(rows, "fgm")

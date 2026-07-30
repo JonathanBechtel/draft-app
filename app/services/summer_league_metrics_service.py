@@ -39,6 +39,7 @@ from app.services.stats.formulas import (
     tov_pct_line,
     ts_pct_line,
 )
+from app.services.stats.registry import RollupClass, rollup_class_matches
 
 # Minimum total minutes in a competition before its rate composites are
 # trustworthy enough to surface. Small-sample pools blow PER/BPM up well past
@@ -212,6 +213,38 @@ def _pooled_ts(seasons: list[PlayerMetricSeason]) -> Optional[float]:
     fga = sum(s.fga for s in seasons)
     fta = sum(s.fta for s in seasons)
     return ts_pct_line(pts=pts, fga=fga, fta=fta)
+
+
+# T8b (#729): the advanced-metrics wiring's per-field rollup handling below is
+# checked against ``app.services.stats.registry``'s ``rollup_class`` instead of
+# being re-derived only in the comments/docstring above. ``ws``/``vorp`` are the
+# registry's only ``additive_share`` entries (their ``ows``/``dws`` components,
+# and ``per``/``obpm``/``dbpm``, aren't registered separately -- T7 scoped the
+# registry to the metrics T4-T6 actually consolidated).
+_CAREER_SUMMED_KEYS: tuple[str, ...] = ("ws", "vorp")
+assert all(
+    rollup_class_matches(k, RollupClass.ADDITIVE_SHARE) for k in _CAREER_SUMMED_KEYS
+), "_career's summed keys must stay registry-declared additive_share"
+
+# ``ftr``/``tov_pct``/``fg3ar`` are recomputed from this player's own summed box
+# volume (fga/fta/fg3a/tov -- all season-level columns), matching the registry's
+# ``recombinable`` contract exactly, unlike the minute-weighted approximations
+# below.
+_CAREER_RECOMBINED_KEYS: tuple[str, ...] = ("ftr", "tov_pct", "fg3ar")
+assert all(
+    rollup_class_matches(k, RollupClass.RECOMBINABLE) for k in _CAREER_RECOMBINED_KEYS
+), "_career's box-recombined keys must stay registry-declared recombinable"
+
+# ``ws82_avg``/``vorp82_avg`` are declared ``pool_recalibrated`` in the registry
+# ("must be recomputed against the pool context ... never averaged") but this
+# site minute-weight-averages them anyway, same as ``per_avg``/``bpm_avg``/
+# ``obpm_avg``/``dbpm_avg``. That is a deliberate, already-labeled exception --
+# see :class:`PlayerMetricCareer`'s docstring ("soft 'career average' context,
+# never a recalibrated headline") -- not a silent re-derivation of the taxonomy,
+# so it is flagged here rather than resolved (T8b / #729 scope discipline; see
+# the sibling conflict in :func:`_blend_leader_values`).
+assert rollup_class_matches("ws82", RollupClass.POOL_RECALIBRATED)
+assert rollup_class_matches("vorp82", RollupClass.POOL_RECALIBRATED)
 
 
 def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
@@ -676,6 +709,11 @@ async def _competition_has_rows(db: AsyncSession, year: int, venue_slug: str) ->
 # Blending pool-recalibrated composites across differently-calibrated pools is an
 # approximation the "All" scope accepts by design.
 _ADV_BLEND_SUM_COLS: tuple[str, ...] = ("ows", "dws", "ws", "vorp")
+# T8b (#729): the registry's only additive_share entries are ws/vorp (ows/dws are
+# their unregistered components) -- read, not re-derived.
+assert rollup_class_matches("ws", RollupClass.ADDITIVE_SHARE)
+assert rollup_class_matches("vorp", RollupClass.ADDITIVE_SHARE)
+
 _ADV_BLEND_RATE_COLS: tuple[str, ...] = (
     "per",
     "usg_pct",
@@ -691,6 +729,38 @@ _ADV_BLEND_RATE_COLS: tuple[str, ...] = (
     "obpm",
     "dbpm",
     "bpm",
+)
+# ``ortg``/``drtg``/``bpm`` are registry pool_recalibrated composites; minute-
+# weighting them here is the same documented cross-pool blend approximation as
+# ws82/vorp82 above -- consistent with the registry's class, not a re-derivation.
+assert rollup_class_matches("ortg", RollupClass.POOL_RECALIBRATED)
+assert rollup_class_matches("drtg", RollupClass.POOL_RECALIBRATED)
+assert rollup_class_matches("bpm", RollupClass.POOL_RECALIBRATED)
+# **Known, flagged conflict -- not resolved here (T8b / #729 scope discipline).**
+# ``usg_pct``/``orb_pct``/``drb_pct``/``trb_pct``/``ast_pct``/``stl_pct``/
+# ``blk_pct``/``tov_pct`` are all declared ``RollupClass.RECOMBINABLE`` in the
+# registry -- "recompute from summed box totals", not "minute-weighted average".
+# Most of them genuinely can't be recomputed here (their formulas need team/
+# opponent box totals this blend's season rows don't retain), so the weighted-
+# mean approximation is the only option. ``tov_pct`` is the one exception: its
+# formula only needs ``tov``/``fga``/``fta``, which this function already sums
+# from raw box volume a few lines below for ts_pct/efg_pct/fg3ar/ftr -- so it
+# *could* be recombined exactly the same way, and currently isn't. This is a
+# deliberate prior decision (career TOV% pooling is minute-weighted), and this
+# ticket adopts the registry classification without resolving the conflict it
+# surfaces; see the PR/report for the raised discrepancy.
+assert all(
+    rollup_class_matches(k, RollupClass.RECOMBINABLE)
+    for k in (
+        "usg_pct",
+        "orb_pct",
+        "drb_pct",
+        "trb_pct",
+        "ast_pct",
+        "stl_pct",
+        "blk_pct",
+        "tov_pct",
+    )
 )
 
 

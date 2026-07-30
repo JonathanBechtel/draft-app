@@ -17,6 +17,7 @@ from collections.abc import Mapping
 from typing import Any, Optional
 
 from app.services.stats.inputs import PlayerSeason, PoolContext, StatInputs, _d
+from app.services.stats.registry import RollupClass, get_metric
 
 # Pool-level pace floor below which the possession estimate is not real. Genuine
 # Summer League pools run ~85-115; pools reconstructed from season logs without
@@ -67,7 +68,11 @@ def game_score_line(
     game logs, the explorer) that need Game Score from a box line — be it one
     game, a summed competition, or a summed career. Because Game Score is linear
     in the box stats, ``game_score_line(summed) / gp`` equals the mean per-game
-    Game Score, matching the materialized ``SummerLeaguePlayerSeason.gmsc``.
+    Game Score, matching the materialized ``SummerLeaguePlayerSeason.gmsc`` --
+    this is precisely what ``app.services.stats.registry``'s ``gmsc`` entry
+    declares as ``RollupClass.RECOMBINABLE`` (see the module-level assertion
+    below, T8b / #729): recompute from summed box components at the target
+    grain rather than average per-grain Game Scores.
     """
     return game_score(
         StatInputs(
@@ -85,6 +90,15 @@ def game_score_line(
             pf=float(pf or 0),
         )
     )
+
+
+# T8b (#729): read (not restate) the registry's rollup_class for gmsc, so a
+# future re-classification of Game Score in the registry fails this import
+# loudly instead of silently drifting from the recombination shortcut above.
+assert get_metric("gmsc").rollup_class is RollupClass.RECOMBINABLE, (
+    "game_score_line's linear-recombination shortcut requires gmsc to be "
+    "declared RollupClass.RECOMBINABLE in app.services.stats.registry"
+)
 
 
 # The twelve box components Game Score weights, in :func:`game_score_line` order.
