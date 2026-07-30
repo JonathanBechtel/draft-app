@@ -74,6 +74,7 @@ async def test_find_variant_identity_matches_uses_aliases_without_display_match(
     assert matches.player_ids == frozenset({2})
     assert matches.display_names == {}
     assert matches.alias_names == {2: "Unrelated Player"}
+    assert matches.alias_match_names == {2: ("PJ Washington",)}
 
 
 @pytest.mark.asyncio
@@ -90,6 +91,7 @@ async def test_find_variant_identity_matches_unions_display_and_alias_conflicts(
 
     assert matches.player_ids == frozenset({1, 2})
     assert matches.alias_names == {2: "Unrelated Player"}
+    assert matches.alias_match_names == {2: ("PJ Washington",)}
 
 
 @pytest.mark.asyncio
