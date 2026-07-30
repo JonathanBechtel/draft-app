@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import re
 
 import pytest
 
@@ -97,9 +98,16 @@ def test_a_lock_timeout_is_actually_executed(env_tree: ast.Module) -> None:
         if isinstance(argument, ast.Constant) and isinstance(argument.value, str)
     ]
 
-    assert any("lock_timeout" in sql.lower() for sql in executed_sql), (
-        "alembic/env.py must execute a statement setting lock_timeout, not just "
-        "mention it in a comment or constant"
+    assert any(
+        re.search(
+            r"set_config\s*\(\s*['\"]lock_timeout['\"]\s*,[^,]+,\s*false\s*\)",
+            sql,
+            re.IGNORECASE,
+        )
+        for sql in executed_sql
+    ), (
+        "alembic/env.py must execute set_config('lock_timeout', ..., false); "
+        "a transaction-local setting would be discarded before migrations run"
     )
 
 
@@ -124,5 +132,7 @@ def test_the_lock_timeout_is_short_and_overridable(env_source: str) -> None:
                 default = str(node.args[1].value)
 
     assert default is not None, "the lock timeout should be env-overridable"
-    assert default.endswith("s"), f"expected a seconds-denominated default, got {default!r}"
+    assert default.endswith("s"), (
+        f"expected a seconds-denominated default, got {default!r}"
+    )
     assert 0 < int(default.removesuffix("s")) <= 60

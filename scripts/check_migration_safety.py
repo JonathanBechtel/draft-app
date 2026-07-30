@@ -33,6 +33,10 @@ Both halves are required, and that is the whole point of this checker:
    cannot get its lock fails fast instead of camping in the queue ahead of production
    traffic. Checked whenever that file is part of the changeset.
 
+4. **The migration graph must have one head.** Multiple heads make ``upgrade head``
+   and future autogeneration ambiguous; join them with an explicit Alembic merge
+   revision before shipping.
+
 Boundary semantics worth remembering: statements inside an autocommit block commit
 immediately, so a mid-migration failure leaves earlier statements applied. Keep
 autocommit index builds in dedicated, idempotent migrations (``if_not_exists=True``, as
@@ -44,7 +48,9 @@ Thirty-six existing revisions build indexes non-concurrently. They have already 
 production and will never run there again, so retrofitting them buys nothing and an
 absolute rule would be a permanent wall of noise — the failure mode
 ``check_file_size_ratchet.py`` was shaped to avoid. This checker therefore evaluates only
-the revisions a changeset adds or edits, mirroring that ratchet's git plumbing.
+the revisions a changeset adds or edits, mirroring that ratchet's git plumbing. The
+duplicate-ID and single-head checks are intentionally whole-tree checks because neither
+property can be established from only one changed migration file.
 
 Escape hatch
 ------------
@@ -69,6 +75,7 @@ import ast
 import re
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 
 from _discipline import line_has_reasoned_waiver
@@ -98,10 +105,11 @@ _RAW_CONCURRENTLY = re.compile(r"\bCONCURRENTLY\b", re.IGNORECASE)
 # and flagging the documentation of a hazard as the hazard would be self-defeating.
 _SQL_SINKS = frozenset({"execute", "exec_driver_sql", "text"})
 
-# `lock_timeout` must be *executed*, not merely mentioned. Matches the `set_config(...)`
-# form this repo uses and the plain `SET lock_timeout` spelling.
+# `lock_timeout` must be *executed*, not merely mentioned. The `set_config(...)` form
+# must also pass `false` for `is_local`: `true` would make the setting transaction-local,
+# so the commit before `transaction_per_migration` begins would silently discard it.
 _LOCK_TIMEOUT_STATEMENT = re.compile(
-    r"""set_config\s*\(\s*['"]lock_timeout|\bSET\s+(?:LOCAL\s+)?lock_timeout""",
+    r"""set_config\s*\(\s*['"]lock_timeout['"]\s*,[^,]+,\s*false\s*\)|\bSET\s+(?:LOCAL\s+)?lock_timeout""",
     re.IGNORECASE,
 )
 
@@ -240,35 +248,30 @@ def _waived(lines: list[str], node: ast.AST, parents: dict[ast.AST, ast.AST]) ->
     )
 
 
-def _string_literal(node: ast.AST) -> str | None:
+def _string_literal(
+    node: ast.AST, bindings: Mapping[str, str] | None = None
+) -> str | None:
     """Return the text of a string literal, or None if ``node`` is not one.
 
     Adjacent literals are already merged by the parser, so the multi-line
     ``"CREATE INDEX ..." " ON tbl (col)"`` form arrives here as one constant. f-strings
     contribute their literal segments, which is enough to see the DDL verb even when
     the table or index name is interpolated.
+
+    Simple local names are resolved from ``bindings`` so ``sql = "CREATE INDEX ..."``
+    followed by ``op.execute(sql)`` cannot bypass the raw-SQL check.
     """
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
+    if isinstance(node, ast.Name) and bindings is not None:
+        return bindings.get(node.id)
     if isinstance(node, ast.JoinedStr):
         return " ".join(
             part.value
             for part in node.values
             if isinstance(part, ast.Constant) and isinstance(part.value, str)
         )
-    return None
-
-
-def _executed_sql(tree: ast.AST) -> list[tuple[ast.AST, str]]:
-    """Return ``(node, sql)`` for every string handed to an executing call.
-
-    Nested forms resolve too: ``op.execute(text("..."))`` reaches the literal through
-    the inner ``text(...)`` sink.
-    """
-    found: list[tuple[ast.AST, str]] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
+    if isinstance(node, ast.Call):
         func = node.func
         name = (
             func.attr
@@ -277,13 +280,81 @@ def _executed_sql(tree: ast.AST) -> list[tuple[ast.AST, str]]:
             if isinstance(func, ast.Name)
             else None
         )
-        if name not in _SQL_SINKS:
-            continue
-        for argument in node.args:
-            sql = _string_literal(argument)
-            if sql:
-                found.append((argument, sql))
-    return found
+        if name == "text" and node.args:
+            return _string_literal(node.args[0], bindings)
+    return None
+
+
+class _ExecutedSqlVisitor(ast.NodeVisitor):
+    """Resolve SQL passed to execution sinks, including simple local variables."""
+
+    def __init__(self) -> None:
+        self.bindings: list[dict[str, str]] = [{}]
+        self.found: list[tuple[ast.AST, str]] = []
+
+    def _visit_scope(self, body: list[ast.stmt]) -> None:
+        self.bindings.append(self.bindings[-1].copy())
+        for statement in body:
+            self.visit(statement)
+        self.bindings.pop()
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        sql = _string_literal(node.value, self.bindings[-1])
+        for target in node.targets:
+            if not isinstance(target, ast.Name):
+                continue
+            if sql is None:
+                self.bindings[-1].pop(target.id, None)
+            else:
+                self.bindings[-1][target.id] = sql
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if isinstance(node.target, ast.Name) and node.value is not None:
+            sql = _string_literal(node.value, self.bindings[-1])
+            if sql is None:
+                self.bindings[-1].pop(node.target.id, None)
+            else:
+                self.bindings[-1][node.target.id] = sql
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self._visit_scope(node.body)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self._visit_scope(node.body)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self._visit_scope(node.body)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        self._visit_scope([ast.Expr(value=node.body)])
+
+    def visit_Call(self, node: ast.Call) -> None:
+        func = node.func
+        name = (
+            func.attr
+            if isinstance(func, ast.Attribute)
+            else func.id
+            if isinstance(func, ast.Name)
+            else None
+        )
+        if name in _SQL_SINKS:
+            for argument in node.args:
+                sql = _string_literal(argument, self.bindings[-1])
+                if sql:
+                    self.found.append((argument, sql))
+            return
+        self.generic_visit(node)
+
+
+def _executed_sql(tree: ast.AST) -> list[tuple[ast.AST, str]]:
+    """Return ``(node, sql)`` for every string handed to an executing call.
+
+    Nested forms resolve too: ``op.execute(text("..."))`` reaches the literal through
+    the inner ``text(...)`` sink. Simple local assignments are resolved in source order.
+    """
+    visitor = _ExecutedSqlVisitor()
+    visitor.visit(tree)
+    return visitor.found
 
 
 def _check_lock_timeout(path: Path, source: str) -> list[str]:
@@ -405,6 +476,77 @@ _REVISION_RE = re.compile(r'^revision(?::\s*[^=]+)?\s*=\s*["\'](.+?)["\']', re.M
 _VERSIONS_DIR = Path(__file__).resolve().parent.parent / "alembic" / "versions"
 
 
+def _literal_assignment(tree: ast.Module, name: str) -> object | None:
+    """Return a module-level literal assignment, if one exists."""
+    for node in tree.body:
+        targets: list[ast.expr] = []
+        value: ast.expr | None = None
+        if isinstance(node, ast.Assign):
+            targets = [
+                target for target in node.targets if isinstance(target, ast.expr)
+            ]
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        if any(
+            isinstance(target, ast.Name) and target.id == name for target in targets
+        ):
+            if value is None:
+                return None
+            try:
+                return ast.literal_eval(value)
+            except (ValueError, TypeError):
+                return None
+    return None
+
+
+def _revision_metadata(path: Path) -> tuple[str | None, tuple[str, ...]]:
+    """Read a revision ID and literal parent IDs without importing a migration."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except SyntaxError:
+        return None, ()
+
+    revision = _literal_assignment(tree, "revision")
+    down_revision = _literal_assignment(tree, "down_revision")
+    if not isinstance(revision, str):
+        return None, ()
+    if down_revision is None:
+        return revision, ()
+    if isinstance(down_revision, str):
+        return revision, (down_revision,)
+    if isinstance(down_revision, (tuple, list)) and all(
+        isinstance(parent, str) for parent in down_revision
+    ):
+        return revision, tuple(down_revision)
+    return revision, ()
+
+
+def migration_heads() -> list[str]:
+    """Return revision IDs that are not parents of another migration."""
+    revisions: set[str] = set()
+    parents: set[str] = set()
+    for path in sorted(_VERSIONS_DIR.glob("*.py")):
+        revision, down_revisions = _revision_metadata(path)
+        if revision is None:
+            continue
+        revisions.add(revision)
+        parents.update(down_revisions)
+    return sorted(revisions - parents)
+
+
+def divergent_head_violations() -> list[str]:
+    """Return a finding when the migration graph has more than one head."""
+    heads = migration_heads()
+    if len(heads) <= 1:
+        return []
+    return [
+        "alembic/versions: migration tree has multiple heads "
+        f"({', '.join(heads)}); add an Alembic merge revision before shipping"
+    ]
+
+
 def duplicate_revision_ids() -> list[str]:
     """Find revision IDs claimed by more than one migration file.
 
@@ -458,6 +600,7 @@ def main(argv: list[str] | None = None) -> int:
             find_violations(file, file.read_text(encoding="utf-8", errors="replace"))
         )
     violations.extend(duplicate_revision_ids())
+    violations.extend(divergent_head_violations())
 
     if not violations:
         return 0
