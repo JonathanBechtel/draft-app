@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from typing import Any, Literal, Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,10 +15,21 @@ from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
 
 _NAME_SUFFIX_RE = re.compile(
-    r"\s+(jr|sr|ii|iii|iv|v)\s*$",
+    r"\s+(jr|junior|sr|senior|ii|iii|iv|v|vi)\s*$",
     re.IGNORECASE,
 )
 _JOINING_PUNCTUATION = frozenset({"'", "’", "ʼ", "`", "."})
+_SUFFIX_CANONICAL = {
+    "jr": "jr",
+    "junior": "jr",
+    "sr": "sr",
+    "senior": "sr",
+    "ii": "ii",
+    "iii": "iii",
+    "iv": "iv",
+    "v": "v",
+    "vi": "vi",
+}
 
 
 def normalize_player_identity_name(name: str) -> str:
@@ -36,7 +48,33 @@ def normalize_player_identity_name(name: str) -> str:
             continue
         normalized.append(character)
     without_suffix = _NAME_SUFFIX_RE.sub("", "".join(normalized))
-    return re.sub(r"\s+", " ", without_suffix.strip()).casefold()
+    tokens = re.sub(r"\s+", " ", without_suffix.strip()).casefold().split()
+    if len(tokens) > 2:
+        tokens = [
+            tokens[0],
+            *[token for token in tokens[1:-1] if len(token) > 1],
+            tokens[-1],
+        ]
+    return " ".join(tokens)
+
+
+def player_identity_suffix(name: str) -> str | None:
+    """Return the canonical recognized suffix carried by ``name``."""
+    if not name or not name.strip():
+        return None
+    folded = unicodedata.normalize("NFKD", name.strip().split()[-1])
+    token = "".join(
+        character for character in folded if not unicodedata.combining(character)
+    )
+    token = re.sub(r"[^a-z0-9]", "", token.casefold())
+    return _SUFFIX_CANONICAL.get(token)
+
+
+def identity_suffixes_differ(source_name: str, candidate_name: str | None) -> bool:
+    """Return whether two names carry different recognized suffixes."""
+    return player_identity_suffix(source_name) != player_identity_suffix(
+        candidate_name or ""
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,25 +104,128 @@ class IdentityVariantMatches:
         return tuple(names)
 
 
-async def find_variant_identity_matches(
-    db: AsyncSession,
-    source_name: str,
-) -> IdentityVariantMatches:
-    """Find every canonical player sharing ``source_name``'s variant-aware key."""
-    needle = normalize_player_identity_name(source_name)
-    if not needle:
-        return IdentityVariantMatches(display_names={}, alias_names={})
+@dataclass(slots=True)
+class IdentityVariantIndex:
+    """In-memory index of display and alias names for one ingest run."""
 
+    display_names_by_key: dict[str, dict[int, str | None]] = field(default_factory=dict)
+    alias_names_by_key: dict[str, dict[int, str | None]] = field(default_factory=dict)
+    alias_match_names_by_key: dict[str, dict[int, tuple[str, ...]]] = field(
+        default_factory=dict
+    )
+
+    def matches_for(self, source_name: str) -> IdentityVariantMatches:
+        """Return all canonical rows matching ``source_name``'s variant key."""
+        needle = normalize_player_identity_name(source_name)
+        return IdentityVariantMatches(
+            display_names=dict(self.display_names_by_key.get(needle, {})),
+            alias_names=dict(self.alias_names_by_key.get(needle, {})),
+            alias_match_names=dict(self.alias_match_names_by_key.get(needle, {})),
+        )
+
+    def add_display_name(self, player_id: int, display_name: str | None) -> None:
+        """Add a newly inserted canonical display name to the run index."""
+        if not display_name:
+            return
+        key = normalize_player_identity_name(display_name)
+        if not key:
+            return
+        self.display_names_by_key.setdefault(key, {})[player_id] = display_name
+
+
+IdentityMatchStatus = Literal["none", "exact", "alias", "ambiguous", "suffix_mismatch"]
+
+
+@dataclass(frozen=True, slots=True)
+class IdentityMatchResolution:
+    """Safe action for one variant-normalized identity lookup."""
+
+    status: IdentityMatchStatus
+    player_id: int | None = None
+    display_name: str | None = None
+    candidate_ids: tuple[int, ...] = ()
+
+
+def resolve_variant_identity_match(
+    source_name: str,
+    matches: IdentityVariantMatches,
+) -> IdentityMatchResolution:
+    """Classify a normalized match without guessing across suffixes."""
+    player_ids = matches.player_ids
+    if not player_ids:
+        return IdentityMatchResolution(status="none")
+    if len(player_ids) > 1:
+        return IdentityMatchResolution(
+            status="ambiguous",
+            candidate_ids=tuple(sorted(player_ids)),
+        )
+
+    player_id = next(iter(player_ids))
+    match_names = matches.match_names_for(player_id)
+    if match_names and all(
+        identity_suffixes_differ(source_name, match_name) for match_name in match_names
+    ):
+        return IdentityMatchResolution(
+            status="suffix_mismatch",
+            player_id=player_id,
+            display_name=matches.display_name_for(player_id),
+            candidate_ids=(player_id,),
+        )
+
+    return IdentityMatchResolution(
+        status="exact" if player_id in matches.display_names else "alias",
+        player_id=player_id,
+        display_name=matches.display_name_for(player_id),
+        candidate_ids=(player_id,),
+    )
+
+
+def _build_variant_identity_index(
+    display_rows: Sequence[Any],
+    alias_rows: Sequence[Any],
+) -> IdentityVariantIndex:
+    """Build the variant index from already-fetched database rows."""
+    index = IdentityVariantIndex()
+    for player_id, display_name in display_rows:
+        if player_id is None or not display_name:
+            continue
+        key = normalize_player_identity_name(str(display_name))
+        if key:
+            index.display_names_by_key.setdefault(key, {})[int(player_id)] = str(
+                display_name
+            )
+
+    alias_names: dict[str, dict[int, str | None]] = {}
+    alias_match_names: dict[str, dict[int, list[str]]] = {}
+    for player_id, display_name, alias_name in alias_rows:
+        if player_id is None or not alias_name:
+            continue
+        key = normalize_player_identity_name(str(alias_name))
+        if not key:
+            continue
+        canonical_id = int(player_id)
+        alias_names.setdefault(key, {})[canonical_id] = (
+            str(display_name) if display_name else None
+        )
+        alias_match_names.setdefault(key, {}).setdefault(canonical_id, []).append(
+            str(alias_name)
+        )
+
+    index.alias_names_by_key = alias_names
+    index.alias_match_names_by_key = {
+        key: {player_id: tuple(names) for player_id, names in player_names.items()}
+        for key, player_names in alias_match_names.items()
+    }
+    return index
+
+
+async def build_variant_identity_index(db: AsyncSession) -> IdentityVariantIndex:
+    """Load display and alias identities once for a batch ingest."""
     display_rows = (
         await db.execute(
             select(PlayerMaster.id, PlayerMaster.display_name)  # type: ignore[call-overload]
         )
     ).all()
-    display_names = {
-        int(player_id): display_name
-        for player_id, display_name in display_rows
-        if display_name and normalize_player_identity_name(str(display_name)) == needle
-    }
     alias_rows = (
         await db.execute(
             select(  # type: ignore[call-overload]
@@ -94,21 +235,19 @@ async def find_variant_identity_matches(
             ).join(PlayerMaster, PlayerMaster.id == PlayerAlias.player_id)
         )
     ).all()
-    alias_names: dict[int, str | None] = {}
-    alias_match_names: dict[int, list[str]] = {}
-    for player_id, display_name, alias_name in alias_rows:
-        if normalize_player_identity_name(str(alias_name)) != needle:
-            continue
-        canonical_id = int(player_id)
-        alias_names[canonical_id] = display_name
-        alias_match_names.setdefault(canonical_id, []).append(str(alias_name))
-    return IdentityVariantMatches(
-        display_names=display_names,
-        alias_names=alias_names,
-        alias_match_names={
-            player_id: tuple(names) for player_id, names in alias_match_names.items()
-        },
-    )
+    return _build_variant_identity_index(display_rows, alias_rows)
+
+
+async def find_variant_identity_matches(
+    db: AsyncSession,
+    source_name: str,
+    *,
+    index: IdentityVariantIndex | None = None,
+) -> IdentityVariantMatches:
+    """Find every canonical player sharing a variant-aware identity key."""
+    if index is None:
+        index = await build_variant_identity_index(db)
+    return index.matches_for(source_name)
 
 
 @dataclass(frozen=True, slots=True)

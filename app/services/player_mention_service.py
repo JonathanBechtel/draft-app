@@ -19,6 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.player_aliases import PlayerAlias
 from app.schemas.player_lifecycle import CareerStatus, DraftStatus, PlayerLifecycle
 from app.schemas.players_master import PlayerMaster
+from app.services.player_identity_guard import (
+    identity_suffixes_differ,
+    normalize_player_identity_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +102,7 @@ class _LookupEntry:
     player_id: int
     display_name: str
     matched_via: str
+    match_name: str | None = None
 
 
 @dataclass(slots=True)
@@ -282,15 +287,12 @@ def _lookup_from_rows(
             player_id=player_id,
             display_name=display_name,
             matched_via="display_name",
+            match_name=display_name,
         )
         _add_lookup_entry(display_exact, _normalized_name_key(display_name), entry)
         _add_lookup_entry(
             display_relaxed,
-            _normalized_name_key(
-                display_name,
-                ignore_suffix=True,
-                ignore_middle_initials=True,
-            ),
+            normalize_player_identity_name(display_name),
             entry,
         )
 
@@ -301,15 +303,12 @@ def _lookup_from_rows(
             player_id=player_id,
             display_name=display_name or full_name,
             matched_via="alias",
+            match_name=full_name,
         )
         _add_lookup_entry(alias_exact, _normalized_name_key(full_name), entry)
         _add_lookup_entry(
             alias_relaxed,
-            _normalized_name_key(
-                full_name,
-                ignore_suffix=True,
-                ignore_middle_initials=True,
-            ),
+            normalize_player_identity_name(full_name),
             entry,
         )
 
@@ -345,27 +344,39 @@ def _resolve_from_lookup(
     lookup: _PlayerNameLookup,
     name: str,
 ) -> tuple[Optional[PlayerMatch], bool]:
-    """Resolve a name via normalized exact and relaxed lookups."""
-    exact_key = _normalized_name_key(name)
-    relaxed_key = _normalized_name_key(
-        name,
-        ignore_suffix=True,
-        ignore_middle_initials=True,
-    )
+    """Resolve a name without guessing across suffix or identity collisions."""
+    relaxed_key = normalize_player_identity_name(name)
+    variant_entries: dict[int, list[_LookupEntry]] = {}
+    for candidate_lookup in (lookup.display_relaxed, lookup.alias_relaxed):
+        for player_id, entry in candidate_lookup.get(relaxed_key, {}).items():
+            variant_entries.setdefault(player_id, []).append(entry)
 
-    for candidate_lookup, candidate_key in (
-        (lookup.display_exact, exact_key),
-        (lookup.alias_exact, exact_key),
-        (lookup.display_relaxed, relaxed_key),
-        (lookup.alias_relaxed, relaxed_key),
+    if not variant_entries:
+        return None, False
+    if len(variant_entries) > 1:
+        return None, True
+
+    entries = next(iter(variant_entries.values()))
+    if all(
+        identity_suffixes_differ(name, entry.match_name or entry.display_name)
+        for entry in entries
     ):
-        match, ambiguous = _select_unique_match(candidate_lookup, candidate_key)
-        if match is not None:
-            return match, False
-        if ambiguous:
-            return None, True
-
-    return None, False
+        # A single suffix-stripped match is still a namesake possibility. Do
+        # not link it and do not mint a duplicate; callers route this to review.
+        return None, True
+    entry = next(
+        entry
+        for entry in entries
+        if not identity_suffixes_differ(name, entry.match_name or entry.display_name)
+    )
+    return (
+        PlayerMatch(
+            player_id=entry.player_id,
+            display_name=entry.display_name,
+            matched_via=entry.matched_via,
+        ),
+        False,
+    )
 
 
 async def _insert_stub_alias(
@@ -455,6 +466,7 @@ async def _resolve_iter(
                     player_id=match.player_id,
                     display_name=alias_display_name,
                     matched_via="display_name",
+                    match_name=alias_display_name,
                 )
                 _add_lookup_entry(
                     lookup.display_exact,
@@ -463,11 +475,7 @@ async def _resolve_iter(
                 )
                 _add_lookup_entry(
                     lookup.display_relaxed,
-                    _normalized_name_key(
-                        alias_display_name,
-                        ignore_suffix=True,
-                        ignore_middle_initials=True,
-                    ),
+                    normalize_player_identity_name(alias_display_name),
                     stub_entry,
                 )
                 _add_lookup_entry(
@@ -477,19 +485,17 @@ async def _resolve_iter(
                         player_id=match.player_id,
                         display_name=alias_display_name,
                         matched_via="alias",
+                        match_name=name,
                     ),
                 )
                 _add_lookup_entry(
                     lookup.alias_relaxed,
-                    _normalized_name_key(
-                        name,
-                        ignore_suffix=True,
-                        ignore_middle_initials=True,
-                    ),
+                    normalize_player_identity_name(name),
                     _LookupEntry(
                         player_id=match.player_id,
                         display_name=alias_display_name,
                         matched_via="alias",
+                        match_name=name,
                     ),
                 )
 
@@ -585,15 +591,12 @@ def register_player_in_lookup(
         player_id=player_id,
         display_name=display_name,
         matched_via="display_name",
+        match_name=display_name,
     )
     _add_lookup_entry(lookup.display_exact, _normalized_name_key(display_name), entry)
     _add_lookup_entry(
         lookup.display_relaxed,
-        _normalized_name_key(
-            display_name,
-            ignore_suffix=True,
-            ignore_middle_initials=True,
-        ),
+        normalize_player_identity_name(display_name),
         entry,
     )
 
@@ -613,9 +616,9 @@ async def find_existing_player(
 
     Returns ``(match, ambiguous)``:
       - ``(PlayerMatch, False)`` — a unique existing player matched.
-      - ``(None, True)`` — the name matched **multiple** players; the caller
-        must NOT create a new record (that would add a duplicate) and should
-        route the row to manual review instead.
+      - ``(None, True)`` — the name matched multiple players or one player
+        with a different suffix; the caller must NOT create a new record
+        (that would add a duplicate) and should route the row to review.
       - ``(None, False)`` — no existing player matched; safe to create.
 
     Args:
@@ -715,11 +718,7 @@ async def create_stub_player(
     if is_ambiguous:
         # Collect all candidates that match the relaxed key so callers can
         # present them to the admin for disambiguation.
-        relaxed_key = _normalized_name_key(
-            full_name,
-            ignore_suffix=True,
-            ignore_middle_initials=True,
-        )
+        relaxed_key = normalize_player_identity_name(full_name)
         exact_key = _normalized_name_key(full_name)
         candidates: list[PlayerMatch] = []
         seen_ids: set[int] = set()
