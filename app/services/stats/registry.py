@@ -611,6 +611,31 @@ def tov_pct_sql_text(box: Callable[[str], str]) -> str:
     )
 
 
+def astd_pct_denom_expr(box: Callable[[str], Any]) -> Any:
+    """astd_pct's SQLAlchemy denominator expression: ``ast_fgm + unast_fgm``.
+
+    Matches :func:`app.services.stats.formulas.astd_pct_ratio`'s denominator
+    exactly. ``box`` maps a field name to its SQLAlchemy expression at the
+    target grain -- ``func.sum(getattr(table, name))`` for the career/
+    aggregate grain, the bare ``getattr(table, name)`` for per-competition/
+    per-game row grain -- the same indirection :func:`ts_pct_denom_expr` uses.
+    """
+    return box("ast_fgm") + box("unast_fgm")
+
+
+def astd_pct_sql_text(box: Callable[[str], str]) -> str:
+    """astd_pct's raw-SQL-text sort form: ``ast_fgm / NULLIF(ast_fgm+unast_fgm, 0)``.
+
+    Unscaled (``* 1.0`` for float division, no ``* 100``) because its call
+    sites (the Explorer's ``ORDER BY`` sort expressions) only need the value
+    for sorting -- sort order is invariant to a constant multiplier -- the
+    same convention :func:`ts_pct_sql_text` uses.
+    """
+    return (
+        f"{box('ast_fgm')} * 1.0 / " f"NULLIF({box('ast_fgm')} + {box('unast_fgm')}, 0)"
+    )
+
+
 # --- Scaled counting forms (recombinable) -----------------------------------
 # Representative entries for the per-36 / per-100 scaling class T4 (#725)
 # consolidates into one definition; the same scaling applies to every counting

@@ -78,6 +78,8 @@ from app.schemas.summer_league_metrics import (
 )
 from app.services.stats.capabilities import is_computable
 from app.services.stats.formulas import (
+    astd_pct_line,
+    astd_pct_ratio,
     efg_pct_line,
     efg_pct_ratio,
     fg3ar_line,
@@ -91,6 +93,8 @@ from app.services.stats.formulas import (
 from app.services.stats.registry import (
     METRICS_BY_KEY,
     RollupClass,
+    astd_pct_denom_expr,
+    astd_pct_sql_text,
     rollup_class_matches,
     ts_pct_denom_expr,
     ts_pct_sql_text,
@@ -1425,8 +1429,7 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
             return None
         ast_fgm = _sum_attr(rows, "ast_fgm")
         unast_fgm = _sum_attr(rows, "unast_fgm")
-        made = ast_fgm + unast_fgm
-        return 100.0 * ast_fgm / made if made else None
+        return astd_pct_ratio(ast_fgm=ast_fgm, unast_fgm=unast_fgm)
     if key == "pts_per100":
         # ``pace`` is possessions per 48 minutes (NBA's normalization base, kept even
         # for 40-minute Summer League games — see summer_league.constants). Sum
@@ -1679,8 +1682,8 @@ def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
         )
     # Assisted share of made FGs (0-100 scale) from summed PBP counts.
     if col == "astd_pct":
-        made = func.sum(ps.ast_fgm) + func.sum(ps.unast_fgm)  # type: ignore[attr-defined]
-        return _op(100.0 * func.sum(ps.ast_fgm) / func.nullif(made, 0))  # type: ignore[attr-defined]
+        denom = astd_pct_denom_expr(lambda name: func.sum(getattr(ps, name)))  # type: ignore[attr-defined]
+        return _op(100.0 * func.sum(ps.ast_fgm) / func.nullif(denom, 0))  # type: ignore[attr-defined]
     return None
 
 
@@ -1746,8 +1749,8 @@ def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
         return _op(ps.fta * 1.0 / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
     # Assisted share of made FGs (0-100 scale) from the row's PBP counts.
     if col == "astd_pct":
-        made = ps.ast_fgm + ps.unast_fgm
-        return _op(100.0 * ps.ast_fgm / func.nullif(made, 0))  # type: ignore[attr-defined]
+        denom = astd_pct_denom_expr(lambda name: getattr(ps, name))
+        return _op(100.0 * ps.ast_fgm / func.nullif(denom, 0))  # type: ignore[attr-defined]
     return None
 
 
@@ -2591,12 +2594,10 @@ def _astd_pct(r: Any) -> Optional[float]:
     """
     if not is_computable("astd_pct", row_provides(r)):
         return None
-    ast_fgm = float(getattr(r, "ast_fgm", None) or 0)
-    unast_fgm = float(getattr(r, "unast_fgm", None) or 0)
-    made = ast_fgm + unast_fgm
-    if made <= 0:
-        return None
-    return round(100.0 * ast_fgm / made, 1)
+    return astd_pct_line(
+        ast_fgm=getattr(r, "ast_fgm", None),
+        unast_fgm=getattr(r, "unast_fgm", None),
+    )
 
 
 def _scaled_sort_expr(num: str, gp: str, sec: str, pace_sec: str, mode: str) -> str:
@@ -2738,7 +2739,7 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
         "fg3ar": "SUM(fg3a) * 1.0 / NULLIF(SUM(fga), 0)",
         "ftr": "SUM(fta) * 1.0 / NULLIF(SUM(fga), 0)",
         # Assisted share of made FGs from summed PBP counts.
-        "astd_pct": "SUM(ast_fgm) * 1.0 / NULLIF(SUM(ast_fgm) + SUM(unast_fgm), 0)",
+        "astd_pct": astd_pct_sql_text(lambda c: f"SUM({c})"),
     }
     if sort_col in _pct_exprs:
         return _pct_exprs[sort_col]
@@ -3330,7 +3331,7 @@ async def _query_players_per_competition(
         "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",
         "ftr": "fta * 1.0 / NULLIF(fga, 0)",
         # Assisted share of made FGs from the row's PBP counts.
-        "astd_pct": "ast_fgm * 1.0 / NULLIF(ast_fgm + unast_fgm, 0)",
+        "astd_pct": astd_pct_sql_text(lambda c: c),
     }
     if q.sort in _pc_pct_exprs:
         sort_expr: str = _pc_pct_exprs[q.sort]

@@ -32,7 +32,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.stats.capabilities import is_computable
 from app.services.stats.formulas import (
+    astd_pct_line,
     efg_pct_line,
     fg3ar_line,
     ftr_line,
@@ -40,6 +42,7 @@ from app.services.stats.formulas import (
     ts_pct_line,
 )
 from app.services.stats.registry import RollupClass, rollup_class_matches
+from app.services.summer_league.capabilities import row_provides, rows_provide
 
 # Minimum total minutes in a competition before its rate composites are
 # trustworthy enough to surface. Small-sample pools blow PER/BPM up well past
@@ -277,9 +280,13 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
         ftr=ftr_line(fga=fga, fta=fta),
         tov_pct=tov_pct_line(fga=fga, fta=fta, tov=tov),
         fg3ar=fg3ar_line(fg3a=fg3a, fga=fga),
-        astd_pct=_assisted_share(
-            sum((s.ast_fgm or 0) for s in seasons),
-            sum((s.unast_fgm or 0) for s in seasons),
+        astd_pct=(
+            _assisted_share(
+                sum((s.ast_fgm or 0) for s in seasons),
+                sum((s.unast_fgm or 0) for s in seasons),
+            )
+            if is_computable("astd_pct", rows_provide(seasons))
+            else None
         ),
         ows=round(sum(ows_vals), 1) if ows_vals else None,
         dws=round(sum(dws_vals), 1) if dws_vals else None,
@@ -300,10 +307,7 @@ def _assisted_share(
     ast_fgm: Optional[int], unast_fgm: Optional[int]
 ) -> Optional[float]:
     """Assisted share of made FGs (0-100) from PBP counts; None without PBP data."""
-    made = (ast_fgm or 0) + (unast_fgm or 0)
-    if made <= 0:
-        return None
-    return round(100.0 * (ast_fgm or 0) / made, 1)
+    return astd_pct_line(ast_fgm=ast_fgm, unast_fgm=unast_fgm)
 
 
 def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
@@ -329,7 +333,11 @@ def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
         ftr=_round3(row.ftr),
         ast_fgm=row.ast_fgm,
         unast_fgm=row.unast_fgm,
-        astd_pct=_assisted_share(row.ast_fgm, row.unast_fgm),
+        astd_pct=(
+            _assisted_share(row.ast_fgm, row.unast_fgm)
+            if is_computable("astd_pct", row_provides(row))
+            else None
+        ),
         usg_pct=_round1(row.usg_pct),
         ast_pct=_round1(row.ast_pct),
         tov_pct=_round1(row.tov_pct),

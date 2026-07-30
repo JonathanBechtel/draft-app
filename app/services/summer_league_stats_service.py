@@ -29,7 +29,9 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
-from app.services.stats.formulas import ts_pct_ratio
+from app.services.stats.capabilities import is_computable
+from app.services.stats.formulas import astd_pct_ratio, ts_pct_ratio
+from app.services.summer_league.capabilities import row_provides
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_shotchart_service import (
@@ -550,15 +552,20 @@ async def get_player_shotchart_context(
             diet_row.corner3_rate,
         )
     ):
-        # Compute assisted-FG% when PBP counts are available for this row.
-        ast_fgm = diet_row.ast_fgm
-        unast_fgm = diet_row.unast_fgm
-        total_pbp_fgm = (ast_fgm or 0) + (unast_fgm or 0)
-        assisted_fg_pct: Optional[float] = (
-            round(ast_fgm / total_pbp_fgm, 4)
-            if ast_fgm is not None and unast_fgm is not None and total_pbp_fgm > 0
-            else None
-        )
+        # Compute assisted-FG% when PBP counts are available for this row. Availability
+        # is derived from the T8 capability model (#728) -- the registry's
+        # astd_pct.requires (ast_fgm/unast_fgm) tested against this row's provides --
+        # rather than a hand-rolled "both fields are non-None" check. astd_pct_ratio
+        # returns the 0-100 percentage; this display field is the 0-1 fraction at 4
+        # decimals, so divide by 100 before rounding.
+        assisted_fg_pct: Optional[float] = None
+        if is_computable("astd_pct", row_provides(diet_row)):
+            astd_ratio = astd_pct_ratio(
+                ast_fgm=diet_row.ast_fgm, unast_fgm=diet_row.unast_fgm
+            )
+            assisted_fg_pct = (
+                round(astd_ratio / 100.0, 4) if astd_ratio is not None else None
+            )
         shot_diet = {
             "rim_rate": diet_row.rim_rate,
             "mid_rate": diet_row.mid_rate,

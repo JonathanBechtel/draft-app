@@ -259,6 +259,42 @@ def fg3ar_line(*, fg3a: Any, fga: Any) -> Optional[float]:
     return round(ratio, 3) if ratio is not None else None
 
 
+def astd_pct_ratio(*, ast_fgm: Any, unast_fgm: Any) -> Optional[float]:
+    """AST'd% -- share of a player's *own* made FGs that were assisted -- unrounded.
+
+    ``100 * ast_fgm / (ast_fgm + unast_fgm)`` from parsed play-by-play assist
+    attribution. Unrounded twin of :func:`astd_pct_line`; see :func:`ftr_ratio`
+    for why a pooling caller wants the raw value.
+
+    Not to be confused with :func:`ast_pct_line` (Assist %): that metric is the
+    share of *teammates'* field goals this player assisted while on the floor.
+    ``astd_pct`` and ``ast_pct`` share a prefix and nothing else -- see
+    ``app.services.stats.registry``'s ``astd_pct`` entry for the full
+    distinction.
+
+    Returns:
+        The 0-100 percentage, unrounded, or ``None`` when the player made no
+        field goals to attribute (``ast_fgm + unast_fgm <= 0``).
+    """
+    ast_fgm_f = float(ast_fgm or 0)
+    unast_fgm_f = float(unast_fgm or 0)
+    made = ast_fgm_f + unast_fgm_f
+    if made <= 0:
+        return None
+    return 100.0 * ast_fgm_f / made
+
+
+def astd_pct_line(*, ast_fgm: Any, unast_fgm: Any) -> Optional[float]:
+    """AST'd% for one box line (or a caller's own pre-summed rollup), ``None``-coalescing to 0.
+
+    Returns:
+        The 0-100 percentage rounded to 1 decimal, or ``None`` when the
+        player made no field goals to attribute.
+    """
+    ratio = astd_pct_ratio(ast_fgm=ast_fgm, unast_fgm=unast_fgm)
+    return round(ratio, 1) if ratio is not None else None
+
+
 def game_advanced_line(
     b: StatInputs,
     tm: Optional[StatInputs] = None,
