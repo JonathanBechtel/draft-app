@@ -271,6 +271,32 @@ The live issue queue and this plan describe the same work; keep them pointing at
 - **Level-adjusted metric translation model** — still open; Phase 2 supplies the engine it lives
   in, not the translation study.
 
+### Parked as Phase 2 follow-ups (owner decision, 2026-07-29)
+
+Both are scheduled **after** Phase 2 rather than inside it. Recorded with reasoning and trigger
+conditions so neither gets re-derived.
+
+- **Canonical pace source for per-100 surfaces (#732)** — the leaderboard divides by
+  `SummerLeaguePlayerGameLog.pace` (NBA-supplied) while the Explorer, stored column, and engine
+  divide by `SummerLeaguePlayerSeason.pace` (our possession estimate). A *data-source* divergence,
+  not a duplicated formula, so Phase 2's consolidation cannot fix it. **Decided direction:** the
+  engine estimate is canonical, computed at each surface's own grain from the one formula — never
+  a season-grain pace under a game-grain numerator. Found by #721's harness, which excluded
+  leaderboard per-100 as a result.
+  **Why parked:** it changes published numbers, and every Phase 2 ticket is behavior-preserving.
+  Admitting it would cost the QA gate (#731) its "no user-visible number changed" acceptance bar —
+  the property that makes the phase safe to run unattended.
+  **Trigger:** Phase 2 closes.
+- **Scoped per-tick metrics compute (#701)** — Phase 1 work by this roadmap despite its title;
+  the remaining half of #669's cost finding after #694 closed the off-season half.
+  **Why parked, not rushed:** its preferred fix (separate the slow league-wide fit from the
+  per-competition projection) needs Phase 2's `rollup_class` to know which metrics require the
+  full-pool fit — otherwise that taxonomy gets hand-derived a sixth time. Its acceptance criterion
+  ("identical to a full recompute, verified against production values") is exactly #721's harness.
+  And there is no operational pressure: Vegas ended 2026-07-19, so the per-tick cost is burning
+  compute on an empty stage until roughly mid-2027.
+  **Trigger:** Phase 2 closes, **or** a live event lands on the calendar sooner. Whichever first.
+
 ## Standing caveats
 
 - **The transaction diagnosis is now observed, not just read from code.** Incident #669 confirmed
