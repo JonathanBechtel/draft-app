@@ -551,17 +551,15 @@ _SHARED_RATES: tuple[MetricDefinition, ...] = (
 # and ``tests/integration/test_stat_engine_parity.py`` (behavioral — does it
 # evaluate to the same number as the Python form, against a real DB).
 #
-# ``box`` is a column-naming callable, the same shape ``_game_score_sql`` in
-# ``summer_league_explorer_service.py`` already uses for Game Score: pass a
-# callable that wraps a field name for the aggregate (career) grain --
-# ``SUM(...)`` in text, ``func.sum(...)`` in an expression -- or leaves it
-# bare for row grain (per-competition / per-game), and one declaration emits
-# both SQL shapes. Each metric gets two such declarations, not four notations:
-# one ``*_expr`` form (``box`` returns a SQLAlchemy expression, for the
-# SQLAlchemy-expression call sites) and one ``*_sql_text`` form (``box``
-# returns a string, for the raw-SQL-text ``ORDER BY`` call sites) -- the two
-# notations the Explorer already uses for push-down, both required to agree
-# with the Python form.
+# ``box`` is a column-naming callable: pass a callable that wraps a field
+# name for the aggregate (career) grain -- ``SUM(...)`` in text,
+# ``func.sum(...)`` in an expression -- or leaves it bare for row grain
+# (per-competition / per-game), and one declaration emits both SQL shapes.
+# Each metric gets two such declarations, not four notations: one ``*_expr``
+# form (``box`` returns a SQLAlchemy expression, for the SQLAlchemy-expression
+# call sites) and one ``*_sql_text`` form (``box`` returns a string, for the
+# raw-SQL-text ``ORDER BY`` call sites) -- the two notations the Explorer
+# already uses for push-down, both required to agree with the Python form.
 
 
 def ts_pct_denom_expr(box: Callable[[str], Any]) -> Any:
@@ -592,8 +590,8 @@ def ts_pct_sql_text(box: Callable[[str], str]) -> str:
 
     Matches :func:`app.services.stats.formulas.ts_pct_ratio` exactly. ``box``
     wraps a column label in ``SUM(...)`` for the aggregate grain or leaves it
-    bare for row grain -- the same indirection ``_game_score_sql`` in
-    ``summer_league_explorer_service.py`` uses for Game Score.
+    bare for row grain -- the same indirection :func:`game_score_sql_text`
+    uses for Game Score.
     """
     return f"{box('pts')} / NULLIF(2.0 * ({box('fga')} + 0.44 * {box('fta')}), 0)"
 
@@ -633,6 +631,30 @@ def astd_pct_sql_text(box: Callable[[str], str]) -> str:
     """
     return (
         f"{box('ast_fgm')} * 1.0 / " f"NULLIF({box('ast_fgm')} + {box('unast_fgm')}, 0)"
+    )
+
+
+def game_score_sql_text(box: Callable[[str], str]) -> str:
+    """Hollinger Game Score's raw-SQL-text form (T9, #730).
+
+    Matches :func:`app.services.stats.formulas.game_score` exactly. ``box``
+    wraps a column label in ``SUM(...)`` (or a NULL-coalescing variant) for
+    the aggregate grain or leaves it bare for row grain -- the same
+    indirection :func:`ts_pct_sql_text` uses. Byte-identical to the literal
+    formerly built by ``_game_score_sql`` in
+    ``app.services.summer_league_explorer_service`` (verified at HEAD before
+    T9 folded it in here): the Explorer's ORDER BY sort expression duplicated
+    the Game Score weights in a raw f-string outside this package, which is
+    exactly the shape the stat-constant confinement checker
+    (``scripts/check_stat_constants.py``) exists to catch and which T6 did not
+    reach (T6's scope was the nine 0.44 sites; the Game Score weights
+    0.4/0.7/0.3 were untouched).
+    """
+    return (
+        f"({box('pts')} + 0.4 * {box('fgm')} - 0.7 * {box('fga')} "
+        f"- 0.4 * ({box('fta')} - {box('ftm')}) + 0.7 * {box('oreb')} "
+        f"+ 0.3 * {box('dreb')} + {box('stl')} + 0.7 * {box('ast')} "
+        f"+ 0.7 * {box('blk')} - 0.4 * {box('pf')} - {box('tov')})"
     )
 
 

@@ -80,6 +80,13 @@ jobs:
         # lives in two places".
         run: python scripts/check_runtime_entrypoints.py
 
+      - name: Stat-constant confinement
+        # Designated stat coefficients (0.44, the Game Score weights) may appear only
+        # under app/services/stats/, so a formula change requires editing exactly one
+        # place. The one exemption is read from app.services.stats.registry, not
+        # hand-written here. See docs/plans/programmatic-code-discipline.md §1.3.
+        run: python scripts/check_stat_constants.py
+
       - name: File-size ratchet
         # Enforces against the PR merge base, alongside the diff-cover gate the
         # diff-scoped tooling already lives in. Pre-commit runs the same script in
@@ -211,6 +218,13 @@ jobs:
         # app/ grows a new `import scripts.*`. See CLAUDE.md "Executable code
         # lives in two places".
         run: python scripts/check_runtime_entrypoints.py
+
+      - name: Stat-constant confinement
+        # Designated stat coefficients (0.44, the Game Score weights) may appear only
+        # under app/services/stats/, so a formula change requires editing exactly one
+        # place. The one exemption is read from app.services.stats.registry, not
+        # hand-written here. See docs/plans/programmatic-code-discipline.md §1.3.
+        run: python scripts/check_stat_constants.py
 
       - name: File-size ratchet
         # Enforces against the PR merge base, alongside the diff-cover gate the

@@ -38,8 +38,10 @@ from typing import Callable
 
 import pytest
 
-from app.services.stats.formulas import ts_pct_ratio, tov_pct_ratio
+from app.services.stats.formulas import game_score, ts_pct_ratio, tov_pct_ratio
+from app.services.stats.inputs import StatInputs
 from app.services.stats.registry import (
+    game_score_sql_text,
     ts_pct_denom_expr,
     ts_pct_sql_text,
     tov_pct_denom_expr,
@@ -129,6 +131,21 @@ def _recording_float_box(sink: list[str]) -> Callable[[str], float]:
     return box
 
 
+def _recording_string_box(sink: list[str]) -> Callable[[str], str]:
+    """The string-returning twin of :func:`_recording_float_box`.
+
+    ``game_score_sql_text`` builds SQL *text*, so its ``box`` callable must
+    return ``str`` (unlike ``*_denom_expr``'s arithmetic-only ``box``, which
+    only needs to support ``+``/``*`` and so tolerates plain floats).
+    """
+
+    def box(name: str) -> str:
+        sink.append(name)
+        return "1.0"
+
+    return box
+
+
 def test_ts_pct_denom_expr_emits_one_formula_across_both_grains() -> None:
     """One declaration, two grains: the only difference is how ``box`` wraps
     each field name, never a second copy of the ``2 * (FGA + 0.44*FTA)`` shape.
@@ -146,3 +163,92 @@ def test_tov_pct_denom_expr_field_order_matches_tov_pct_ratio() -> None:
     fields: list[str] = []
     tov_pct_denom_expr(_recording_float_box(fields))
     assert fields == ["fga", "fta", "tov"]
+
+
+# --- game_score_sql_text (T9, #730) -----------------------------------------
+#
+# Folded into the registry by the stat-constant confinement ticket: the SQL
+# form used to live as a private ``_game_score_sql`` helper in
+# ``app.services.summer_league_explorer_service``, holding the Game Score
+# weights (0.4/0.7/0.3) as a raw f-string outside app/services/stats/ -- T6
+# consolidated ts_pct/tov_pct's SQL forms but explicitly left this one in
+# place. These tests are the same byte-identical + arithmetic-parity shape
+# T6 used for ts_pct_sql_text/tov_pct_sql_text above.
+
+_GMSC_BOX = dict(
+    pts=17.0,
+    fgm=6.0,
+    fga=15.0,
+    ftm=3.0,
+    fta=5.0,
+    oreb=1.0,
+    dreb=4.0,
+    ast=3.0,
+    stl=1.0,
+    blk=0.0,
+    tov=3.0,
+    pf=2.0,
+)
+
+
+def test_game_score_sql_text_row_grain_is_byte_identical_to_the_replaced_literal() -> (
+    None
+):
+    """Row-grain text form matches the exact literal ``_game_score_sql`` built
+    in ``app.services.summer_league_explorer_service`` before T9."""
+    assert game_score_sql_text(lambda c: c) == (
+        "(pts + 0.4 * fgm - 0.7 * fga - 0.4 * (fta - ftm) + 0.7 * oreb "
+        "+ 0.3 * dreb + stl + 0.7 * ast + 0.7 * blk - 0.4 * pf - tov)"
+    )
+
+
+def test_game_score_sql_text_matches_python_game_score() -> None:
+    """Fed a box that renders each field as its string repr, the SQL text form
+    evaluates (as arithmetic) to the same value as
+    :func:`app.services.stats.formulas.game_score` on the same box line."""
+    text = game_score_sql_text(lambda name: str(_GMSC_BOX[name]))
+    got = eval(text)  # noqa: S307 -- arithmetic-only text built from a fixed box dict
+    want = game_score(
+        StatInputs(
+            pts=_GMSC_BOX["pts"],
+            fgm=_GMSC_BOX["fgm"],
+            fga=_GMSC_BOX["fga"],
+            ftm=_GMSC_BOX["ftm"],
+            fta=_GMSC_BOX["fta"],
+            oreb=_GMSC_BOX["oreb"],
+            dreb=_GMSC_BOX["dreb"],
+            ast=_GMSC_BOX["ast"],
+            stl=_GMSC_BOX["stl"],
+            blk=_GMSC_BOX["blk"],
+            tov=_GMSC_BOX["tov"],
+            pf=_GMSC_BOX["pf"],
+        )
+    )
+    assert got == pytest.approx(want)
+
+
+def test_game_score_sql_text_emits_one_formula_across_both_grains() -> None:
+    """One declaration, two grains: the only difference is how ``box`` wraps
+    each field name, never a second copy of the Game Score weights."""
+    row_fields: list[str] = []
+    agg_fields: list[str] = []
+    game_score_sql_text(_recording_string_box(row_fields))
+    game_score_sql_text(_recording_string_box(agg_fields))
+    assert (
+        row_fields
+        == agg_fields
+        == [
+            "pts",
+            "fgm",
+            "fga",
+            "fta",
+            "ftm",
+            "oreb",
+            "dreb",
+            "stl",
+            "ast",
+            "blk",
+            "pf",
+            "tov",
+        ]
+    )

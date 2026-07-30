@@ -43,7 +43,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from sqlalchemy import and_, case, func, literal, nulls_last, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,6 +95,7 @@ from app.services.stats.registry import (
     RollupClass,
     astd_pct_denom_expr,
     astd_pct_sql_text,
+    game_score_sql_text,
     rollup_class_matches,
     ts_pct_denom_expr,
     ts_pct_sql_text,
@@ -2613,30 +2614,23 @@ def _scaled_sort_expr(num: str, gp: str, sec: str, pace_sec: str, mode: str) -> 
     return scale_sql(num, gp, sec, pace_sec, mode)
 
 
-def _game_score_sql(box: Callable[[str], str]) -> str:
-    """Build the Hollinger Game Score expression in SQL.
-
-    ``box`` maps a column name to its SQL fragment so the same formula serves
-    both the career grain (``SUM(pts)`` …) and the per-competition / per-game
-    grains (raw labels ``pts`` …). Mirrors :func:`game_score` exactly so an
-    ORDER BY on GmSc ranks on the same value the cell shows (before per-mode
-    scaling, which the caller layers on via :func:`_scaled_sort_expr`).
-    """
-    return (
-        f"({box('pts')} + 0.4 * {box('fgm')} - 0.7 * {box('fga')} "
-        f"- 0.4 * ({box('fta')} - {box('ftm')}) + 0.7 * {box('oreb')} "
-        f"+ 0.3 * {box('dreb')} + {box('stl')} + 0.7 * {box('ast')} "
-        f"+ 0.7 * {box('blk')} - 0.4 * {box('pf')} - {box('tov')})"
-    )
-
-
 # GmSc numerator fragments: raw column labels (per_competition / per_game) and
 # SUM aggregates (career).  Scaled into the displayed per-mode rate at call time.
 # Each component is COALESCEd to 0 so a NULL box stat (e.g. unrecorded OREB on an
 # older log) does not poison the whole expression to NULL — matching the Python
 # display path, which coalesces None to 0 via :func:`game_score_line`.
-_GMSC_SQL_RAW = _game_score_sql(lambda c: f"COALESCE({c}, 0)")
-_GMSC_SQL_AGG = _game_score_sql(lambda c: f"COALESCE(SUM({c}), 0)")
+#
+# The formula itself lives in app.services.stats.registry.game_score_sql_text
+# (T9, #730) rather than here -- this used to be a local ``_game_score_sql``
+# helper holding the Game Score weights as a raw f-string, which the
+# stat-constant confinement checker exists to forbid outside
+# app/services/stats/. ``box`` still maps a column name to its SQL fragment so
+# one declaration emits both the career grain (``SUM(pts)`` …) and the
+# per-competition / per-game grains (raw labels ``pts`` …); the ORDER BY on
+# GmSc still ranks on the same value the cell shows (before per-mode scaling,
+# which the caller layers on via :func:`_scaled_sort_expr`).
+_GMSC_SQL_RAW = game_score_sql_text(lambda c: f"COALESCE({c}, 0)")
+_GMSC_SQL_AGG = game_score_sql_text(lambda c: f"COALESCE(SUM({c}), 0)")
 
 # Career-grain per_100 pace-weighted seconds: pace-covered possessions extrapolated
 # to all minutes via the minute-weighted observed pace (mirrors pace_sec_expr in
