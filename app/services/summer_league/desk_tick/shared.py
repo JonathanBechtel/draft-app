@@ -211,6 +211,12 @@ class TickContext:
             dependency keeps that rule intact at full strength: the classes
             declare *where* a transaction may be released, and only the
             ``app/cli/`` entrypoints decide *how*.
+        session_configurator: Optional hook for session-scoped database
+            settings that a latency class must reapply after a transaction
+            boundary. The standalone fast entrypoint uses this for bounded
+            PostgreSQL lock and statement timeouts; it is deliberately absent
+            from the composite so the rollback path keeps its legacy session
+            behavior.
         telemetry: Optional run timer.
         lock: Writer-lock policy. Defaults to :data:`NO_WRITER_LOCK` -- the
             fast and projection classes' defining property.
@@ -221,6 +227,7 @@ class TickContext:
     raw_root: Path = DEFAULT_RAW_ROOT
     client: Optional[NBAStatsClient] = None
     transaction_boundary: Optional[Callable[[], Awaitable[None]]] = None
+    session_configurator: Optional[Callable[[AsyncSession], Awaitable[None]]] = None
     telemetry: Optional[PipelineTelemetry] = None
     lock: WriterLockPolicy = NO_WRITER_LOCK
 

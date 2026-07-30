@@ -208,6 +208,16 @@ async def run_backbone_tick(
             if await normalize_competition(db, competition, raw_root=ctx.raw_root):
                 normalized_ids.append(competition.id)
 
+    # Normalization updates the live game rows and therefore holds their row
+    # locks until this transaction ends. Release those locks before the
+    # potentially long metrics rebuild, then reacquire the shared writer lock
+    # so the rebuild remains serialized against other broad writers. The
+    # standalone backbone entrypoint supplies this boundary; service/test
+    # callers that intentionally keep one transaction retain the legacy shape.
+    if normalized_ids and ctx.transaction_boundary is not None:
+        await ctx.release_transaction()
+        await ctx.lock.acquire(db, step="writer_lock_reacquire")
+
     # Step 2b -- scoped metrics rebuild (#523), scoped by competition_id so a
     # competition this run didn't normalize -- including rows this module
     # never wrote at all -- is never deleted or replaced. A no-op (empty

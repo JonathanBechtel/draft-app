@@ -38,9 +38,11 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from time import monotonic
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.schemas.event_desk import EventDailyState, EventDeskState
@@ -50,6 +52,7 @@ from app.services.summer_league.desk_tick.backbone import run_backbone_tick
 from app.services.summer_league.desk_tick.composite import run_desk_tick
 from app.services.summer_league.desk_tick.fast import run_fast_tick
 from app.services.summer_league.desk_tick.projection import run_projection_tick
+from app.cli.sl_desk_fast_tick import configure_fast_session_timeouts
 from app.services.summer_league.desk_tick.shared import (
     NO_WRITER_LOCK,
     DeskLatencyClass,
@@ -76,17 +79,17 @@ from tests.integration.test_sl_desk_tick import (
 
 pytestmark = pytest.mark.asyncio
 
-# The fast class's latency budget is "seconds" (spec §2). Ten seconds per
-# frame is a deliberately loose ceiling for a shared CI box -- it is not a
-# performance target, it is a tripwire for the frame having *queued* on
-# something, which is the failure mode this ticket removes. The real signal is
-# that it lands at all while the lock is held.
-FAST_FRAME_BUDGET_SECONDS = 10.0
+# The fast class's latency budget is "seconds" (spec §2). Fifteen seconds per
+# frame leaves a small margin for the shared remote Postgres test database; it
+# is not a performance target, it is a tripwire for the frame having *queued*
+# on something, which is the failure mode this ticket removes. The real signal
+# is that it lands at all while the lock is held.
+FAST_FRAME_BUDGET_SECONDS = 15.0
 
 # How long the stand-in backbone holds the writer lock. Production's was ~88
 # minutes; this only has to outlast the whole replay for the contention to be
 # genuine.
-LOCK_HOLD_SECONDS = 20.0
+LOCK_HOLD_SECONDS = 300.0
 
 
 async def _seed_live_window(db: AsyncSession) -> None:
@@ -203,6 +206,57 @@ async def test_fast_class_lands_every_live_window_tick_while_backbone_holds_lock
     ).scalar_one()
     assert row.status == SummerLeagueGameStatus.FINAL
     assert (row.home_score, row.away_score) == (92, 105)
+
+
+@pytest.mark.committed_db
+async def test_fast_class_fails_fast_on_backbone_game_row_locks(
+    db_session: AsyncSession,
+    session_factory: async_sessionmaker[AsyncSession],
+    test_schema: str,
+    tmp_path: Path,
+) -> None:
+    """A normalization row lock cancels quickly instead of hanging the poller."""
+    await _seed_live_window(db_session)
+    await _pin_schema(db_session, test_schema)
+    anchor = (
+        await db_session.execute(
+            select(SummerLeagueGame).order_by(SummerLeagueGame.id)
+        )
+    ).scalar_one()
+    # Reuse a real game ID from the captured schedule so the row-lock replay
+    # exercises an actual ON CONFLICT update rather than an insert-only path.
+    anchor.nba_stats_game_id = "1522600001"
+    await db_session.commit()
+
+    session = ReplaySession()
+    frame = real_live_window_frames(count=1)[0]
+    session.use(frame)
+    client = NBAStatsClient(session=session)
+
+    started_at = monotonic()
+    async with backbone_holding_writer_lock(
+        session_factory,
+        test_schema,
+        hold_seconds=LOCK_HOLD_SECONDS,
+        hold_game_rows=True,
+    ) as holder:
+        with pytest.raises(DBAPIError):
+            await run_fast_tick(
+                db_session,
+                TickContext(
+                    now=frame.now,
+                    raw_root=tmp_path,
+                    client=client,
+                    transaction_boundary=db_session.commit,
+                    session_configurator=configure_fast_session_timeouts,
+                    lock=NO_WRITER_LOCK,
+                ),
+            )
+        assert not holder.done()
+
+    elapsed = monotonic() - started_at
+    await db_session.rollback()
+    assert elapsed < FAST_FRAME_BUDGET_SECONDS
 
 
 @pytest.mark.committed_db

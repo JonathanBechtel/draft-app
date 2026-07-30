@@ -18,6 +18,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import AsyncMock
+
+import pytest
 
 import app.cli.sl_desk_backbone_tick as backbone_cli
 import app.cli.sl_desk_fast_tick as fast_cli
@@ -210,6 +213,20 @@ class TestParsers:
         args = fast_cli.build_parser().parse_args(["--now", "2026-07-10T19:30:00"])
         assert parse_now(args.now) == _NOW
         assert parse_now(None) is None
+
+
+@pytest.mark.asyncio
+async def test_fast_session_timeout_configuration_is_session_scoped() -> None:
+    """The fast class bounds both lock waits and long-running SQL statements."""
+    db = AsyncMock()
+
+    await fast_cli.configure_fast_session_timeouts(db)
+
+    statements = [str(call.args[0]) for call in db.execute.await_args_list]
+    assert "lock_timeout" in statements[0]
+    assert "statement_timeout" in statements[1]
+    assert db.execute.await_args_list[0].args[1] == {"timeout": "3s"}
+    assert db.execute.await_args_list[1].args[1] == {"timeout": "15s"}
 
 
 def test_each_entrypoint_declares_its_own_latency_class() -> None:
