@@ -177,6 +177,23 @@ def test_suffix_mismatch_variant_match_becomes_review_candidate() -> None:
     assert plan.candidates[0].method == "NORMALIZED_SUFFIX_MISMATCH"
 
 
+def test_exact_alias_suffix_evidence_preserves_auto_resolution() -> None:
+    """An exact alias match remains trusted despite a canonical suffix difference."""
+    plan = service._plan_from_variant_matches(
+        source_player_id=5,
+        source_player_name="Walter Clayton",
+        matches=service.IdentityVariantMatches(
+            display_names={},
+            alias_names={7: "Walter Clayton Jr."},
+            alias_match_names={7: ("Walter Clayton",)},
+        ),
+    )
+
+    assert plan is not None
+    assert plan.kind == "ALIAS"
+    assert plan.player_id == 7
+
+
 def test_candidate_payloads_round_scores_for_json_storage() -> None:
     """Candidate DTOs serialize to compact JSONB-safe dictionaries."""
     candidates = [

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +45,7 @@ class IdentityVariantMatches:
 
     display_names: dict[int, str | None]
     alias_names: dict[int, str | None]
+    alias_match_names: dict[int, tuple[str, ...]] = field(default_factory=dict)
 
     @property
     def player_ids(self) -> frozenset[int]:
@@ -54,6 +55,15 @@ class IdentityVariantMatches:
     def display_name_for(self, player_id: int) -> str | None:
         """Return the canonical display name known for ``player_id``."""
         return self.display_names.get(player_id) or self.alias_names.get(player_id)
+
+    def match_names_for(self, player_id: int) -> tuple[str, ...]:
+        """Return canonical and explicit alias spellings for suffix comparison."""
+        names: list[str] = []
+        display_name = self.display_name_for(player_id)
+        if display_name:
+            names.append(display_name)
+        names.extend(self.alias_match_names.get(player_id, ()))
+        return tuple(names)
 
 
 async def find_variant_identity_matches(
@@ -84,14 +94,20 @@ async def find_variant_identity_matches(
             ).join(PlayerMaster, PlayerMaster.id == PlayerAlias.player_id)
         )
     ).all()
-    alias_names = {
-        int(player_id): display_name
-        for player_id, display_name, alias_name in alias_rows
-        if normalize_player_identity_name(str(alias_name)) == needle
-    }
+    alias_names: dict[int, str | None] = {}
+    alias_match_names: dict[int, list[str]] = {}
+    for player_id, display_name, alias_name in alias_rows:
+        if normalize_player_identity_name(str(alias_name)) != needle:
+            continue
+        canonical_id = int(player_id)
+        alias_names[canonical_id] = display_name
+        alias_match_names.setdefault(canonical_id, []).append(str(alias_name))
     return IdentityVariantMatches(
         display_names=display_names,
         alias_names=alias_names,
+        alias_match_names={
+            player_id: tuple(names) for player_id, names in alias_match_names.items()
+        },
     )
 
 

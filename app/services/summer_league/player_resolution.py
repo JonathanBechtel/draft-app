@@ -576,7 +576,11 @@ def _plan_from_variant_matches(
     if len(player_ids) == 1:
         player_id = next(iter(player_ids))
         candidate_name = matches.display_name_for(player_id)
-        if _suffixes_differ(source_player_name, candidate_name):
+        match_names = matches.match_names_for(player_id)
+        if match_names and all(
+            _suffixes_differ(source_player_name, matched_name)
+            for matched_name in match_names
+        ):
             return SummerLeagueResolutionPlan(
                 source_player_id=source_player_id,
                 kind="VECTOR_CANDIDATE",

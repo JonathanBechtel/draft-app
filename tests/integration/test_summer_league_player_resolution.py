@@ -339,11 +339,11 @@ async def test_unique_alias_match_resolves(
 ) -> None:
     """Alias resolution uses unique normalized player_aliases.full_name matches."""
     competition, team, game = await _seed_game_context(db_session)
-    player = PlayerMaster(display_name="Canonical Prospect")
+    player = PlayerMaster(display_name="Canonical Prospect Jr.")
     db_session.add(player)
     await db_session.flush()
     assert player.id is not None
-    db_session.add(PlayerAlias(player_id=player.id, full_name="Source Alias Jr."))
+    db_session.add(PlayerAlias(player_id=player.id, full_name="Source Alias"))
     source_player = await _source_with_log(
         db_session,
         raw_name="Source Alias",
