@@ -13,4 +13,57 @@ nothing here may import ``app.services.summer_league*`` or ``app.schemas.summer_
 engine takes neutral inputs and returns numbers; Summer League is one caller, not its shape.
 The contract exists before the code so the engine cannot acquire a spoke dependency on its
 first day — see ``docs/plans/programmatic-code-discipline.md`` §3.1.
+
+**T2 (Phase 2, #722) populates this package** by lifting the pure engine out of
+``app.services.summer_league.metrics`` — a pure move, zero behavior change, pinned by the
+golden-number parity harness in ``tests/unit/test_stat_engine_parity.py`` and
+``tests/integration/test_stat_engine_parity.py``:
+
+* :mod:`app.services.stats.inputs` — the neutral input/DTO dataclasses: :class:`StatInputs`
+  (formerly ``Box``), :class:`PoolContext` (formerly ``LeagueContext``), and
+  :class:`PlayerSeason`.
+* :mod:`app.services.stats.formulas` — the pure formula functions: :func:`game_score`,
+  :func:`game_score_line`, :func:`game_score_from_row`, the line-grain rate helpers
+  (:func:`ftr_line`, :func:`tov_pct_line`, :func:`ast_pct_line`, :func:`game_advanced_line`),
+  the Dean Oliver rating builders (:func:`compute_uper`, :func:`compute_ortg`,
+  :func:`compute_drtg`), and the season-basket assembler :func:`compute_metrics`.
+
+``app.services.summer_league.metrics`` re-exports every one of these names under their
+historical names (``Box``, ``LeagueContext``, ``_d``, ...) so no caller outside the engine had
+to change for this move. Everything DB-bound — loading raw logs, the SL-native Pythagorean/BPM
+coefficient fits, and persisting the materialized projection (``compute``, ``rebuild``,
+``rebuild_staged``) — stays in ``app.services.summer_league.metrics``; the seam is *pure
+function vs. orchestration*, not "everything that used to be in metrics.py".
 """
+
+from app.services.stats.formulas import (
+    ast_pct_line,
+    compute_drtg,
+    compute_metrics,
+    compute_ortg,
+    compute_uper,
+    game_advanced_line,
+    game_score,
+    game_score_from_row,
+    game_score_line,
+    ftr_line,
+    tov_pct_line,
+)
+from app.services.stats.inputs import PlayerSeason, PoolContext, StatInputs
+
+__all__ = [
+    "PlayerSeason",
+    "PoolContext",
+    "StatInputs",
+    "ast_pct_line",
+    "compute_drtg",
+    "compute_metrics",
+    "compute_ortg",
+    "compute_uper",
+    "ftr_line",
+    "game_advanced_line",
+    "game_score",
+    "game_score_from_row",
+    "game_score_line",
+    "tov_pct_line",
+]
