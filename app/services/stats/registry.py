@@ -58,7 +58,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Any, Callable, Optional
 
 
 class MetricFamily(str, Enum):
@@ -536,6 +536,80 @@ _SHARED_RATES: tuple[MetricDefinition, ...] = (
         interpretation_note="Hollinger Game Score: one-number per-game production, no league constants.",
     ),
 )
+
+
+# ---------------------------------------------------------------------------
+# SQL push-down forms (T6, #727).
+# ---------------------------------------------------------------------------
+#
+# Doc #2 §4's fallback, not a formula-to-SQL compiler: the metrics the Explorer
+# pushes into SQL (``ts_pct``, ``tov_pct`` above) get their SQL form declared
+# here, next to the ``MetricDefinition`` it must agree with, bound to the
+# Python form (``app.services.stats.formulas.ts_pct_ratio`` /
+# ``tov_pct_ratio``) by ``tests/unit/services/stats/test_sql_python_parity.py``
+# (structural — does the SQL text/expression the function emits look right)
+# and ``tests/integration/test_stat_engine_parity.py`` (behavioral — does it
+# evaluate to the same number as the Python form, against a real DB).
+#
+# ``box`` is a column-naming callable, the same shape ``_game_score_sql`` in
+# ``summer_league_explorer_service.py`` already uses for Game Score: pass a
+# callable that wraps a field name for the aggregate (career) grain --
+# ``SUM(...)`` in text, ``func.sum(...)`` in an expression -- or leaves it
+# bare for row grain (per-competition / per-game), and one declaration emits
+# both SQL shapes. Each metric gets two such declarations, not four notations:
+# one ``*_expr`` form (``box`` returns a SQLAlchemy expression, for the
+# SQLAlchemy-expression call sites) and one ``*_sql_text`` form (``box``
+# returns a string, for the raw-SQL-text ``ORDER BY`` call sites) -- the two
+# notations the Explorer already uses for push-down, both required to agree
+# with the Python form.
+
+
+def ts_pct_denom_expr(box: Callable[[str], Any]) -> Any:
+    """ts_pct's SQLAlchemy denominator expression: ``2 * (FGA + 0.44 * FTA)``.
+
+    Matches :func:`app.services.stats.formulas.ts_pct_ratio`'s denominator
+    exactly. ``box`` maps a field name to its SQLAlchemy expression at the
+    target grain -- ``func.sum(getattr(table, name))`` for the career/
+    aggregate grain, the bare ``getattr(table, name)`` for per-competition/
+    per-game row grain -- so this one declaration emits both shapes.
+    """
+    return 2.0 * (box("fga") + 0.44 * box("fta"))
+
+
+def tov_pct_denom_expr(box: Callable[[str], Any]) -> Any:
+    """tov_pct's SQLAlchemy denominator expression: ``FGA + 0.44*FTA + TOV``.
+
+    Matches :func:`app.services.stats.formulas.tov_pct_ratio`'s denominator
+    exactly. The Explorer only pushes ``tov_pct`` down in SQL at row grain
+    (per-game); ``box`` still takes the aggregate-capable shape so a future
+    aggregate-grain call site can reuse this same declaration.
+    """
+    return box("fga") + 0.44 * box("fta") + box("tov")
+
+
+def ts_pct_sql_text(box: Callable[[str], str]) -> str:
+    """ts_pct's raw-SQL-text form: ``PTS / NULLIF(2 * (FGA + 0.44*FTA), 0)``.
+
+    Matches :func:`app.services.stats.formulas.ts_pct_ratio` exactly. ``box``
+    wraps a column label in ``SUM(...)`` for the aggregate grain or leaves it
+    bare for row grain -- the same indirection ``_game_score_sql`` in
+    ``summer_league_explorer_service.py`` uses for Game Score.
+    """
+    return f"{box('pts')} / NULLIF(2.0 * ({box('fga')} + 0.44 * {box('fta')}), 0)"
+
+
+def tov_pct_sql_text(box: Callable[[str], str]) -> str:
+    """tov_pct's raw-SQL-text form: ``TOV*100 / NULLIF(FGA+0.44*FTA+TOV, 0)``.
+
+    Matches :func:`app.services.stats.formulas.tov_pct_ratio` exactly (scaled
+    by 100 for the percent display, as the Python form's ``round(..., 1)``
+    twin does).
+    """
+    return (
+        f"{box('tov')} * 100.0 / "
+        f"NULLIF({box('fga')} + 0.44 * {box('fta')} + {box('tov')}, 0)"
+    )
+
 
 # --- Scaled counting forms (recombinable) -----------------------------------
 # Representative entries for the per-36 / per-100 scaling class T4 (#725)

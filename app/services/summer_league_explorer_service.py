@@ -87,6 +87,12 @@ from app.services.stats.formulas import (
     ts_pct_ratio,
     tov_pct_line,
 )
+from app.services.stats.registry import (
+    ts_pct_denom_expr,
+    ts_pct_sql_text,
+    tov_pct_denom_expr,
+    tov_pct_sql_text,
+)
 from app.services.stats.scaling import scale_python, scale_sql
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
@@ -1630,7 +1636,7 @@ def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
     if col == "ft_pct":
         return _op(100.0 * func.sum(ps.ftm) / func.nullif(func.sum(ps.fta), 0))  # type: ignore[attr-defined]
     if col == "ts_pct":
-        denom = 2.0 * (func.sum(ps.fga) + 0.44 * func.sum(ps.fta))  # type: ignore[attr-defined]
+        denom = ts_pct_denom_expr(lambda name: func.sum(getattr(ps, name)))  # type: ignore[attr-defined]
         return _op(100.0 * func.sum(ps.pts) / func.nullif(denom, 0))  # type: ignore[attr-defined]
     # Attempt rates — 0-1 fraction ratios from summed box (thresholds on the
     # displayed fraction scale, e.g. fval=0.4 means FTr ≥ .400).
@@ -1702,7 +1708,7 @@ def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
     if col == "ft_pct":
         return _op(100.0 * ps.ftm / func.nullif(ps.fta, 0))  # type: ignore[attr-defined]
     if col == "ts_pct":
-        denom = 2.0 * (ps.fga + 0.44 * ps.fta)
+        denom = ts_pct_denom_expr(lambda name: getattr(ps, name))
         return _op(100.0 * ps.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
     # Attempt rates — 0-1 fraction ratios from the row's box components.
     if col == "fg3ar":
@@ -1750,7 +1756,7 @@ def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
     if col == "ft_pct":
         return _op(100.0 * pgl.ftm / func.nullif(pgl.fta, 0))  # type: ignore[attr-defined]
     if col == "ts_pct":
-        denom = 2.0 * (pgl.fga + 0.44 * pgl.fta)
+        denom = ts_pct_denom_expr(lambda name: getattr(pgl, name))
         return _op(100.0 * pgl.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
     # Box-derived rates work per game from the row's own line (thresholds on
     # the same scale the other grains use: 0-1 fractions for attempt rates,
@@ -1760,7 +1766,7 @@ def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
     if col == "ftr":
         return _op(pgl.fta * 1.0 / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
     if col == "tov_pct":
-        plays = pgl.fga + 0.44 * pgl.fta + pgl.tov
+        plays = tov_pct_denom_expr(lambda name: getattr(pgl, name))
         return _op(100.0 * pgl.tov / func.nullif(plays, 0))  # type: ignore[attr-defined]
     # Advanced composites and team/PBP-context rates (USG%, AST%, AST'd%,
     # rebound/steal/block %s) are not derivable per game log — silently skip.
@@ -2620,7 +2626,7 @@ def _player_sort_expr(sort_col: str, mode: str) -> Any:
         "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
         "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
         "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
-        "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
+        "ts_pct": ts_pct_sql_text(lambda c: f"SUM({c})"),
     }
     if sort_col in _pct_exprs:
         return _pct_exprs[sort_col]
@@ -2688,7 +2694,7 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
         "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
         "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
         "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
-        "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
+        "ts_pct": ts_pct_sql_text(lambda c: f"SUM({c})"),
         # Attempt rates recombine from summed box (same ratio the cell displays).
         "fg3ar": "SUM(fg3a) * 1.0 / NULLIF(SUM(fga), 0)",
         "ftr": "SUM(fta) * 1.0 / NULLIF(SUM(fga), 0)",
@@ -3280,7 +3286,7 @@ async def _query_players_per_competition(
         "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
         "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
         "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
-        "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
+        "ts_pct": ts_pct_sql_text(lambda c: c),
         # Attempt rates recombine from the row's box (matches the displayed ratio).
         "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",
         "ftr": "fta * 1.0 / NULLIF(fga, 0)",
@@ -3518,10 +3524,10 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
         "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
         "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
         "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
-        "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
+        "ts_pct": ts_pct_sql_text(lambda c: c),
         "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",
         "ftr": "fta * 1.0 / NULLIF(fga, 0)",
-        "tov_pct": "tov * 100.0 / NULLIF(fga + 0.44 * fta + tov, 0)",
+        "tov_pct": tov_pct_sql_text(lambda c: c),
         "min": "sec",
         "gp": "1",  # every row is 1 game; stable but well-defined
         # Single game: GmSc is the raw box score (gp=1), matching the displayed cell.
