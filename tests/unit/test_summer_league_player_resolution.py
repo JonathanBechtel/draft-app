@@ -141,6 +141,42 @@ def test_normalize_player_name_folds_diacritics_and_suffixes() -> None:
     assert normalize_player_name("Jean-Luc O’Neal III") == "jean luc oneal"
 
 
+@pytest.mark.parametrize(
+    ("source_name", "candidate_name", "expected"),
+    [
+        ("Gary Payton II", "Gary Payton", True),
+        ("Gary Payton II", "Gary Payton II", False),
+        ("José García", "Jose Garcia", False),
+        ("Gary Payton Jr.", "Gary Payton Sr.", True),
+    ],
+)
+def test_suffix_variant_planning_distinguishes_namesakes(
+    source_name: str,
+    candidate_name: str,
+    expected: bool,
+) -> None:
+    """Suffix differences are ambiguous while punctuation and matching suffixes are safe."""
+    assert service._suffixes_differ(source_name, candidate_name) is expected
+
+
+def test_suffix_mismatch_variant_match_becomes_review_candidate() -> None:
+    """A unique suffix mismatch produces a review plan instead of an exact link."""
+    plan = service._plan_from_variant_matches(
+        source_player_id=5,
+        source_player_name="Gary Payton II",
+        matches=service.IdentityVariantMatches(
+            display_names={7: "Gary Payton"},
+            alias_names={},
+        ),
+    )
+
+    assert plan is not None
+    assert plan.kind == "VECTOR_CANDIDATE"
+    assert plan.player_id is None
+    assert plan.candidates[0].player_id == 7
+    assert plan.candidates[0].method == "NORMALIZED_SUFFIX_MISMATCH"
+
+
 def test_candidate_payloads_round_scores_for_json_storage() -> None:
     """Candidate DTOs serialize to compact JSONB-safe dictionaries."""
     candidates = [
@@ -460,8 +496,10 @@ async def test_stub_creation_rechecks_variant_matches_at_write_time(
         create_stub=True,
     )
 
-    assert result.player_id == 77
-    assert result.status == SummerLeagueResolutionStatus.EXACT
+    assert result.player_id is None
+    assert result.status == SummerLeagueResolutionStatus.VECTOR_CANDIDATE
+    assert result.candidates[0].player_id == 77
+    assert result.candidates[0].method == "NORMALIZED_SUFFIX_MISMATCH"
     assert result.stub_created is False
 
 

@@ -310,9 +310,9 @@ async def test_existing_source_link_is_reused_and_gets_external_id(
 async def test_unique_exact_normalized_display_name_resolves(
     db_session: AsyncSession,
 ) -> None:
-    """Exact display-name resolution folds diacritics and suffixes."""
+    """Exact display-name resolution folds diacritics and punctuation."""
     competition, team, game = await _seed_game_context(db_session)
-    player = PlayerMaster(display_name="José García Jr.")
+    player = PlayerMaster(display_name="José García")
     db_session.add(player)
     await db_session.flush()
     assert player.id is not None
@@ -364,9 +364,8 @@ async def test_unique_alias_match_resolves(
 @pytest.mark.parametrize(
     ("canonical_name", "source_name", "person_id"),
     [
-        ("José García Jr.", "Jose Garcia", "1641101"),
         ("P.J. Washington", "PJ Washington", "1641102"),
-        ("Jean-Luc O’Neal III", "Jean Luc Oneal", "1641103"),
+        ("Jean-Luc O’Neal III", "Jean Luc Oneal III", "1641103"),
     ],
 )
 @pytest.mark.asyncio
@@ -409,6 +408,62 @@ async def test_variant_names_resolve_before_stub_creation(
     assert result.status == SummerLeagueResolutionStatus.EXACT
     assert result.stub_created is False
     assert await _log_player_id(db_session, person_id=person_id) == canonical.id
+
+
+@pytest.mark.asyncio
+async def test_single_suffix_variant_stays_unresolved_when_only_namesake_exists(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A suffix-only namesake match is reviewed instead of linking or stubbing."""
+    competition, team, game = await _seed_game_context(db_session)
+    father = PlayerMaster(display_name="Gary Payton", draft_year=1986)
+    db_session.add(father)
+    await db_session.flush()
+    assert father.id is not None
+    source_player = await _source_with_log(
+        db_session,
+        raw_name="Gary Payton II",
+        person_id="1641105",
+        competition=competition,
+        team=team,
+        game=game,
+    )
+    player_count_before = int(
+        await db_session.scalar(select(func.count()).select_from(PlayerMaster)) or 0
+    )
+
+    async def _search_must_not_run(*args: object, **kwargs: object) -> object:
+        raise AssertionError("suffix-only variant matches should bypass hybrid search")
+
+    monkeypatch.setattr(
+        "app.services.summer_league.player_resolution.find_candidate_players",
+        _search_must_not_run,
+    )
+    result = await resolve_source_player(
+        db_session,
+        source_player,
+        create_stub=True,
+    )
+    player_count_after = int(
+        await db_session.scalar(select(func.count()).select_from(PlayerMaster)) or 0
+    )
+
+    assert result.player_id is None
+    assert result.status == SummerLeagueResolutionStatus.VECTOR_CANDIDATE
+    assert result.method == SummerLeagueResolutionStatus.VECTOR_CANDIDATE.value
+    assert result.candidates[0].player_id == father.id
+    assert result.candidates[0].method == "NORMALIZED_SUFFIX_MISMATCH"
+    assert source_player.canonical_player_id is None
+    assert player_count_after == player_count_before
+    review = (
+        await db_session.execute(
+            select(SummerLeaguePlayerResolutionReview).where(
+                SummerLeaguePlayerResolutionReview.source_player_id == source_player.id  # type: ignore[arg-type]
+            )
+        )
+    ).scalar_one()
+    assert review.status == SummerLeagueReviewStatus.PENDING
 
 
 @pytest.mark.asyncio

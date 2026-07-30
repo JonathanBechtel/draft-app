@@ -566,6 +566,7 @@ async def _confirm_resolution(
 def _plan_from_variant_matches(
     *,
     source_player_id: int,
+    source_player_name: str,
     matches: IdentityVariantMatches,
 ) -> SummerLeagueResolutionPlan | None:
     """Build a safe resolution plan from variant-normalized identity matches."""
@@ -574,6 +575,20 @@ def _plan_from_variant_matches(
         return None
     if len(player_ids) == 1:
         player_id = next(iter(player_ids))
+        candidate_name = matches.display_name_for(player_id)
+        if _suffixes_differ(source_player_name, candidate_name):
+            return SummerLeagueResolutionPlan(
+                source_player_id=source_player_id,
+                kind="VECTOR_CANDIDATE",
+                candidates=[
+                    SummerLeagueResolutionCandidate(
+                        player_id=player_id,
+                        display_name=candidate_name,
+                        score=1.0,
+                        method="NORMALIZED_SUFFIX_MISMATCH",
+                    )
+                ],
+            )
         kind: SummerLeagueResolutionPlanKind = (
             "EXACT" if player_id in matches.display_names else "ALIAS"
         )
@@ -596,6 +611,15 @@ def _plan_from_variant_matches(
         kind="VECTOR_CANDIDATE",
         candidates=candidates,
     )
+
+
+def _suffixes_differ(source_name: str, candidate_name: str | None) -> bool:
+    """Return whether the two names carry different recognized suffixes."""
+    source_suffix = parse_player_name(source_name).suffix
+    candidate_suffix = (
+        parse_player_name(candidate_name).suffix if candidate_name else None
+    )
+    return source_suffix != candidate_suffix
 
 
 async def _create_stub_player(
@@ -754,6 +778,7 @@ async def prepare_source_player_resolution(
 
     normalized_plan = _plan_from_variant_matches(
         source_player_id=source_player.id,
+        source_player_name=source_player.raw_player_name,
         matches=await find_variant_identity_matches(
             db,
             source_player.raw_player_name,
@@ -891,6 +916,7 @@ async def apply_source_player_resolution_plan(
     if create_stub and recheck_variant_before_stub:
         late_normalized_plan = _plan_from_variant_matches(
             source_player_id=plan.source_player_id,
+            source_player_name=source_player.raw_player_name,
             matches=await find_variant_identity_matches(
                 db,
                 source_player.raw_player_name,
@@ -950,6 +976,7 @@ async def revalidate_source_player_resolution_plan(
     return (
         _plan_from_variant_matches(
             source_player_id=plan.source_player_id,
+            source_player_name=source_player.raw_player_name,
             matches=await find_variant_identity_matches(
                 db,
                 source_player.raw_player_name,
