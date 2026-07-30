@@ -900,6 +900,7 @@ def _patch_main(
         "venues": [],
         "rebuild_called": False,
         "snapshots_refreshed": False,
+        "snapshot_upserted": False,
         "disposed": False,
         "full_reconcile_flags": [],
         "identity_audit_called": False,
@@ -946,11 +947,13 @@ def _patch_main(
 
     async def _fake_publish_metric_version(
         _db: object, *, version: int, model_version: str
-    ) -> None:
+    ) -> set[int]:
         assert version == 7
         assert model_version == "fake-model"
+        return set()
 
     async def _fake_upsert_snapshots(_db: object, _writes: object) -> None:
+        events["snapshot_upserted"] = True
         return None
 
     async def _fake_refresh_schedule(
@@ -1069,6 +1072,37 @@ async def test_main_with_games_runs_rebuild_once(
             "job": runner.SummerLeaguePipelineJob.FULL_INGESTION,
             "metrics_rebuilt": True,
             "snapshots_materialized": True,
+            "metrics_input_watermark": "unit-input-watermark",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_main_skips_stale_snapshot_when_metric_scope_is_overtaken(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A partial metric flip never publishes a candidate-derived Desk snapshot."""
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "15")
+    events = _patch_main(
+        monkeypatch,
+        venue_results={"15": (True, False)},
+    )
+
+    async def _skipped_publish(_db: object, **_kwargs: object) -> set[int]:
+        return {123}
+
+    monkeypatch.setattr(metrics_gate, "publish_metric_version", _skipped_publish)
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["snapshots_refreshed"] is True
+    assert events["snapshot_upserted"] is False
+    assert events["completion_calls"] == [
+        {
+            "job": runner.SummerLeaguePipelineJob.FULL_INGESTION,
+            "metrics_rebuilt": True,
+            "snapshots_materialized": False,
             "metrics_input_watermark": "unit-input-watermark",
         }
     ]
