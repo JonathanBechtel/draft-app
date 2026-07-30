@@ -45,6 +45,13 @@ The rules
    not a bare ``SUM(<box field>)`` sweep -- see "Why rule 2 is not a bare SUM() sweep"
    below for why that would be scope creep, not precision.
 
+3. **Registry formula-text reappearance (AST, "R4"), added T10 (#741).** Exact
+   reappearance, as string/f-string literal text outside ``app/services/stats/``, of
+   a metric's SQL form the registry already declares via a ``*_sql_text`` function --
+   whether or not the formula carries a designated coefficient at all. See "Why rule
+   2 is not a bare SUM() sweep" below for why this is scoped to *registered* metrics'
+   exact emitted text rather than a generic aggregate-pattern sweep.
+
 Prefer AST over regex, and why
 -------------------------------
 A regex sweep for ``0.44`` finds six hits in this codebase and only one matters --
@@ -93,6 +100,27 @@ names, which is precise enough to catch what Phase 2 actually promised to fix wi
 silently expanding that promise. Recorded here as a deliberate scope boundary, not an
 oversight; a bare-``SUM()`` rule is a reasonable follow-up if those six formulas are
 ever consolidated on their own ticket.
+
+3. **Registry formula-text reappearance (AST, "R4").** T10 (#741) migrated three of
+   those six holdouts -- ``efg_pct``, ``fg3ar``, ``ftr`` -- leaving ``fg_pct``/
+   ``fg3_pct``/``ft_pct`` permanently out of scope (#726's explicit call: plain
+   shooting percentages, never part of the registry's declared formula family). A
+   blanket ``SUM(<box field>)`` sweep is therefore *still* not viable even after
+   T10 -- it would flag those three forever, by design, which is exactly the
+   "unplanned migration or a blanket allowlist" trap the previous section declines.
+   Instead of generalizing rule 2's coefficient match, this rule flags *exact*
+   reappearance of a metric the registry already declares a SQL-text form for:
+   every ``*_sql_text`` function in :mod:`app.services.stats.registry` is called
+   with the two canonical ``box`` shapes (bare column, ``SUM(...)``-wrapped) to
+   produce its row- and aggregate-grain emitted text, and any string/f-string
+   literal outside ``app/services/stats/`` containing one of those exact strings
+   is flagged -- regardless of whether it carries a designated coefficient at all
+   (``fg3ar``/``ftr`` carry none). Because the check is *derived from the
+   registry* rather than a hand-maintained pattern list, it automatically covers
+   every metric added to the registry going forward, and it does not, and cannot,
+   fire on ``fg_pct``/``fg3_pct``/``ft_pct`` -- their field combinations never
+   match a registered ``*_sql_text`` function's output, so they need no allowlist
+   entry at all. See ``_registry_formula_reappearance_violations``.
 
 What this checker found
 -------------------------
@@ -167,10 +195,12 @@ Usage::
 from __future__ import annotations
 
 import ast
+import inspect
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from _discipline import line_has_reasoned_waiver
 
@@ -178,6 +208,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from app.services.stats import registry as _stats_registry  # noqa: E402
 from app.services.stats.registry import frozen_exemptions  # noqa: E402
 
 # The escape-hatch slug; syntax and the mandatory-reason rule live in _discipline.py.
@@ -223,6 +254,22 @@ _DECLARATION_PROSE_KEYWORDS = frozenset(
         "label",
     }
 )
+
+# Rule 3 (T10, #741) -- the two canonical ``box`` shapes every ``*_sql_text`` call
+# site in this codebase uses: a bare column label (row grain) or a ``SUM(...)``-
+# wrapped one (aggregate grain). A handful of call sites additionally wrap in
+# ``COALESCE(...)`` for NULL-safety (e.g. Game Score's sort expression) -- that is
+# a call-site presentation choice, not part of the metric's canonical text, so it
+# is deliberately not included here: this rule exists to catch someone retyping a
+# formula from scratch, which reproduces the plain form these two wraps emit, not
+# a bespoke NULL-coalescing variant.
+_ROW_GRAIN_BOX: Callable[[str], str] = lambda c: c  # noqa: E731
+_AGG_GRAIN_BOX: Callable[[str], str] = lambda c: f"SUM({c})"  # noqa: E731
+
+# A registered formula's shortest emitted text is still well past this; guards
+# against a pathological future metric with a near-empty SQL form matching
+# coincidentally.
+_MIN_REGISTRY_FORMULA_TEXT_LENGTH = 8
 
 # How far past a frozen exemption's cited line to look for the literal it
 # justifies. See module docstring "Vacuity check" for why this is a window and
@@ -525,8 +572,91 @@ def _string_pattern_violations(
     return violations
 
 
+def _registry_sql_text_functions() -> dict[str, Callable[[Callable[[str], str]], str]]:
+    """Every ``*_sql_text`` function declared directly in the registry module.
+
+    Discovered by introspection, not a hand-maintained list, so a future metric's
+    SQL-text form is covered by this rule the moment it is added to
+    :mod:`app.services.stats.registry` -- no companion checker edit required.
+    """
+    return {
+        name: fn
+        for name, fn in inspect.getmembers(_stats_registry, inspect.isfunction)
+        if name.endswith("_sql_text") and fn.__module__ == _stats_registry.__name__
+    }
+
+
+def _known_registry_formula_texts() -> list[tuple[str, str, str]]:
+    """``(function_name, grain, emitted_text)`` for every registered SQL-text form.
+
+    Both canonical ``box`` shapes (see ``_ROW_GRAIN_BOX``/``_AGG_GRAIN_BOX`` above)
+    are evaluated for each function, matching the "one declaration, two grains"
+    convention every ``*_sql_text`` function in the registry follows.
+    """
+    texts: list[tuple[str, str, str]] = []
+    for name, fn in sorted(_registry_sql_text_functions().items()):
+        for grain, box in (("row", _ROW_GRAIN_BOX), ("aggregate", _AGG_GRAIN_BOX)):
+            text = fn(box)
+            if len(text) >= _MIN_REGISTRY_FORMULA_TEXT_LENGTH:
+                texts.append((name, grain, text))
+    return texts
+
+
+def _registry_formula_reappearance_violations(
+    rel: str, tree: ast.AST, parents: dict[ast.AST, ast.AST], lines: list[str]
+) -> list[Violation]:
+    """Rule 3: a registered metric's exact SQL text retyped outside the engine.
+
+    Unlike rule 2, this does not require a designated coefficient -- ``fg3ar``/
+    ``ftr`` have none -- because it matches the registry's own emitted text, not a
+    coefficient pattern. See module docstring "Registry formula-text reappearance".
+    """
+    docstrings = _docstring_nodes(tree)
+    prose = _declaration_prose_string_ids(tree)
+    joined_str_children = _joined_str_child_ids(tree)
+    known_texts = _known_registry_formula_texts()
+    violations: list[Violation] = []
+
+    for node in ast.walk(tree):
+        text: str
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            if (
+                id(node) in docstrings
+                or id(node) in prose
+                or id(node) in joined_str_children
+            ):
+                continue
+            text = node.value
+        elif isinstance(node, ast.JoinedStr):
+            if id(node) in prose:
+                continue
+            text = _joined_str_literal_text(node)
+        else:
+            continue
+
+        for fn_name, grain, formula_text in known_texts:
+            if formula_text not in text:
+                continue
+            if _waived(lines, node, parents):
+                break
+            violations.append(
+                Violation(
+                    rel,
+                    node.lineno,
+                    "R4",
+                    f"raw SQL text duplicates app.services.stats.registry."
+                    f"{fn_name}()'s {grain}-grain formula outside "
+                    f"{_ENGINE_PACKAGE_PREFIX} -- import and call {fn_name} "
+                    "instead of retyping the formula",
+                )
+            )
+            break
+
+    return violations
+
+
 def find_violations(path: Path, source: str) -> list[Violation]:
-    """Return rule-1 and rule-2 violations for one file's source text.
+    """Return rule-1, rule-2, and rule-3 violations for one file's source text.
 
     ``path`` is reported exactly as given (repo-relative for real files; anything a
     test likes, e.g. ``Path("sample.py")``, for a synthetic source) -- independent of
@@ -543,9 +673,11 @@ def find_violations(path: Path, source: str) -> list[Violation]:
 
     parents = _parent_map(tree)
     lines = source.splitlines()
-    return _float_literal_violations(
-        rel, tree, parents, lines
-    ) + _string_pattern_violations(rel, tree, parents, lines)
+    return (
+        _float_literal_violations(rel, tree, parents, lines)
+        + _string_pattern_violations(rel, tree, parents, lines)
+        + _registry_formula_reappearance_violations(rel, tree, parents, lines)
+    )
 
 
 def find_violations_in_file(path: Path) -> list[Violation]:
@@ -654,7 +786,7 @@ def _resolve_exemptions(
 
 
 def check(argv_paths: list[str]) -> list[Violation]:
-    """Run both rules across the target files, apply exemptions, return findings."""
+    """Run all three rules across the target files, apply exemptions, return findings."""
     files = _resolve_target_files(argv_paths)
 
     raw_violations: list[Violation] = []
@@ -688,9 +820,11 @@ def main(argv: list[str] | None = None) -> int:
     for violation in sorted(violations, key=lambda v: (v.path, v.lineno)):
         print(f"  {violation.format()}", file=sys.stderr)
     print(
-        "\nDesignated stat coefficients (0.44, the Game Score weights) may appear "
-        "only under app/services/stats/. Move the formula into that package and "
-        "import it, or -- if this is genuinely a one-off -- justify it inline:\n"
+        "\nDesignated stat coefficients (0.44, the Game Score weights) -- and any "
+        "metric the registry already declares a *_sql_text form for (R4) -- may "
+        "appear only under app/services/stats/. Move the formula into that package "
+        "(or call the existing registry function) and import it, or -- if this is "
+        "genuinely a one-off -- justify it inline:\n"
         "\n    # discipline: stat-constants <reason>\n"
         "\nSee docs/plans/programmatic-code-discipline.md §1.3.",
         file=sys.stderr,

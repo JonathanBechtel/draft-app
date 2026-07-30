@@ -38,9 +38,19 @@ from typing import Callable
 
 import pytest
 
-from app.services.stats.formulas import game_score, ts_pct_ratio, tov_pct_ratio
+from app.services.stats.formulas import (
+    efg_pct_ratio,
+    fg3ar_ratio,
+    ftr_ratio,
+    game_score,
+    ts_pct_ratio,
+    tov_pct_ratio,
+)
 from app.services.stats.inputs import StatInputs
 from app.services.stats.registry import (
+    efg_pct_sql_text,
+    fg3ar_sql_text,
+    ftr_sql_text,
     game_score_sql_text,
     ts_pct_denom_expr,
     ts_pct_sql_text,
@@ -252,3 +262,126 @@ def test_game_score_sql_text_emits_one_formula_across_both_grains() -> None:
             "tov",
         ]
     )
+
+
+# --- efg_pct_sql_text / fg3ar_sql_text / ftr_sql_text (T10, #741) -----------
+#
+# The third instance of the coefficient-grep blind spot: #727 scoped itself to
+# "the nine 0.44 sites" and #735/#730 each caught one more formula the
+# coefficient grep missed (astd_pct, Game Score). eFG% (coefficient 0.5, not
+# 0.44), 3PAr and FTr (no coefficient at all) were the last three raw-SQL
+# formulas in app.services.summer_league_explorer_service for metrics the
+# registry already declares (#724) and the engine already implements (#726).
+# Same byte-identical + parity + one-declaration-two-grains shape as
+# ts_pct_sql_text/game_score_sql_text above.
+
+_SHOOT_BOX = dict(fgm=6.0, fga=15.0, fg3m=2.0, fg3a=5.0, fta=5.0)
+
+
+def _eval_sql_arithmetic(text: str) -> float:
+    """Evaluate a ``NULLIF(...)``-bearing SQL text form as Python arithmetic.
+
+    ``game_score_sql_text`` above has no ``NULLIF`` and evals directly;
+    ``efg_pct_sql_text``/``fg3ar_sql_text``/``ftr_sql_text`` all guard their
+    denominator with ``NULLIF(x, 0)``, which is not a Python builtin. ``_SHOOT_BOX``
+    never drives the guarded operand to 0, so the SQL ``NULLIF`` semantics
+    (pass through unless equal to the sentinel) collapse to just returning ``a``.
+    """
+
+    def NULLIF(a: float, b: float) -> float:  # noqa: N802 -- mirrors the SQL name
+        assert a != b, "test fixture must not exercise the NULLIF guard"
+        return a
+
+    return eval(text, {"NULLIF": NULLIF})  # noqa: S307 -- arithmetic-only fixed text
+
+
+def test_efg_pct_sql_text_row_grain_is_byte_identical_to_the_replaced_literal() -> None:
+    """Row-grain text form matches the exact literal it replaced (verified at
+    HEAD: app/services/summer_league_explorer_service.py:3319/3557 before T10)."""
+    assert efg_pct_sql_text(lambda c: c) == "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)"
+
+
+def test_efg_pct_sql_text_agg_grain_is_byte_identical_to_the_replaced_literal() -> None:
+    """Aggregate-grain text form matches the exact literal it replaced
+    (verified at HEAD: app/services/summer_league_explorer_service.py:2659/2727
+    before T10)."""
+    assert efg_pct_sql_text(lambda c: f"SUM({c})") == (
+        "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)"
+    )
+
+
+def test_fg3ar_sql_text_row_grain_is_byte_identical_to_the_replaced_literal() -> None:
+    """Row-grain text form matches the exact literal it replaced (verified at
+    HEAD: app/services/summer_league_explorer_service.py:3325/3562 before T10)."""
+    assert fg3ar_sql_text(lambda c: c) == "fg3a * 1.0 / NULLIF(fga, 0)"
+
+
+def test_fg3ar_sql_text_agg_grain_is_byte_identical_to_the_replaced_literal() -> None:
+    """Aggregate-grain text form matches the exact literal it replaced
+    (verified at HEAD: app/services/summer_league_explorer_service.py:2733
+    before T10)."""
+    assert (
+        fg3ar_sql_text(lambda c: f"SUM({c})") == "SUM(fg3a) * 1.0 / NULLIF(SUM(fga), 0)"
+    )
+
+
+def test_ftr_sql_text_row_grain_is_byte_identical_to_the_replaced_literal() -> None:
+    """Row-grain text form matches the exact literal it replaced (verified at
+    HEAD: app/services/summer_league_explorer_service.py:3326/3563 before T10)."""
+    assert ftr_sql_text(lambda c: c) == "fta * 1.0 / NULLIF(fga, 0)"
+
+
+def test_ftr_sql_text_agg_grain_is_byte_identical_to_the_replaced_literal() -> None:
+    """Aggregate-grain text form matches the exact literal it replaced
+    (verified at HEAD: app/services/summer_league_explorer_service.py:2734
+    before T10)."""
+    assert ftr_sql_text(lambda c: f"SUM({c})") == "SUM(fta) * 1.0 / NULLIF(SUM(fga), 0)"
+
+
+def test_efg_pct_sql_text_matches_python_efg_pct_ratio() -> None:
+    """Fed a box that renders each field as its string repr, the SQL text form
+    evaluates (as arithmetic) to the same *unscaled* ratio as
+    :func:`efg_pct_ratio` divided by 100 -- the SQL form skips the ``* 100``
+    display scale the same way :func:`astd_pct_sql_text` does."""
+    text = efg_pct_sql_text(lambda name: str(_SHOOT_BOX[name]))
+    got = _eval_sql_arithmetic(text)
+    want = efg_pct_ratio(
+        fgm=_SHOOT_BOX["fgm"], fga=_SHOOT_BOX["fga"], fg3m=_SHOOT_BOX["fg3m"]
+    )
+    assert want is not None
+    assert got * 100.0 == pytest.approx(want)
+
+
+def test_fg3ar_sql_text_matches_python_fg3ar_ratio() -> None:
+    """Fed a box that renders each field as its string repr, the SQL text form
+    evaluates (as arithmetic) to the same value as :func:`fg3ar_ratio`."""
+    text = fg3ar_sql_text(lambda name: str(_SHOOT_BOX[name]))
+    got = _eval_sql_arithmetic(text)
+    want = fg3ar_ratio(fg3a=_SHOOT_BOX["fg3a"], fga=_SHOOT_BOX["fga"])
+    assert want is not None
+    assert got == pytest.approx(want)
+
+
+def test_ftr_sql_text_matches_python_ftr_ratio() -> None:
+    """Fed a box that renders each field as its string repr, the SQL text form
+    evaluates (as arithmetic) to the same value as :func:`ftr_ratio`."""
+    text = ftr_sql_text(lambda name: str(_SHOOT_BOX[name]))
+    got = _eval_sql_arithmetic(text)
+    want = ftr_ratio(fga=_SHOOT_BOX["fga"], fta=_SHOOT_BOX["fta"])
+    assert want is not None
+    assert got == pytest.approx(want)
+
+
+def test_efg_fg3ar_ftr_sql_text_emit_one_formula_across_both_grains() -> None:
+    """One declaration per metric, two grains: the only difference is how
+    ``box`` wraps each field name, never a second copy of the formula."""
+    for fn, expected_fields in (
+        (efg_pct_sql_text, ["fgm", "fg3m", "fga"]),
+        (fg3ar_sql_text, ["fg3a", "fga"]),
+        (ftr_sql_text, ["fta", "fga"]),
+    ):
+        row_fields: list[str] = []
+        agg_fields: list[str] = []
+        fn(_recording_string_box(row_fields))
+        fn(_recording_string_box(agg_fields))
+        assert row_fields == agg_fields == expected_fields

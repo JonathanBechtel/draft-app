@@ -243,6 +243,109 @@ class TestStringPatternRule:
         assert found == []
 
 
+class TestRegistryFormulaReappearanceRule:
+    """Rule 3 (R4, T10/#741): exact reappearance of a registry-declared metric's
+    SQL text, whether or not it carries a designated coefficient.
+
+    The blocker #730 declined a generic ``SUM(<box field>)`` sweep over: once
+    efg_pct/fg3ar/ftr moved into the registry (T10), retyping their SQL text
+    outside app/services/stats/ is exactly the shape this rule exists to catch.
+    fg_pct/fg3_pct/ft_pct remain permanently un-registered (#726) and must stay
+    silent -- proving the rule is derived from the registry, not a blanket sweep.
+    """
+
+    def test_fg3ar_row_grain_text_retyped_outside_the_package_is_flagged(self):
+        """The exact shape T10 migrated: a plain string duplicating fg3ar_sql_text."""
+        found = _violations(
+            """
+            _pct_exprs = {
+                "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",
+            }
+            """
+        )
+        assert len(found) == 1
+        assert found[0].code == "R4"
+        assert "fg3ar_sql_text" in found[0].message
+
+    def test_ftr_aggregate_grain_text_retyped_outside_the_package_is_flagged(self):
+        found = _violations(
+            """
+            _pct_exprs = {
+                "ftr": "SUM(fta) * 1.0 / NULLIF(SUM(fga), 0)",
+            }
+            """
+        )
+        assert len(found) == 1
+        assert found[0].code == "R4"
+        assert "ftr_sql_text" in found[0].message
+
+    def test_efg_pct_text_interpolated_via_box_calls_is_not_flagged(self):
+        """``box(...)`` calls are interpolations, not literal text: the joined
+        literal segments (``" + 0.5 * "``, ``") / NULLIF("``, ...) never contain a
+        whole registered formula string on their own. This is the *correct*
+        box-callable shape (matching efg_pct_sql_text itself), not a duplicate --
+        rule 3 only fires on a fixed-field-name literal like T10's ten sites had."""
+        found = _violations(
+            """
+            def efg_sql(box):
+                return f"({box('fgm')} + 0.5 * {box('fg3m')}) / NULLIF({box('fga')}, 0)"
+            """
+        )
+        assert found == []
+
+    def test_fg_pct_text_is_never_flagged(self):
+        """fg_pct is permanently out of scope (#726) -- no registered *_sql_text
+        function emits its text, so no allowlist entry is needed to keep it quiet."""
+        found = _violations(
+            """
+            _pct_exprs = {
+                "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
+            }
+            """
+        )
+        assert found == []
+
+    def test_calling_the_registry_function_is_not_flagged(self):
+        """The correct call-site shape -- calling fg3ar_sql_text -- is code, not a
+        string literal duplicating its output, so rule 3 does not see it at all."""
+        found = _violations(
+            """
+            from app.services.stats.registry import fg3ar_sql_text
+
+            _pct_exprs = {
+                "fg3ar": fg3ar_sql_text(lambda c: c),
+            }
+            """
+        )
+        assert found == []
+
+    def test_docstring_quoting_the_formula_is_not_flagged(self):
+        found = _violations(
+            '''
+            def f():
+                """Emits ``fg3a * 1.0 / NULLIF(fga, 0)`` -- fg3ar's raw form."""
+                return 1
+            '''
+        )
+        assert found == []
+
+    def test_waiver_silences_a_registry_reappearance_violation(self):
+        found = _violations(
+            """
+            _pct_exprs = {
+                "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",  # discipline: stat-constants legacy shim, see #999
+            }
+            """
+        )
+        assert found == []
+
+    def test_known_registry_formula_texts_cover_the_t10_metrics(self):
+        """Sanity-checks the registry-introspection helper actually discovers the
+        three T10 functions (plus the pre-existing ones), not just an empty list."""
+        names = {name for name, _grain, _text in checker._known_registry_formula_texts()}
+        assert {"efg_pct_sql_text", "fg3ar_sql_text", "ftr_sql_text"} <= names
+
+
 class TestPackageScoping:
     """The same literal inside app/services/stats/ is not scanned at all."""
 

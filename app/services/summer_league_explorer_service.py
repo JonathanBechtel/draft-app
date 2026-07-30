@@ -95,6 +95,9 @@ from app.services.stats.registry import (
     RollupClass,
     astd_pct_denom_expr,
     astd_pct_sql_text,
+    efg_pct_sql_text,
+    fg3ar_sql_text,
+    ftr_sql_text,
     game_score_sql_text,
     rollup_class_matches,
     ts_pct_denom_expr,
@@ -2656,7 +2659,7 @@ def _player_sort_expr(sort_col: str, mode: str) -> Any:
     """
     # Percentage stats — mode-independent NULLIF-guarded ratio expressions.
     _pct_exprs: dict[str, str] = {
-        "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
+        "efg_pct": efg_pct_sql_text(lambda c: f"SUM({c})"),
         "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
         "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
         "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
@@ -2724,14 +2727,14 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
     scope sort last (NULL), matching the None display value.
     """
     _pct_exprs: dict[str, str] = {
-        "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
+        "efg_pct": efg_pct_sql_text(lambda c: f"SUM({c})"),
         "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
         "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
         "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
         "ts_pct": ts_pct_sql_text(lambda c: f"SUM({c})"),
         # Attempt rates recombine from summed box (same ratio the cell displays).
-        "fg3ar": "SUM(fg3a) * 1.0 / NULLIF(SUM(fga), 0)",
-        "ftr": "SUM(fta) * 1.0 / NULLIF(SUM(fga), 0)",
+        "fg3ar": fg3ar_sql_text(lambda c: f"SUM({c})"),
+        "ftr": ftr_sql_text(lambda c: f"SUM({c})"),
         # Assisted share of made FGs from summed PBP counts.
         "astd_pct": astd_pct_sql_text(lambda c: f"SUM({c})"),
     }
@@ -3316,14 +3319,14 @@ async def _query_players_per_competition(
     # ``minutes`` is stored in minutes; sec = minutes * 60, pace_sec = pace *
     # minutes * 60 (pace is possessions/48); rows without pace sort last in per_100.
     _pc_pct_exprs: dict[str, str] = {
-        "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
+        "efg_pct": efg_pct_sql_text(lambda c: c),
         "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
         "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
         "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
         "ts_pct": ts_pct_sql_text(lambda c: c),
         # Attempt rates recombine from the row's box (matches the displayed ratio).
-        "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",
-        "ftr": "fta * 1.0 / NULLIF(fga, 0)",
+        "fg3ar": fg3ar_sql_text(lambda c: c),
+        "ftr": ftr_sql_text(lambda c: c),
         # Assisted share of made FGs from the row's PBP counts.
         "astd_pct": astd_pct_sql_text(lambda c: c),
     }
@@ -3554,13 +3557,13 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
 
     # Percentage sort expressions operate on raw per-game-log column labels.
     _pg_pct_exprs: dict[str, str] = {
-        "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
+        "efg_pct": efg_pct_sql_text(lambda c: c),
         "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
         "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
         "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
         "ts_pct": ts_pct_sql_text(lambda c: c),
-        "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",
-        "ftr": "fta * 1.0 / NULLIF(fga, 0)",
+        "fg3ar": fg3ar_sql_text(lambda c: c),
+        "ftr": ftr_sql_text(lambda c: c),
         "tov_pct": tov_pct_sql_text(lambda c: c),
         "min": "sec",
         "gp": "1",  # every row is 1 game; stable but well-defined

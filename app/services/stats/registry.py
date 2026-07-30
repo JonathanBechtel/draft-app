@@ -336,7 +336,7 @@ _SHARED_RATES: tuple[MetricDefinition, ...] = (
         metric_family=MetricFamily.SHARED_RATE,
         unit=MetricUnit.PERCENT,
         denominator=(
-            "field-goal attempts + 0.44 * free-throw attempts + turnovers; " "0 -> 0.0"
+            "field-goal attempts + 0.44 * free-throw attempts + turnovers; 0 -> 0.0"
         ),
         definition_version=METRIC_REGISTRY_VERSION,
         requires=("tov", "fga", "fta"),
@@ -629,9 +629,41 @@ def astd_pct_sql_text(box: Callable[[str], str]) -> str:
     for sorting -- sort order is invariant to a constant multiplier -- the
     same convention :func:`ts_pct_sql_text` uses.
     """
-    return (
-        f"{box('ast_fgm')} * 1.0 / " f"NULLIF({box('ast_fgm')} + {box('unast_fgm')}, 0)"
-    )
+    return f"{box('ast_fgm')} * 1.0 / NULLIF({box('ast_fgm')} + {box('unast_fgm')}, 0)"
+
+
+def efg_pct_sql_text(box: Callable[[str], str]) -> str:
+    """efg_pct's raw-SQL-text sort form: ``(FGM + 0.5*FG3M) / NULLIF(FGA, 0)``.
+
+    Matches :func:`app.services.stats.formulas.efg_pct_ratio` exactly, unscaled
+    (no ``* 100``) because its call sites (the Explorer's ``ORDER BY`` sort
+    expressions) only need the value for sorting -- sort order is invariant to
+    a constant multiplier -- the same convention :func:`astd_pct_sql_text`
+    uses. ``box`` wraps a column label in ``SUM(...)`` for the aggregate grain
+    or leaves it bare for row grain -- the same indirection
+    :func:`ts_pct_sql_text` uses.
+    """
+    return f"({box('fgm')} + 0.5 * {box('fg3m')}) / NULLIF({box('fga')}, 0)"
+
+
+def fg3ar_sql_text(box: Callable[[str], str]) -> str:
+    """fg3ar's raw-SQL-text sort form: ``FG3A * 1.0 / NULLIF(FGA, 0)``.
+
+    Matches :func:`app.services.stats.formulas.fg3ar_ratio` exactly. ``box``
+    wraps a column label in ``SUM(...)`` for the aggregate grain or leaves it
+    bare for row grain -- the same indirection :func:`ts_pct_sql_text` uses.
+    """
+    return f"{box('fg3a')} * 1.0 / NULLIF({box('fga')}, 0)"
+
+
+def ftr_sql_text(box: Callable[[str], str]) -> str:
+    """FTr's raw-SQL-text sort form: ``FTA * 1.0 / NULLIF(FGA, 0)``.
+
+    Matches :func:`app.services.stats.formulas.ftr_ratio` exactly. ``box``
+    wraps a column label in ``SUM(...)`` for the aggregate grain or leaves it
+    bare for row grain -- the same indirection :func:`ts_pct_sql_text` uses.
+    """
+    return f"{box('fta')} * 1.0 / NULLIF({box('fga')}, 0)"
 
 
 def game_score_sql_text(box: Callable[[str], str]) -> str:
