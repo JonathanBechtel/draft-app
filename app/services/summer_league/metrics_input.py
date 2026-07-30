@@ -15,9 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
+    SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
     SummerLeagueRawFile,
     SummerLeagueSourcePlayer,
+    SummerLeagueTeamGameLog,
 )
 from app.schemas.summer_league_events import SummerLeagueShotEvent
 
@@ -118,9 +120,9 @@ async def calculate_metrics_input_watermark(db: AsyncSession) -> str:
     player mappings and game state are included separately because resolution
     and scoreboard ingest can change metric eligibility without changing a raw
     file. Competition identity covers the year/venue dimensions persisted by
-    the rebuild. Normalized player game logs and shot events are included as
-    one-row database aggregates so their values are covered without transferring
-    every high-volume row into the hourly runner.
+    the rebuild. All normalized metric fact tables are included as one-row
+    database aggregates so their values are covered without transferring every
+    high-volume row into the hourly runner.
     """
     digest = hashlib.sha256()
     digest.update(METRICS_INPUT_WATERMARK_VERSION.encode())
@@ -189,5 +191,17 @@ async def calculate_metrics_input_watermark(db: AsyncSession) -> str:
         digest,
         label="shot_events",
         model=SummerLeagueShotEvent,
+    )
+    await _add_table_content_summary(
+        db,
+        digest,
+        label="team_game_logs",
+        model=SummerLeagueTeamGameLog,
+    )
+    await _add_table_content_summary(
+        db,
+        digest,
+        label="play_by_play_events",
+        model=SummerLeaguePlayByPlayEvent,
     )
     return digest.hexdigest()

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import pytest
@@ -24,7 +25,7 @@ class _FakeResult:
 
 
 class _FakeDb:
-    """Return the six prepared watermark relations in query order."""
+    """Return the eight prepared watermark relations in query order."""
 
     def __init__(self, relations: list[list[tuple[Any, ...]]]) -> None:
         self._relations = list(relations)
@@ -40,10 +41,17 @@ def _relations(
     raw_sha: str = "raw-sha",
     player_id: int | None = 7,
     game_date: str = "2026-07-10",
-    player_game_log_hash: str = "player-game-log-hash",
-    shot_event_hash: str = "shot-event-hash",
+    relation_hashes: Mapping[str, str] | None = None,
 ) -> list[list[tuple[Any, ...]]]:
     """Build a minimal complete set of stable metrics input rows."""
+    hashes = {
+        "player_game_log": "player-game-log-hash",
+        "shot_event": "shot-event-hash",
+        "team_game_log": "team-game-log-hash",
+        "pbp_event": "pbp-event-hash",
+    }
+    if relation_hashes:
+        hashes.update(relation_hashes)
     return [
         [("2026/15/game.json", raw_sha, "PARSED", 25)],
         [("1640001", player_id, "EXACT")],
@@ -60,8 +68,10 @@ def _relations(
             )
         ],
         [(1, 2026, "las_vegas")],
-        [(1, player_game_log_hash)],
-        [(1, shot_event_hash)],
+        [(1, hashes["player_game_log"])],
+        [(1, hashes["shot_event"])],
+        [(1, hashes["team_game_log"])],
+        [(1, hashes["pbp_event"])],
     ]
 
 
@@ -89,10 +99,22 @@ async def test_metrics_input_watermark_advances_for_raw_or_identity_changes() ->
         _FakeDb(_relations(game_date="2026-07-11"))
     )
     game_log_changed = await calculate_metrics_input_watermark(  # type: ignore[arg-type]
-        _FakeDb(_relations(player_game_log_hash="changed-player-game-log-hash"))
+        _FakeDb(
+            _relations(
+                relation_hashes={"player_game_log": "changed-player-game-log-hash"}
+            )
+        )
     )
     shot_event_changed = await calculate_metrics_input_watermark(  # type: ignore[arg-type]
-        _FakeDb(_relations(shot_event_hash="changed-shot-event-hash"))
+        _FakeDb(_relations(relation_hashes={"shot_event": "changed-shot-event-hash"}))
+    )
+    team_game_log_changed = await calculate_metrics_input_watermark(  # type: ignore[arg-type]
+        _FakeDb(
+            _relations(relation_hashes={"team_game_log": "changed-team-game-log-hash"})
+        )
+    )
+    pbp_event_changed = await calculate_metrics_input_watermark(  # type: ignore[arg-type]
+        _FakeDb(_relations(relation_hashes={"pbp_event": "changed-pbp-event-hash"}))
     )
 
     assert raw_changed != baseline
@@ -100,16 +122,18 @@ async def test_metrics_input_watermark_advances_for_raw_or_identity_changes() ->
     assert schedule_changed != baseline
     assert game_log_changed != baseline
     assert shot_event_changed != baseline
+    assert team_game_log_changed != baseline
+    assert pbp_event_changed != baseline
 
 
 @pytest.mark.asyncio
 async def test_out_of_band_game_log_mutation_changes_gate_watermark() -> None:
     """A repaired normalized game-log row makes the next gate rebuild."""
     before_repair = await calculate_metrics_input_watermark(  # type: ignore[arg-type]
-        _FakeDb(_relations(player_game_log_hash="before-repair"))
+        _FakeDb(_relations(relation_hashes={"player_game_log": "before-repair"}))
     )
     after_repair = await calculate_metrics_input_watermark(  # type: ignore[arg-type]
-        _FakeDb(_relations(player_game_log_hash="after-repair"))
+        _FakeDb(_relations(relation_hashes={"player_game_log": "after-repair"}))
     )
 
     # The rebuild gate compares these durable fingerprints; a changed value
