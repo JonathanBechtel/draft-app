@@ -132,6 +132,25 @@ async def test_blocked_on_relaxed_suffix_variant(db_session: AsyncSession) -> No
 
 
 @pytest.mark.asyncio
+async def test_blocked_on_relaxed_vi_suffix_variant(db_session: AsyncSession) -> None:
+    """The supported VI suffix also routes a suffix-less source to review."""
+    existing = await _add_player(
+        db_session, "John", "Doe", suffix="VI", display_name="John Doe VI"
+    )
+
+    result = await create_stub_player(db_session, "John Doe")
+
+    assert result.outcome == "ambiguous"
+    assert result.candidates is not None
+    assert {candidate.player_id for candidate in result.candidates} == {existing.id}
+
+    count = (
+        await db_session.execute(select(func.count()).select_from(PlayerMaster))
+    ).scalar_one()
+    assert count == 1
+
+
+@pytest.mark.asyncio
 async def test_blocked_on_alias_match(db_session: AsyncSession) -> None:
     """A name matching a PlayerAlias must block creation."""
     existing = await _add_player(db_session, "Dylan", "Harper")

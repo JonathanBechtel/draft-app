@@ -15,7 +15,7 @@ from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
 
 _NAME_SUFFIX_RE = re.compile(
-    r"\s+(jr|junior|sr|senior|ii|iii|iv|v)\s*$",
+    r"\s+(jr|junior|sr|senior|ii|iii|iv|v|vi)\s*$",
     re.IGNORECASE,
 )
 _JOINING_PUNCTUATION = frozenset({"'", "’", "ʼ", "`", "."})
@@ -28,6 +28,7 @@ _SUFFIX_CANONICAL = {
     "iii": "iii",
     "iv": "iv",
     "v": "v",
+    "vi": "vi",
 }
 
 

@@ -48,6 +48,7 @@ class _FakeDb:
         ("Jean-Luc O’Neal III", "jean luc oneal"),
         ("Salaün", "salaun"),
         ("John A. Smith", "john smith"),
+        ("John Doe VI", "john doe"),
     ],
 )
 def test_normalize_player_identity_name_folds_supported_variants(
@@ -149,6 +150,12 @@ async def test_identity_index_skips_empty_rows_and_names() -> None:
 def test_empty_identity_suffix_is_not_a_suffix() -> None:
     """Blank names have no suffix evidence to distinguish candidates."""
     assert player_identity_suffix("") is None
+
+
+def test_identity_suffixes_distinguish_supported_vi_namesakes() -> None:
+    """The sixth-generation suffix stays reviewable when omitted by a source."""
+    assert player_identity_suffix("John Doe VI") == "vi"
+    assert player_identity_suffix("John Doe") is None
 
 
 def test_resolve_variant_identity_match_accepts_diacritic_only_single_match() -> None:
