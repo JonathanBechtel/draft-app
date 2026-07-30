@@ -5,8 +5,14 @@ TOV%, Game Score, per-36/per-100 scaling, and the percentile/baseline normalizer
 today implemented three-to-eight times each across Python and hand-written SQL
 (``docs/plans/summer-league-simplification-backlog.md`` bucket 1).
 
-It is deliberately empty today. Phase 2 of ``docs/plans/summer-league-remediation-roadmap.md``
-lifts the engine here behind a golden-number parity harness.
+Phase 2 of ``docs/plans/summer-league-remediation-roadmap.md`` lifted the engine here behind
+a golden-number parity harness; the package is populated and the consolidation has landed.
+The modules below are the whole public surface: :mod:`~app.services.stats.inputs` (neutral
+DTOs), :mod:`~app.services.stats.formulas` (pure formulas), :mod:`~app.services.stats.registry`
+(one declaration per metric, including the SQLAlchemy-expression and raw-SQL-text forms the
+Explorer pushes down), :mod:`~app.services.stats.scaling` (per-36 / per-100),
+:mod:`~app.services.stats.percentiles` (forward and reverse interpolation), and
+:mod:`~app.services.stats.capabilities` (``requires`` ∩ ``provides``).
 
 **Contract** (enforced by import-linter; see ``[tool.importlinter]`` in ``pyproject.toml``):
 nothing here may import ``app.services.summer_league*`` or ``app.schemas.summer_league*``. The
@@ -14,7 +20,7 @@ engine takes neutral inputs and returns numbers; Summer League is one caller, no
 The contract exists before the code so the engine cannot acquire a spoke dependency on its
 first day — see ``docs/plans/programmatic-code-discipline.md`` §3.1.
 
-**T2 (Phase 2, #722) populates this package** by lifting the pure engine out of
+**T2 (Phase 2, #722) populated this package** by lifting the pure engine out of
 ``app.services.summer_league.metrics`` — a pure move, zero behavior change, pinned by the
 golden-number parity harness in ``tests/unit/test_stat_engine_parity.py`` and
 ``tests/integration/test_stat_engine_parity.py``:

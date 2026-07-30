@@ -23,11 +23,13 @@ from __future__ import annotations
 
 import pytest
 
+from app.services.stats.formulas import ts_pct_ratio, tov_pct_ratio
 from app.services.summer_league.metrics import (
     Box,
     LeagueContext,
     PlayerSeason,
     compute_metrics,
+    compute_uper,
     game_score,
 )
 
@@ -122,6 +124,70 @@ def test_recombinable_metrics_match_hand_computed_literals() -> None:
     assert m["fg3ar"] == 0.3
     assert m["ftr"] == 0.2
     assert m["gmsc"] == 8.5
+
+
+def test_recombinable_rates_match_unrounded_hand_computed_literals() -> None:
+    """The same rates, pinned *unrounded*, so a small coefficient edit cannot hide.
+
+    Added by the Phase 2 QA gate (#731). The 1-decimal pins above are the
+    user-visible values, but they are not all sensitive enough to be a witness
+    for the coefficient they contain: with fga=40/fta=8/tov=8, changing 0.44 to
+    0.45 moves TOV% from 15.5279 to 15.5039, and *both* still round to ``15.5``.
+    TS% happens to cross a rounding boundary (55.1 -> 55.0) and so did catch it;
+    TOV% did not, verified by perturbation. These 4-decimal pins give the
+    free-throw coefficient a witness on both metrics rather than one.
+
+    Do not "fix" a failure here by recomputing from the engine — see the module
+    docstring.
+    """
+    assert ts_pct_ratio(pts=48.0, fga=40.0, fta=8.0) == pytest.approx(
+        55.14705882352941, abs=1e-9
+    )
+    assert tov_pct_ratio(fga=40.0, fta=8.0, tov=8.0) == pytest.approx(
+        15.527950310559005, abs=1e-9
+    )
+
+
+def test_uper_matches_hand_computed_literal_for_a_real_pool_context() -> None:
+    """``compute_uper`` against a non-degenerate pool, pinned to a captured literal.
+
+    Added by the Phase 2 QA gate (#731). T2 physically lifted ``compute_uper``
+    out of ``app/services/summer_league/metrics.py`` into
+    ``app/services/stats/formulas.py``, and a transcription slip in that move is
+    exactly what this harness exists to catch — but no test pinned a PER *value*.
+    The integration leg's ``EXPECTED_PER = 15.0`` cannot serve: every player in
+    that fixture has an identical box line, so each player's aPER equals the
+    pool scalar and PER standardizes to 15.0 for *any* uPER function whatsoever.
+
+    The pool constants below are derived (``PoolContext.finalize``) from a
+    league box that is deliberately not a multiple of the player's, so factor,
+    VOP and DRB% are all non-trivial (0.6059 / 1.0296 / 0.7333) and every term
+    of the formula contributes. The expected value was captured from the engine
+    at the Phase 2 QA gate and reviewed once; it is the pin, not a derivation.
+    """
+    team = Box(
+        mp=960.0, gp=4, pts=320.0, fgm=120.0, fga=260.0, fg3m=30.0, fg3a=90.0,
+        ftm=50.0, fta=70.0, oreb=40.0, dreb=110.0, reb=150.0, ast=70.0,
+        stl=30.0, blk=20.0, tov=60.0, pf=80.0,
+    )
+    league = Box(
+        mp=7680.0, gp=32, pts=2560.0, fgm=960.0, fga=2080.0, fg3m=240.0,
+        fg3a=720.0, ftm=400.0, fta=560.0, oreb=320.0, dreb=880.0, reb=1200.0,
+        ast=560.0, stl=240.0, blk=160.0, tov=480.0, pf=640.0,
+    )
+    ctx = LeagueContext(
+        competition_id=1,
+        year=2025,
+        venue="las_vegas",
+        lg=league,
+        poss=2400.0,
+        team_games=8,
+        adv_eligible=True,
+    )
+    ctx.finalize()
+    assert compute_uper(_PLAYER_BOX, team, ctx) == pytest.approx(
+        0.2718424065434483, abs=1e-9
+    )
 
 
 def test_ineligible_pool_leaves_pool_recalibrated_composites_null() -> None:

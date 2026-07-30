@@ -159,6 +159,103 @@ class TestGameScoreCooccurrenceRule:
         assert found == []
 
 
+class TestEfgThreePointWeightRule:
+    """Rule 1c: eFG%'s 0.5 is flagged only against a three-point-makes operand.
+
+    Added by the Phase 2 QA gate (#731). 0.5 is far too common a float to flag
+    on sight, so the rule is keyed to the operand it multiplies. It exists
+    because T6 bound the Explorer's raw-SQL-text eFG% forms to the registry but
+    left its three SQLAlchemy-expression filter sites hand-written: rule 1 was
+    blind (0.5 was not designated) and rule 4 was blind (it matches only
+    *string* literals), so the engine and the filter could silently disagree on
+    the weight with the whole suite green. Reproduced before this rule existed.
+    """
+
+    def test_plain_python_efg_numerator_is_flagged(self):
+        """The bare-arithmetic shape: `0.5 * fg3m` inside an eFG% numerator."""
+        found = _violations(
+            """
+            def efg(fgm, fg3m, fga):
+                return 100.0 * (fgm + 0.5 * fg3m) / fga
+            """
+        )
+        assert len(found) == 1
+        assert found[0].code == "R1"
+        assert "eFG%" in found[0].message
+
+    def test_sqlalchemy_expression_shape_is_flagged(self):
+        """The exact notation that slipped past T6 -- attribute access, not a name."""
+        found = _violations(
+            """
+            def where(ps, func):
+                return 100.0 * (ps.fgm + 0.5 * ps.fg3m) / func.nullif(ps.fga, 0)
+            """
+        )
+        assert len(found) == 1
+        assert found[0].code == "R1"
+
+    def test_aggregate_grain_func_sum_shape_is_flagged(self):
+        """The career-grain notation: the operand is wrapped in ``func.sum(...)``."""
+        found = _violations(
+            """
+            def having(ps, func):
+                return (func.sum(ps.fgm) + 0.5 * func.sum(ps.fg3m))
+            """
+        )
+        assert len(found) == 1
+
+    def test_getattr_indirection_shape_is_flagged(self):
+        """``getattr(table, "fg3m")`` -- the grain indirection the registry uses."""
+        found = _violations(
+            """
+            def build(table):
+                return getattr(table, "fgm") + 0.5 * getattr(table, "fg3m")
+            """
+        )
+        assert len(found) == 1
+
+    def test_reversed_operand_order_is_flagged(self):
+        """``fg3m * 0.5`` is the same formula written the other way round."""
+        found = _violations(
+            """
+            def efg(fgm, fg3m, fga):
+                return (fgm + fg3m * 0.5) / fga
+            """
+        )
+        assert len(found) == 1
+
+    def test_half_against_an_unrelated_operand_is_not_flagged(self):
+        """0.5 is an ordinary scale factor -- no three-point operand, no violation."""
+        found = _violations(
+            """
+            def midpoint(low, high):
+                return low + 0.5 * (high - low)
+            """
+        )
+        assert found == []
+
+    def test_half_added_rather_than_multiplied_is_not_flagged(self):
+        """Only the multiplicative shape is the eFG% weight."""
+        found = _violations(
+            """
+            def f(fg3m):
+                return fg3m + 0.5
+            """
+        )
+        assert found == []
+
+    def test_an_inline_waiver_suppresses_it(self):
+        """The documented escape hatch works here as it does for the other rules."""
+        found = _violations(
+            """
+            def efg(fgm, fg3m, fga):
+                # discipline: stat-constants one-off, not the shared eFG% path
+                return (fgm + 0.5 * fg3m) / fga
+            """
+        )
+        assert found == []
+
+
 class TestStringPatternRule:
     """Rule 2: designated-coefficient arithmetic embedded in string/f-string text.
 

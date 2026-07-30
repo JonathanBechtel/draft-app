@@ -227,6 +227,21 @@ _TS_TOV_COEFFICIENT = 0.44
 _GAME_SCORE_WEIGHTS = frozenset({0.4, 0.7, 0.3})
 _GAME_SCORE_MIN_COOCCURRENCE = 3
 
+# Rule 1c -- eFG%'s half-credit-for-a-three weight
+# (app.services.stats.formulas.efg_pct_ratio, app.services.stats.registry.
+# efg_pct_num_expr). 0.5 is far too common a float to flag on sight, so it is
+# designated only when multiplied by a three-point-makes operand -- the shape
+# `0.5 * fg3m` / `fg3m * 0.5`, in Python arithmetic or a SQLAlchemy expression.
+#
+# Added by the Phase 2 QA gate (#731). T6 bound the Explorer's raw-SQL-text eFG%
+# forms to the registry but left its three SQLAlchemy-expression filter sites
+# hand-written; rule 1 was blind (0.5 was not designated) and rule 4 was blind
+# (it only matches *string* literals), so the engine and the filter could
+# silently disagree on the weight. Verified reproducible before this rule
+# existed.
+_EFG_THREE_POINT_WEIGHT = 0.5
+_EFG_THREE_POINT_OPERAND_NAMES = frozenset({"fg3m", "fg_3m", "three_pm", "fg3_made"})
+
 # Rule 2 -- the same designated coefficients, adjacent to `*`, inside string content.
 _DESIGNATED_COEFFICIENT_TOKENS = ("0.44", "0.4", "0.7", "0.3")
 _COEFF_MULT_RE = re.compile(
@@ -490,13 +505,72 @@ def _game_score_weight_violations(
     return violations
 
 
+def _mentions_three_point_makes(node: ast.AST) -> bool:
+    """True if ``node`` reads a three-point-makes field by any of its names.
+
+    Covers the bare name (``fg3m``), the attribute access a SQLAlchemy
+    expression uses (``ps.fg3m``), and the ``getattr(table, "fg3m")`` /
+    ``func.sum(...)`` wrappers the Explorer's grain indirection builds.
+    """
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and child.id in _EFG_THREE_POINT_OPERAND_NAMES:
+            return True
+        if (
+            isinstance(child, ast.Attribute)
+            and child.attr in _EFG_THREE_POINT_OPERAND_NAMES
+        ):
+            return True
+        if (
+            isinstance(child, ast.Constant)
+            and isinstance(child.value, str)
+            and child.value in _EFG_THREE_POINT_OPERAND_NAMES
+        ):
+            return True
+    return False
+
+
+def _efg_three_point_weight_violations(
+    rel: str, tree: ast.AST, parents: dict[ast.AST, ast.AST], lines: list[str]
+) -> list[Violation]:
+    """Rule 1c: eFG%'s 0.5, flagged only against a three-point-makes operand."""
+    violations: list[Violation] = []
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, float)
+            and node.value == _EFG_THREE_POINT_WEIGHT
+        ):
+            continue
+        parent = parents.get(node)
+        if not (isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.Mult)):
+            continue
+        other = parent.right if parent.left is node else parent.left
+        if not _mentions_three_point_makes(other):
+            continue
+        if _waived(lines, node, parents):
+            continue
+        violations.append(
+            Violation(
+                rel,
+                node.lineno,
+                "R1",
+                f"designated stat coefficient {node.value!r} outside "
+                f"{_ENGINE_PACKAGE_PREFIX} (eFG% three-point half-credit weight; "
+                "call app.services.stats.registry.efg_pct_num_expr instead)",
+            )
+        )
+    return violations
+
+
 def _float_literal_violations(
     rel: str, tree: ast.AST, parents: dict[ast.AST, ast.AST], lines: list[str]
 ) -> list[Violation]:
     """Rule 1: designated coefficients as bare Python float literals."""
-    return _ts_tov_coefficient_violations(
-        rel, tree, parents, lines
-    ) + _game_score_weight_violations(rel, tree, parents, lines)
+    return (
+        _ts_tov_coefficient_violations(rel, tree, parents, lines)
+        + _game_score_weight_violations(rel, tree, parents, lines)
+        + _efg_three_point_weight_violations(rel, tree, parents, lines)
+    )
 
 
 def _joined_str_literal_text(node: ast.JoinedStr) -> str:

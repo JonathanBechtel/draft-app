@@ -297,6 +297,39 @@ conditions so neither gets re-derived.
   compute on an empty stage until roughly mid-2027.
   **Trigger:** Phase 2 closes, **or** a live event lands on the calendar sooner. Whichever first.
 
+### Consolidation residue found at the Phase 2 QA gate (#731, 2026-07-30)
+
+The gate closed the one finding that broke an exit criterion — the Explorer's three
+SQLAlchemy-expression eFG% filter sites, which restated the half-credit weight outside the
+engine and were demonstrated to drift silently from it (fixed: `efg_pct_num_expr` plus
+confinement rule R1c). A wider metric-by-metric sweep of `app/` found further restatements of
+registry-declared formulas that were **outside every Phase 2 ticket's file list** and that
+change no number today. They are recorded here rather than fixed at the gate, because each is a
+behavior-risk edit and Phase 2's acceptance bar is "no user-visible number changed":
+
+- **Per-36 / per-100 scaling, three more call sites.** T4 (#725) consolidated the Explorer's
+  three sites into `app.services.stats.scaling`, but `summer_league_stats_service.py:212-216`,
+  `summer_league_leaders_service.py:589-599`, and `summer_league/desk_read.py:1616-1622` each
+  still build their own `36.0 / minutes` and `100.0 / poss` factors. `desk_read._pooled_possessions`
+  says so in its own docstring ("Mirrors the denominator …").
+- **`ws40` re-derived** at `summer_league_metrics_service.py:260` and `:818` (and at 2 decimals,
+  where the engine rounds to 3).
+- **`vorp` / `vorp82`** computed at `summer_league/metrics.py:349-355` rather than in the engine;
+  the `48*82` and `VORP_REPLACEMENT` constants sit outside it too.
+- **`pace_per_48` and the `×100` rating shape** restated at
+  `summer_league_environment_service.py:1707,1709,1071`. Its *possession estimate* correctly calls
+  into the engine; only the normalization is local. Unlike `turnover_rate` on the same surface,
+  these carry no frozen-exemption registration.
+- **`net_rating`** re-derived at `summer_league_explorer_service.py:3774-3778`.
+
+Why the guards do not catch these: `scripts/check_stat_constants.py` designates `0.44`, the Game
+Score weights, and (as of #731) eFG%'s `0.5`; rule R4 matches only *string* literals. The
+scaling/WS/VORP/pace constants are not designated, and SQLAlchemy-expression arithmetic is
+invisible to R4. Closing the residue and widening the checker to cover it belong together.
+
+**Trigger:** the next phase that touches these files, or the first time one of these numbers is
+reported wrong.
+
 ## Standing caveats
 
 - **The transaction diagnosis is now observed, not just read from code.** Incident #669 confirmed

@@ -95,6 +95,7 @@ from app.services.stats.registry import (
     RollupClass,
     astd_pct_denom_expr,
     astd_pct_sql_text,
+    efg_pct_num_expr,
     efg_pct_sql_text,
     fg3ar_sql_text,
     ftr_sql_text,
@@ -107,7 +108,6 @@ from app.services.stats.registry import (
 )
 from app.services.stats.scaling import scale_python, scale_sql
 from app.services.summer_league.capabilities import row_provides, rows_provide
-from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_environment_registry import (
     PROFILE_STALE_AFTER_HOURS,
@@ -178,8 +178,6 @@ DEFAULT_MODE = "per_game"
 # full history, so "2nd" means the same season regardless of any year/venue scope.
 APPEARANCE_MIN = 1
 APPEARANCE_TOP = 4
-
-_MINUTES_PER_GAME = MINUTES_PER_GAME
 
 # Position filter vocabulary, sourced from the canonical taxonomy
 # (app/models/position_taxonomy.py) — the same module that derives
@@ -1660,11 +1658,8 @@ def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
         return _op(func.sum(ps.minutes))  # type: ignore[attr-defined]
     # Recombinable percentage metrics — pool ratio from summed box components.
     if col == "efg_pct":
-        return _op(
-            100.0
-            * (func.sum(ps.fgm) + 0.5 * func.sum(ps.fg3m))  # type: ignore[attr-defined]
-            / func.nullif(func.sum(ps.fga), 0)  # type: ignore[attr-defined]
-        )
+        num = efg_pct_num_expr(lambda name: func.sum(getattr(ps, name)))  # type: ignore[attr-defined]
+        return _op(100.0 * num / func.nullif(func.sum(ps.fga), 0))  # type: ignore[attr-defined]
     if col == "fg_pct":
         return _op(100.0 * func.sum(ps.fgm) / func.nullif(func.sum(ps.fga), 0))  # type: ignore[attr-defined]
     if col == "fg3_pct":
@@ -1736,7 +1731,8 @@ def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
         return _op(ps.minutes)
     # Recombinable percentages from season box components.
     if col == "efg_pct":
-        return _op(100.0 * (ps.fgm + 0.5 * ps.fg3m) / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
+        num = efg_pct_num_expr(lambda name: getattr(ps, name))
+        return _op(100.0 * num / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
     if col == "fg_pct":
         return _op(100.0 * ps.fgm / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
     if col == "fg3_pct":
@@ -1782,9 +1778,8 @@ def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
         return _op(pgl.minutes_seconds / 60.0)  # type: ignore[attr-defined]
     # Percentage metrics from game-log box columns.
     if col == "efg_pct":
-        return _op(
-            100.0 * (pgl.fgm + 0.5 * pgl.fg3m) / func.nullif(pgl.fga, 0)  # type: ignore[attr-defined]
-        )
+        num = efg_pct_num_expr(lambda name: getattr(pgl, name))
+        return _op(100.0 * num / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
     if col == "fg_pct":
         return _op(100.0 * pgl.fgm / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
     if col == "fg3_pct":

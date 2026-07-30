@@ -23,13 +23,19 @@ Covers the ticket's Definition of Done directly:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Optional
 
 import pytest
 
 from app.services.stats.formulas import game_score_line
-from app.services.stats.registry import RollupClass, get_metric, rollup_class_matches
+from app.services.stats.registry import (
+    METRICS_BY_KEY,
+    RollupClass,
+    get_metric,
+    rollup_class_matches,
+)
 from app.services.summer_league_explorer_service import rollup_recombinable
 from app.services.summer_league_metrics_service import (
     PlayerMetricSeason,
@@ -103,6 +109,30 @@ def test_rollup_recombinable_refuses_ws82_and_vorp82() -> None:
     rows = [_box(pts=10, fga=5, fta=2), SimpleNamespace(ws82=8.0, minutes=100.0)]
     assert rollup_recombinable(rows, "ws82") is None
     assert rollup_recombinable(rows, "vorp82") is None
+
+
+def test_rollup_recombinable_refuses_any_key_the_registry_declares_non_recombinable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The refusal is the registry gate, not the elif chain's unknown-key fallthrough.
+
+    Added by the Phase 2 QA gate (#731). The ws82/vorp82 assertions above hold
+    identically with or without T8b's gate — both keys fall off the end of the
+    elif chain and return ``None`` either way, so that test cannot distinguish
+    the feature from its absence (its own docstring concedes as much). This one
+    can: it re-declares ``ts_pct`` — a key the elif chain *does* handle and would
+    happily recombine into a number — as ``POOL_RECALIBRATED``, so ``None`` is
+    reachable only through the registry-driven refusal. Delete the gate at
+    ``app/services/summer_league_explorer_service.py`` and this goes red.
+    """
+    rows = [_box(pts=10, fga=5, fta=2), _box(pts=8, fga=4, fta=4)]
+    assert rollup_recombinable(rows, "ts_pct") is not None  # control
+
+    recalibrated = replace(
+        get_metric("ts_pct"), rollup_class=RollupClass.POOL_RECALIBRATED
+    )
+    monkeypatch.setitem(METRICS_BY_KEY, "ts_pct", recalibrated)
+    assert rollup_recombinable(rows, "ts_pct") is None
 
 
 def test_rollup_recombinable_still_recomputes_ts_pct_from_summed_components() -> None:

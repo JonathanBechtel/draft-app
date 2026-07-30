@@ -632,6 +632,31 @@ def astd_pct_sql_text(box: Callable[[str], str]) -> str:
     return f"{box('ast_fgm')} * 1.0 / NULLIF({box('ast_fgm')} + {box('unast_fgm')}, 0)"
 
 
+def efg_pct_num_expr(box: Callable[[str], Any]) -> Any:
+    """efg_pct's SQLAlchemy numerator expression: ``FGM + 0.5 * FG3M``.
+
+    The dual of :func:`ts_pct_denom_expr`: eFG%'s only coefficient lives in its
+    numerator (the half-credit for a three), not its denominator, so this is the
+    part a call site must not retype. Matches
+    :func:`app.services.stats.formulas.efg_pct_ratio` and
+    :func:`efg_pct_sql_text` exactly. ``box`` maps a field name to its
+    SQLAlchemy expression at the target grain -- ``func.sum(getattr(table,
+    name))`` for the career/aggregate grain, the bare ``getattr(table, name)``
+    for per-competition/per-game row grain -- so this one declaration emits
+    both shapes.
+
+    Added by the Phase 2 QA gate (#731). T6 bound the Explorer's *raw-SQL-text*
+    eFG% forms to :func:`efg_pct_sql_text` but left its three *SQLAlchemy
+    expression* filter sites hand-written, so changing the half-credit weight in
+    this package moved the displayed value while the filter kept selecting rows
+    by the old weight -- with no test and no guard firing. There is no matching
+    ``fg3ar``/``ftr`` expression helper on purpose: those two are a bare column
+    over a bare column with no coefficient, so their expression form has nothing
+    that can numerically drift from their declared ``*_sql_text`` form.
+    """
+    return box("fgm") + 0.5 * box("fg3m")
+
+
 def efg_pct_sql_text(box: Callable[[str], str]) -> str:
     """efg_pct's raw-SQL-text sort form: ``(FGM + 0.5*FG3M) / NULLIF(FGA, 0)``.
 
