@@ -47,6 +47,7 @@ class _FakeDb:
         ("P.J. Washington", "pj washington"),
         ("Jean-Luc O’Neal III", "jean luc oneal"),
         ("Salaün", "salaun"),
+        ("John A. Smith", "john smith"),
     ],
 )
 def test_normalize_player_identity_name_folds_supported_variants(

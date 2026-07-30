@@ -47,7 +47,14 @@ def normalize_player_identity_name(name: str) -> str:
             continue
         normalized.append(character)
     without_suffix = _NAME_SUFFIX_RE.sub("", "".join(normalized))
-    return re.sub(r"\s+", " ", without_suffix.strip()).casefold()
+    tokens = re.sub(r"\s+", " ", without_suffix.strip()).casefold().split()
+    if len(tokens) > 2:
+        tokens = [
+            tokens[0],
+            *[token for token in tokens[1:-1] if len(token) > 1],
+            tokens[-1],
+        ]
+    return " ".join(tokens)
 
 
 def player_identity_suffix(name: str) -> str | None:
