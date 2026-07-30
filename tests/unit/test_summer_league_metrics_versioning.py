@@ -78,14 +78,17 @@ async def test_source_as_of_uses_the_latest_metric_input_timestamp() -> None:
 
 @pytest.mark.asyncio
 async def test_metric_build_uses_a_repeatable_read_snapshot() -> None:
-    """Unlocked rebuilds pin all source queries to one committed database snapshot."""
+    """Unlocked rebuilds pin reads and survive the role idle timeout during fitting."""
     db = MagicMock()
     db.execute = AsyncMock()
 
     await metrics.set_repeatable_read_snapshot(db)
 
-    db.execute.assert_awaited_once()
-    assert "REPEATABLE READ" in str(db.execute.await_args.args[0])
+    statements = [str(call.args[0]) for call in db.execute.await_args_list]
+    assert statements == [
+        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+        "SET LOCAL idle_in_transaction_session_timeout = 0",
+    ]
 
 
 @pytest.mark.asyncio
@@ -158,10 +161,10 @@ async def test_class_tracker_reads_current_and_candidate_metric_versions(
         display_name="Test Player",
         position="G",
     )
-    roster_result = SimpleNamespace(
-        all=lambda: [(17, 23, AffiliationStatus.ACTIVE)]
+    roster_result = SimpleNamespace(all=lambda: [(17, 23, AffiliationStatus.ACTIVE)])
+    players_result = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: [player])
     )
-    players_result = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [player]))
     season_result = SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: []))
     monkeypatch.setattr(desk_read, "_fetch_team_entries", AsyncMock(return_value={}))
 

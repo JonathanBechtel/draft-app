@@ -959,8 +959,17 @@ async def _source_as_of(db: AsyncSession) -> Optional[datetime]:
 
 
 async def set_repeatable_read_snapshot(db: AsyncSession) -> None:
-    """Pin the following unlocked metric build to one committed source snapshot."""
+    """Configure the unlocked metric build's transaction safeguards.
+
+    The rebuild can spend several minutes fitting metrics in Python between SQL
+    statements. The role-level ``idle_in_transaction_session_timeout`` from
+    #576 is valuable for leaked sessions, but would terminate this legitimate
+    ``REPEATABLE READ`` transaction during that compute gap. ``SET LOCAL``
+    disables the reaper only until this transaction ends, preserving the role
+    default for every other application session and pooled connection.
+    """
     await db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ"))
+    await db.execute(text("SET LOCAL idle_in_transaction_session_timeout = 0"))
 
 
 async def _load_shot_diet(
