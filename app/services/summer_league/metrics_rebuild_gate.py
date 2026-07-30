@@ -159,12 +159,20 @@ async def run_metrics_stage(
                         "the candidate remains invisible for a later scheduled run"
                     )
                 else:
-                    await publish_metric_version(
+                    skipped_competition_ids = await publish_metric_version(
                         db,
                         version=metrics_version,
                         model_version=str(summary["model_version"]),
                     )
-                    await upsert_render_snapshots(db, snapshot_writes)
+                    if skipped_competition_ids:
+                        logger.info(
+                            "SL render snapshot refresh skipped because metric "
+                            "publication skipped newer scopes: %s",
+                            sorted(skipped_competition_ids),
+                        )
+                        snapshot_writes = []
+                    else:
+                        await upsert_render_snapshots(db, snapshot_writes)
                     await complete_pipeline(
                         db,
                         job=SummerLeaguePipelineJob.FULL_INGESTION,
