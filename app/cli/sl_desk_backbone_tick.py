@@ -114,6 +114,7 @@ async def _run(args: argparse.Namespace) -> None:
                 now=resolved_now,
                 executed_at=executed_at,
                 raw_root=args.raw_root,
+                transaction_boundary=db.commit,
                 telemetry=telemetry,
                 lock=WriterLockPolicy(
                     enabled=True,
