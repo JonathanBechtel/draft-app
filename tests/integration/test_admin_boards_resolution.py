@@ -502,7 +502,7 @@ class TestMintStubPlayer:
         )
 
         assert resp.status_code == 303
-        assert "success=entry_identity_resolved" in resp.headers["location"]
+        assert "success=stub_minted" in resp.headers["location"]
         updated = await db_session.get(BoardEntry, entry.id, populate_existing=True)
         assert updated is not None
         assert updated.player_id == canonical.id

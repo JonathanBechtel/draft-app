@@ -6,6 +6,9 @@ so they preserve a faithful record of the analyst's rankings (and the
 admin's review decision) for downstream consensus computation.
 """
 
+# discipline: file-size identity resolution is delegated to board_identity;
+# no new board CRUD surface is added here.
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,9 +27,9 @@ from app.schemas.boards import (
     ResolutionMethod,
 )
 from app.schemas.players_master import PlayerMaster
-from app.services.player_identity_guard import (
-    build_variant_identity_index,
-    resolve_variant_identity_match,
+from app.services.board_identity import (
+    BoardIdentityReviewError,
+    resolve_variant_identity_for_entry,
 )
 
 
@@ -482,39 +485,17 @@ async def mint_stub_for_entry(
             f"(method={entry.resolution_method.value}); refusing to mint a stub."
         )
 
-    if entry.raw_name:
-        identity_index = await build_variant_identity_index(db)
-        identity = resolve_variant_identity_match(
-            entry.raw_name,
-            identity_index.matches_for(entry.raw_name),
+    try:
+        reused = await resolve_variant_identity_for_entry(
+            db,
+            entry=entry,
+            board=board,
+            translate_integrity_error=_translate_entry_integrity_error,
         )
-        if identity.status in {"exact", "alias"}:
-            if identity.player_id is None:
-                raise IdentityMatchReviewError(
-                    "Identity guard returned a match without a player id."
-                )
-            entry.player_id = identity.player_id
-            entry.resolution_method = (
-                ResolutionMethod.EXACT
-                if identity.status == "exact"
-                else ResolutionMethod.ALIAS
-            )
-            board.updated_at = datetime.utcnow()
-            try:
-                await db.flush()
-            except IntegrityError as exc:
-                _translate_entry_integrity_error(exc)
-            return entry
-        if identity.status == "ambiguous":
-            raise IdentityMatchReviewError(
-                f"'{entry.raw_name}' matches multiple players; resolve it "
-                "manually before creating a stub."
-            )
-        if identity.status == "suffix_mismatch":
-            raise IdentityMatchReviewError(
-                f"'{entry.raw_name}' differs by suffix from an existing player; "
-                "resolve it manually before creating a stub."
-            )
+    except BoardIdentityReviewError as exc:
+        raise IdentityMatchReviewError(str(exc)) from exc
+    if reused:
+        return entry
 
     stub = PlayerMaster(
         display_name=entry.raw_name or f"Unknown #{entry_id}",

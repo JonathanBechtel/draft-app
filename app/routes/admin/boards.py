@@ -43,8 +43,7 @@ _SUCCESS_MESSAGES: dict[str, str] = {
     "entry_added": "Entry added.",
     "entry_updated": "Entry updated.",
     "entry_deleted": "Entry removed.",
-    "stub_minted": "Stub player created and entry resolved.",
-    "entry_identity_resolved": "Existing player matched and entry resolved.",
+    "stub_minted": "Player matched or stub created and entry resolved.",
     "stub_minted_inline": "Stub player created and entry added.",
     "approved": "Board approved.",
     "rejected": "Board rejected.",
@@ -965,17 +964,12 @@ async def mint_stub_player(
 
     try:
         async with db.begin():
-            entry = await svc.mint_stub_for_entry(db, entry_id=entry_id)
+            await svc.mint_stub_for_entry(db, entry_id=entry_id)
     except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
-    success = (
-        "stub_minted"
-        if entry.resolution_method is ResolutionMethod.STUB
-        else "entry_identity_resolved"
-    )
     return RedirectResponse(
-        url=f"/admin/boards/{board_id}?success={success}", status_code=303
+        url=f"/admin/boards/{board_id}?success=stub_minted", status_code=303
     )
 
 
