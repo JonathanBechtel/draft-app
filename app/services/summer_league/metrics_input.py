@@ -9,22 +9,46 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
+    SummerLeaguePlayerGameLog,
     SummerLeagueRawFile,
     SummerLeagueSourcePlayer,
 )
+from app.schemas.summer_league_events import SummerLeagueShotEvent
 
 # Bump when the set or interpretation of metric inputs changes. This makes a
 # deployment that changes watermark semantics force one correct full rebuild.
-METRICS_INPUT_WATERMARK_VERSION = "sl-metrics-input-v1"
-METRICS_IMPLEMENTATION_FINGERPRINT = hashlib.sha256(
-    Path(__file__).with_name("metrics.py").read_bytes()
-).hexdigest()
+METRICS_INPUT_WATERMARK_VERSION = "sl-metrics-input-v2"
+
+_IMPLEMENTATION_FILES = (
+    ("metrics.py", Path(__file__).with_name("metrics.py")),
+    ("metric_publish.py", Path(__file__).with_name("metric_publish.py")),
+    (
+        "schemas/summer_league_metrics.py",
+        Path(__file__).parents[2] / "schemas" / "summer_league_metrics.py",
+    ),
+)
+
+
+def _implementation_fingerprint() -> str:
+    """Hash every module and version constant that affects metric values."""
+    digest = hashlib.sha256()
+    for label, path in _IMPLEMENTATION_FILES:
+        digest.update(label.encode())
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+METRICS_IMPLEMENTATION_FINGERPRINT = _implementation_fingerprint()
+
+_VOLATILE_COLUMNS = frozenset({"created_at", "updated_at"})
 
 
 def _json_value(value: object) -> object:
@@ -53,6 +77,39 @@ def _add_rows(
         digest.update(b"\n")
 
 
+def _table_content_hash(model: Any) -> Any:
+    """Build a commutative Postgres hash over every stable table column.
+
+    The aggregate intentionally excludes ``created_at`` and ``updated_at``:
+    those columns are bookkeeping and routine normalization can touch them
+    without changing the values consumed by ``metrics.compute``. The row id
+    remains part of the payload, so inserts and deletes change the aggregate
+    as well as edits to any metric input.
+    """
+    columns = tuple(
+        column
+        for column in model.__table__.columns
+        if column.name not in _VOLATILE_COLUMNS
+    )
+    row_payload = func.json_build_array(*columns)
+    row_hash = func.hashtextextended(cast(row_payload, String), 0)
+    # PostgreSQL returns NUMERIC for SUM(bigint); cast it back to text so the
+    # result remains JSON-serializable for the common watermark row helper.
+    return cast(func.coalesce(func.sum(row_hash), 0), String)
+
+
+async def _add_table_content_summary(
+    db: AsyncSession,
+    digest: Any,
+    *,
+    label: str,
+    model: Any,
+) -> None:
+    """Add a one-row count/hash summary for a high-volume input table."""
+    result = await db.execute(select(func.count(), _table_content_hash(model)))
+    _add_rows(digest, label=label, rows=result.all())
+
+
 async def calculate_metrics_input_watermark(db: AsyncSession) -> str:
     """Hash stable source content that can affect a full metrics rebuild.
 
@@ -61,7 +118,9 @@ async def calculate_metrics_input_watermark(db: AsyncSession) -> str:
     player mappings and game state are included separately because resolution
     and scoreboard ingest can change metric eligibility without changing a raw
     file. Competition identity covers the year/venue dimensions persisted by
-    the rebuild.
+    the rebuild. Normalized player game logs and shot events are included as
+    one-row database aggregates so their values are covered without transferring
+    every high-volume row into the hourly runner.
     """
     digest = hashlib.sha256()
     digest.update(METRICS_INPUT_WATERMARK_VERSION.encode())
@@ -118,4 +177,17 @@ async def calculate_metrics_input_watermark(db: AsyncSession) -> str:
         )
     ).all()
     _add_rows(digest, label="competitions", rows=competitions)
+
+    await _add_table_content_summary(
+        db,
+        digest,
+        label="player_game_logs",
+        model=SummerLeaguePlayerGameLog,
+    )
+    await _add_table_content_summary(
+        db,
+        digest,
+        label="shot_events",
+        model=SummerLeagueShotEvent,
+    )
     return digest.hexdigest()
