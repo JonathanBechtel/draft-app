@@ -103,6 +103,8 @@ async def test_rebuild_staged_writes_an_inactive_candidate_version(
     monkeypatch.setattr(metrics, "compute", compute)
     monkeypatch.setattr(metrics, "next_metric_version", next_version)
     monkeypatch.setattr(metrics, "publish_metric_model", publish_model)
+    idle_timeout = AsyncMock()
+    monkeypatch.setattr(metrics, "set_rebuild_idle_timeout", idle_timeout)
 
     db = MagicMock()
     summary = await metrics.rebuild_staged(db, model_version="candidate")
@@ -118,6 +120,7 @@ async def test_rebuild_staged_writes_an_inactive_candidate_version(
     publish_model.assert_awaited_once_with(
         db, version="candidate", result=result, activate=False
     )
+    idle_timeout.assert_awaited_once_with(db)
     assert all(call.args[0].is_current is False for call in db.add.call_args_list)
 
 
@@ -132,6 +135,8 @@ async def test_scoped_rebuild_publishes_only_the_requested_candidate_scope(
     monkeypatch.setattr(
         metrics, "_active_or_fresh_model_version", AsyncMock(return_value="active-fit")
     )
+    idle_timeout = AsyncMock()
+    monkeypatch.setattr(metrics, "set_rebuild_idle_timeout", idle_timeout)
     publish_version = AsyncMock()
     monkeypatch.setattr(metrics, "publish_metric_version", publish_version)
 
@@ -145,6 +150,7 @@ async def test_scoped_rebuild_publishes_only_the_requested_candidate_scope(
     publish_version.assert_awaited_once_with(
         db, version=8, competition_ids=frozenset({1}), model_version=None
     )
+    idle_timeout.assert_awaited_once_with(db)
     assert db.add.call_count == 2
 
 
