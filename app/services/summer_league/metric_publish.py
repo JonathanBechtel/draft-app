@@ -17,6 +17,7 @@ See ``docs/plans/programmatic-code-discipline.md`` §1.4 and stat-engine §5.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import logging
 from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select, text, update
@@ -34,6 +35,8 @@ from app.schemas.summer_league_metrics import (
 # The player-season projection has its own formula and aggregation contract.
 METRIC_REGISTRY_VERSION = DEFAULT_METRIC_REGISTRY_VERSION
 METRIC_CALCULATION_VERSION = DEFAULT_METRIC_CALCULATION_VERSION
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, types only
     from app.services.summer_league.metrics import ComputeResult
@@ -139,6 +142,42 @@ async def next_metric_version(db: AsyncSession) -> int:
     return max(int(season_max or 0), int(context_max or 0)) + 1
 
 
+async def _newer_current_competition_ids(
+    db: AsyncSession,
+    *,
+    version: int,
+    competition_ids: set[int] | frozenset[int] | None,
+) -> set[int]:
+    """Return scopes already published at a version newer than the candidate.
+
+    A full rebuild can finish after a scoped Desk tick has published a later
+    version. The context and player-season projections must make the same
+    per-competition decision, so the guard considers both tables.
+    """
+    context_query = select(  # type: ignore[call-overload]
+        SummerLeagueMetricContext.competition_id
+    ).where(
+        SummerLeagueMetricContext.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueMetricContext.version > version,  # type: ignore[operator]
+    )
+    season_query = select(  # type: ignore[call-overload]
+        SummerLeaguePlayerSeason.competition_id
+    ).where(
+        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeaguePlayerSeason.version > version,  # type: ignore[operator]
+    )
+    if competition_ids is not None:
+        context_query = context_query.where(
+            SummerLeagueMetricContext.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
+        )
+        season_query = season_query.where(
+            SummerLeaguePlayerSeason.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
+        )
+
+    rows = (await db.execute(context_query.union(season_query))).scalars().all()
+    return {int(competition_id) for competition_id in rows}
+
+
 async def publish_metric_version(
     db: AsyncSession,
     *,
@@ -146,14 +185,30 @@ async def publish_metric_version(
     competition_ids: set[int] | frozenset[int] | None = None,
     model_version: str | None = None,
 ) -> None:
-    """Atomically expose one staged metric version to all readers.
+    """Atomically expose one staged metric version to all eligible readers.
 
     The caller owns a short transaction and, in production, the Summer League writer
     lock. Staged rows remain invisible until both projections have been demoted and the
-    candidate rows promoted. A failed caller transaction therefore leaves the previous
-    current version untouched.
+    candidate rows promoted. If a newer version is already current for a competition,
+    both projections leave that competition untouched while older scopes may still
+    flip. Demoted rows retain their original ``published_at``; only newly promoted rows
+    receive the flip timestamp. A failed caller transaction therefore leaves the
+    previous current version untouched.
     """
     published_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    newer_competition_ids = await _newer_current_competition_ids(
+        db,
+        version=version,
+        competition_ids=competition_ids,
+    )
+    if newer_competition_ids:
+        logger.info(
+            "Skipping stale Summer League metric version %s for competitions "
+            "already at newer versions: %s",
+            version,
+            sorted(newer_competition_ids),
+        )
+
     season_scope = (
         SummerLeaguePlayerSeason.competition_id.in_(  # type: ignore[attr-defined]
             competition_ids
@@ -179,9 +234,16 @@ async def publish_metric_version(
         season_demote = season_demote.where(season_scope)
     if context_scope is not None:
         context_demote = context_demote.where(context_scope)
+    if newer_competition_ids:
+        season_demote = season_demote.where(
+            SummerLeaguePlayerSeason.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
+        )
+        context_demote = context_demote.where(
+            SummerLeagueMetricContext.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
+        )
 
-    await db.execute(season_demote.values(is_current=False, published_at=published_at))
-    await db.execute(context_demote.values(is_current=False, published_at=published_at))
+    await db.execute(season_demote.values(is_current=False))
+    await db.execute(context_demote.values(is_current=False))
     # The partial unique indexes require the demotion to reach the database before the
     # candidate rows are promoted in the same transaction.
     await db.flush()
@@ -196,6 +258,13 @@ async def publish_metric_version(
         season_promote = season_promote.where(season_scope)
     if context_scope is not None:
         context_promote = context_promote.where(context_scope)
+    if newer_competition_ids:
+        season_promote = season_promote.where(
+            SummerLeaguePlayerSeason.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
+        )
+        context_promote = context_promote.where(
+            SummerLeagueMetricContext.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
+        )
     await db.execute(season_promote.values(is_current=True, published_at=published_at))
     await db.execute(context_promote.values(is_current=True, published_at=published_at))
 
