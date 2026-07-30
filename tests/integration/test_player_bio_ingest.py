@@ -56,9 +56,7 @@ def _bio_row(**overrides: object) -> BioRow:
         "social_x_url": None,
         "social_instagram_handle": None,
         "social_instagram_url": None,
-        "source_url": (
-            "https://www.basketball-reference.com/players/b/balllo01.html"
-        ),
+        "source_url": ("https://www.basketball-reference.com/players/b/balllo01.html"),
         "scraped_at": "2026-07-27T00:00:00+00:00",
     }
     defaults.update(overrides)
@@ -107,17 +105,25 @@ async def test_matches_by_display_name_and_writes_the_full_fan_out(
     assert report.ambiguous == []
 
     ext = (
-        await db_session.execute(
-            select(PlayerExternalId).where(PlayerExternalId.player_id == player.id)
+        (
+            await db_session.execute(
+                select(PlayerExternalId).where(PlayerExternalId.player_id == player.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {(e.system, e.external_id) for e in ext} == {("bbr", "balllo01")}
 
     alias = (
-        await db_session.execute(
-            select(PlayerAlias).where(PlayerAlias.player_id == player.id)
+        (
+            await db_session.execute(
+                select(PlayerAlias).where(PlayerAlias.player_id == player.id)
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert alias is not None
     assert alias.full_name == "Lonzo Ball"
     assert alias.context == "bbr"
@@ -132,10 +138,14 @@ async def test_matches_by_display_name_and_writes_the_full_fan_out(
     assert player.school == "UCLA"
 
     status = (
-        await db_session.execute(
-            select(PlayerStatus).where(PlayerStatus.player_id == player.id)
+        (
+            await db_session.execute(
+                select(PlayerStatus).where(PlayerStatus.player_id == player.id)
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert status is not None
     assert status.is_active_nba is True
     assert status.current_team == "Cleveland Cavaliers"
@@ -202,6 +212,57 @@ async def test_create_missing_inserts_a_canonical_player(
 
 
 @pytest.mark.asyncio
+async def test_create_missing_reuses_diacritic_variant(
+    db_session, tmp_path: Path
+) -> None:
+    """A diacritic-only bio name reuses the existing canonical player."""
+    player = await _add_player(
+        db_session,
+        first_name="José",
+        last_name="García",
+        display_name="José García",
+    )
+
+    report = await _ingest_rows(
+        db_session,
+        [_bio_row(full_name="Jose Garcia")],
+        _options(tmp_path, create_missing=True),
+    )
+    await db_session.flush()
+
+    assert report.ambiguous == []
+    assert report.unmatched == []
+    players = (await db_session.execute(select(PlayerMaster))).scalars().all()
+    assert len(players) == 1
+    assert players[0].id == player.id
+
+
+@pytest.mark.asyncio
+async def test_create_missing_routes_suffix_variant_to_review(
+    db_session, tmp_path: Path
+) -> None:
+    """A suffix-differing bio name is reported instead of linked or minted."""
+    await _add_player(
+        db_session,
+        first_name="Gary",
+        last_name="Payton",
+        suffix="II",
+        display_name="Gary Payton II",
+    )
+
+    report = await _ingest_rows(
+        db_session,
+        [_bio_row(full_name="Gary Payton")],
+        _options(tmp_path, create_missing=True),
+    )
+    await db_session.flush()
+
+    assert report.ambiguous == ["balllo01"]
+    players = (await db_session.execute(select(PlayerMaster))).scalars().all()
+    assert len(players) == 1
+
+
+@pytest.mark.asyncio
 async def test_two_rows_for_one_new_player_reuse_the_created_record(
     db_session, tmp_path: Path
 ) -> None:
@@ -238,12 +299,13 @@ async def test_ambiguous_name_is_reported_and_left_unresolved(
     await db_session.flush()
 
     report = await _ingest_rows(
-        db_session, [_bio_row(slug="harpede01", full_name="D. Harper")],
+        db_session,
+        [_bio_row(slug="harpede01", full_name="D. Harper")],
         _options(tmp_path),
     )
 
     assert report.ambiguous == ["harpede01"]
-    assert report.unmatched == ["harpede01"]
+    assert report.unmatched == []
 
 
 @pytest.mark.asyncio
@@ -255,7 +317,10 @@ async def test_fixed_ambiguity_mapping_overrides_every_automatic_match(
         db_session, first_name="Lonzo", last_name="Ball", display_name="Lonzo Ball"
     )
     manual = await _add_player(
-        db_session, first_name="LiAngelo", last_name="Ball", display_name="LiAngelo Ball"
+        db_session,
+        first_name="LiAngelo",
+        last_name="Ball",
+        display_name="LiAngelo Ball",
     )
     assert manual.id is not None
 
@@ -265,10 +330,14 @@ async def test_fixed_ambiguity_mapping_overrides_every_automatic_match(
     await db_session.flush()
 
     ext = (
-        await db_session.execute(
-            select(PlayerExternalId).where(PlayerExternalId.system == "bbr")
+        (
+            await db_session.execute(
+                select(PlayerExternalId).where(PlayerExternalId.system == "bbr")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [e.player_id for e in ext] == [manual.id]
     await db_session.refresh(named)
     assert named.draft_year is None
@@ -296,10 +365,14 @@ async def test_social_handles_become_external_ids(db_session, tmp_path: Path) ->
     await db_session.flush()
 
     ext = (
-        await db_session.execute(
-            select(PlayerExternalId).where(PlayerExternalId.player_id == player.id)
+        (
+            await db_session.execute(
+                select(PlayerExternalId).where(PlayerExternalId.player_id == player.id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {(e.system, e.external_id) for e in ext} == {
         ("bbr", "balllo01"),
         ("x", "zo"),
@@ -352,10 +425,16 @@ async def test_cached_player_html_is_snapshotted(db_session, tmp_path: Path) -> 
     await db_session.flush()
 
     snapshot = (
-        await db_session.execute(
-            select(PlayerBioSnapshot).where(PlayerBioSnapshot.player_id == player.id)
+        (
+            await db_session.execute(
+                select(PlayerBioSnapshot).where(
+                    PlayerBioSnapshot.player_id == player.id
+                )
+            )
         )
-    ).scalars().one()
+        .scalars()
+        .one()
+    )
     assert snapshot.source == "bbr"
     assert "Born: 1997" in snapshot.raw_meta_html
 
@@ -380,15 +459,23 @@ async def test_an_external_id_owned_by_another_player_is_not_reassigned(
     # despite the external id already belonging to `owner`.
     assert claimant.id is not None
     await _ingest_rows(
-        db_session, [_bio_row()], _options(tmp_path, fixed_map={"balllo01": claimant.id})
+        db_session,
+        [_bio_row()],
+        _options(tmp_path, fixed_map={"balllo01": claimant.id}),
     )
     await db_session.flush()
 
     ext = (
-        await db_session.execute(
-            select(PlayerExternalId).where(PlayerExternalId.external_id == "balllo01")
+        (
+            await db_session.execute(
+                select(PlayerExternalId).where(
+                    PlayerExternalId.external_id == "balllo01"
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [e.player_id for e in ext] == [owner.id]
 
 
@@ -396,19 +483,10 @@ async def test_an_external_id_owned_by_another_player_is_not_reassigned(
 async def test_a_player_whose_display_name_is_first_last_reads_as_ambiguous(
     db_session, tmp_path: Path
 ) -> None:
-    """Pins a long-standing quirk: one player can self-collide in the alias index.
+    """A unique normalized display match is no longer confused by lookup buckets.
 
-    ``_load_lookup`` indexes ``display_name`` *and* the derived ``"first last"``
-    under the same normalized key, so the common case where they are equal puts
-    two copies of the same id in the bucket. The alias step reads that as
-    ambiguous and reports the slug — then the deterministic first+last match
-    resolves it anyway, so the row is ingested correctly and merely shows up in
-    ``bbio_ambiguous.json`` for no reason.
-
-    Asserted rather than fixed: this behaviour predates the move of this code
-    out of ``scripts/``, and deduplicating the bucket would change what lands in
-    that report. Recorded here so a future fix is a deliberate change with a
-    test to update, not a silent one.
+    The shared identity guard sees one canonical player and reuses it without
+    marking the row ambiguous.
     """
     player = await _add_player(
         db_session, first_name="Lonzo", last_name="Ball", display_name="Lonzo Ball"
@@ -417,12 +495,16 @@ async def test_a_player_whose_display_name_is_first_last_reads_as_ambiguous(
     report = await _ingest_rows(db_session, [_bio_row()], _options(tmp_path))
     await db_session.flush()
 
-    assert report.ambiguous == ["balllo01"]
+    assert report.ambiguous == []
     assert report.unmatched == []
     # Reported, but still correctly resolved and written.
     ext = (
-        await db_session.execute(
-            select(PlayerExternalId).where(PlayerExternalId.system == "bbr")
+        (
+            await db_session.execute(
+                select(PlayerExternalId).where(PlayerExternalId.system == "bbr")
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert [e.player_id for e in ext] == [player.id]

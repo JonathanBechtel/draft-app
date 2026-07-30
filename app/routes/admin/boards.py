@@ -44,6 +44,7 @@ _SUCCESS_MESSAGES: dict[str, str] = {
     "entry_updated": "Entry updated.",
     "entry_deleted": "Entry removed.",
     "stub_minted": "Stub player created and entry resolved.",
+    "entry_identity_resolved": "Existing player matched and entry resolved.",
     "stub_minted_inline": "Stub player created and entry added.",
     "approved": "Board approved.",
     "rejected": "Board rejected.",
@@ -945,11 +946,11 @@ async def mint_stub_player(
     entry_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Create a stub PlayerMaster from an unresolved entry's raw_name.
+    """Resolve an unresolved entry using an existing identity or a new stub.
 
-    Mints a new ``PlayerMaster`` row with ``is_stub=True`` and assigns
-    it to the entry with ``resolution_method=STUB``.  The board must be
-    PENDING.  Redirects back to the board detail page on success.
+    Reuses a safe existing identity match when available, otherwise creates a
+    new ``PlayerMaster`` row with ``is_stub=True``. The board must be PENDING.
+    Redirects back to the board detail page on success.
     """
     redirect, user = await require_dataset_access(
         request,
@@ -964,12 +965,17 @@ async def mint_stub_player(
 
     try:
         async with db.begin():
-            await svc.mint_stub_for_entry(db, entry_id=entry_id)
+            entry = await svc.mint_stub_for_entry(db, entry_id=entry_id)
     except svc.BoardError as exc:
         return _redirect_with_error(board_id, str(exc))
 
+    success = (
+        "stub_minted"
+        if entry.resolution_method is ResolutionMethod.STUB
+        else "entry_identity_resolved"
+    )
     return RedirectResponse(
-        url=f"/admin/boards/{board_id}?success=stub_minted", status_code=303
+        url=f"/admin/boards/{board_id}?success={success}", status_code=303
     )
 
 

@@ -463,6 +463,104 @@ class TestMintStubPlayer:
         assert stub.is_stub is True
         assert stub.display_name == unresolved.raw_name
 
+    async def test_mint_stub_reuses_diacritic_variant(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        source: NewsSource,
+    ) -> None:
+        """A punctuation/diacritic-only match resolves without minting a stub."""
+        _ = admin_logged_in
+        assert source.id is not None
+        canonical = PlayerMaster(
+            first_name="José",
+            last_name="García",
+            display_name="José García",
+            is_stub=False,
+        )
+        db_session.add(canonical)
+        board = _make_board(source.id)
+        db_session.add(board)
+        await db_session.flush()
+        assert board.id is not None
+        entry = BoardEntry(
+            board_id=board.id,
+            player_id=None,
+            position=1,
+            raw_name="Jose Garcia",
+            resolution_method=ResolutionMethod.UNRESOLVED,
+        )
+        board.size = 1
+        db_session.add(entry)
+        await db_session.commit()
+        await db_session.refresh(entry)
+
+        resp = await app_client.post(
+            f"/admin/boards/{board.id}/entries/{entry.id}/mint-stub",
+            follow_redirects=False,
+        )
+
+        assert resp.status_code == 303
+        assert "success=entry_identity_resolved" in resp.headers["location"]
+        updated = await db_session.get(BoardEntry, entry.id, populate_existing=True)
+        assert updated is not None
+        assert updated.player_id == canonical.id
+        assert updated.resolution_method is ResolutionMethod.EXACT
+
+    async def test_mint_stub_routes_suffix_variant_to_review(
+        self,
+        app_client: AsyncClient,
+        db_session: AsyncSession,
+        admin_logged_in: None,
+        source: NewsSource,
+    ) -> None:
+        """A suffix mismatch leaves the entry unresolved and creates no row."""
+        _ = admin_logged_in
+        assert source.id is not None
+        canonical = PlayerMaster(
+            first_name="Gary",
+            last_name="Payton",
+            suffix="II",
+            display_name="Gary Payton II",
+            is_stub=False,
+        )
+        db_session.add(canonical)
+        board = _make_board(source.id)
+        db_session.add(board)
+        await db_session.flush()
+        assert board.id is not None
+        entry = BoardEntry(
+            board_id=board.id,
+            player_id=None,
+            position=1,
+            raw_name="Gary Payton",
+            resolution_method=ResolutionMethod.UNRESOLVED,
+        )
+        board.size = 1
+        db_session.add(entry)
+        await db_session.commit()
+        await db_session.refresh(entry)
+        before = (
+            await db_session.execute(select(func.count()).select_from(PlayerMaster))
+        ).scalar_one()
+
+        resp = await app_client.post(
+            f"/admin/boards/{board.id}/entries/{entry.id}/mint-stub",
+            follow_redirects=False,
+        )
+
+        assert resp.status_code == 303
+        assert "error=" in resp.headers["location"]
+        updated = await db_session.get(BoardEntry, entry.id, populate_existing=True)
+        assert updated is not None
+        assert updated.player_id is None
+        assert updated.resolution_method is ResolutionMethod.UNRESOLVED
+        after = (
+            await db_session.execute(select(func.count()).select_from(PlayerMaster))
+        ).scalar_one()
+        assert after == before
+
     async def test_mint_stub_shows_resolved_on_detail_page(
         self,
         app_client: AsyncClient,

@@ -29,7 +29,9 @@ async def _add_player(
     display_name: str | None = None,
 ) -> PlayerMaster:
     """Insert and flush a minimal PlayerMaster row."""
-    dn = display_name or (f"{first_name} {last_name}" + (f" {suffix}" if suffix else ""))
+    dn = display_name or (
+        f"{first_name} {last_name}" + (f" {suffix}" if suffix else "")
+    )
     player = PlayerMaster(
         first_name=first_name,
         last_name=last_name,
@@ -112,14 +114,16 @@ async def test_blocked_on_exact_display_name_match(db_session: AsyncSession) -> 
 
 @pytest.mark.asyncio
 async def test_blocked_on_relaxed_suffix_variant(db_session: AsyncSession) -> None:
-    """A suffix-stripped variant of an existing player must block creation."""
-    existing = await _add_player(db_session, "Darius", "Acuff", suffix="Jr.", display_name="Darius Acuff Jr.")
+    """A suffix-stripped variant must remain reviewable without creation."""
+    existing = await _add_player(
+        db_session, "Darius", "Acuff", suffix="Jr.", display_name="Darius Acuff Jr."
+    )
 
     result = await create_stub_player(db_session, "Darius Acuff")
 
-    assert result.outcome == "blocked_existing"
-    assert result.match is not None
-    assert result.match.player_id == existing.id
+    assert result.outcome == "ambiguous"
+    assert result.candidates is not None
+    assert {candidate.player_id for candidate in result.candidates} == {existing.id}
 
     count = (
         await db_session.execute(select(func.count()).select_from(PlayerMaster))
@@ -151,7 +155,9 @@ async def test_blocked_on_alias_match(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_ambiguous_returns_candidates_no_creation(db_session: AsyncSession) -> None:
+async def test_ambiguous_returns_candidates_no_creation(
+    db_session: AsyncSession,
+) -> None:
     """When multiple players match the relaxed key, return ambiguous with candidates."""
     db_session.add_all(
         [
@@ -285,7 +291,9 @@ async def test_no_regression_on_existing_ingestion_path(
     assert wrapper_result.outcome == "blocked_existing"
 
     # Ingestion path (resolve_player_names) still returns the existing player normally.
-    matches = await resolve_player_names(db_session, ["Cooper Flagg"], create_stubs=False)
+    matches = await resolve_player_names(
+        db_session, ["Cooper Flagg"], create_stubs=False
+    )
     assert len(matches) == 1
     assert matches[0].player_id == existing.id
 
