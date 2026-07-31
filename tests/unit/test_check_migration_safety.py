@@ -344,6 +344,28 @@ class TestRawSqlIndexBuilds:
             == []
         )
 
+    def test_execute_result_assignment_is_still_seen(self):
+        """An assignment must not hide an unsafe execute call on its right-hand side."""
+        found = _violations(
+            """
+            def upgrade():
+                result = op.execute("CREATE INDEX ix_a ON t (a)")
+            """
+        )
+        assert len(found) == 1
+        assert "raw SQL CREATE INDEX without CONCURRENTLY" in found[0]
+
+    def test_annotated_execute_result_assignment_is_still_seen(self):
+        """Annotated assignments must also traverse their execute call."""
+        found = _violations(
+            """
+            def upgrade():
+                result: object = op.execute("CREATE INDEX ix_a ON t (a)")
+            """
+        )
+        assert len(found) == 1
+        assert "raw SQL CREATE INDEX without CONCURRENTLY" in found[0]
+
     def test_raw_create_index_can_be_waived_for_a_small_table(self):
         assert (
             _violations(

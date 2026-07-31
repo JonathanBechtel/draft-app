@@ -299,6 +299,7 @@ class _ExecutedSqlVisitor(ast.NodeVisitor):
         self.bindings.pop()
 
     def visit_Assign(self, node: ast.Assign) -> None:
+        self.generic_visit(node)
         sql = _string_literal(node.value, self.bindings[-1])
         for target in node.targets:
             if not isinstance(target, ast.Name):
@@ -309,6 +310,7 @@ class _ExecutedSqlVisitor(ast.NodeVisitor):
                 self.bindings[-1][target.id] = sql
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self.generic_visit(node)
         if isinstance(node.target, ast.Name) and node.value is not None:
             sql = _string_literal(node.value, self.bindings[-1])
             if sql is None:
