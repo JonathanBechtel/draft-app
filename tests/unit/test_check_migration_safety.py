@@ -318,6 +318,54 @@ class TestRawSqlIndexBuilds:
         )
         assert len(found) == 1
 
+    def test_sql_bound_to_a_local_variable_is_still_seen(self):
+        """A variable assignment must not become a raw-SQL escape hatch."""
+        found = _violations(
+            """
+            def upgrade():
+                sql = "CREATE INDEX ix_a ON t (a)"
+                op.execute(sql)
+            """
+        )
+        assert len(found) == 1
+        assert "raw SQL CREATE INDEX without CONCURRENTLY" in found[0]
+
+    def test_variable_bound_concurrent_sql_inside_block_passes(self):
+        """Variable-backed concurrent SQL still has to run in autocommit mode."""
+        assert (
+            _violations(
+                """
+                def upgrade():
+                    sql = "CREATE INDEX CONCURRENTLY ix_a ON t (a)"
+                    with op.get_context().autocommit_block():
+                        op.execute(sql)
+                """
+            )
+            == []
+        )
+
+    def test_execute_result_assignment_is_still_seen(self):
+        """An assignment must not hide an unsafe execute call on its right-hand side."""
+        found = _violations(
+            """
+            def upgrade():
+                result = op.execute("CREATE INDEX ix_a ON t (a)")
+            """
+        )
+        assert len(found) == 1
+        assert "raw SQL CREATE INDEX without CONCURRENTLY" in found[0]
+
+    def test_annotated_execute_result_assignment_is_still_seen(self):
+        """Annotated assignments must also traverse their execute call."""
+        found = _violations(
+            """
+            def upgrade():
+                result: object = op.execute("CREATE INDEX ix_a ON t (a)")
+            """
+        )
+        assert len(found) == 1
+        assert "raw SQL CREATE INDEX without CONCURRENTLY" in found[0]
+
     def test_raw_create_index_can_be_waived_for_a_small_table(self):
         assert (
             _violations(
@@ -419,6 +467,20 @@ class TestEnvLockTimeout:
             == []
         )
 
+    def test_env_set_config_with_transaction_local_setting_is_flagged(self):
+        """``is_local=true`` disappears at commit and cannot protect the migration."""
+        found = _violations(
+            """
+            async def run_migrations_online():
+                await connection.execute(
+                    text("SELECT set_config('lock_timeout', :timeout, true)")
+                )
+            """,
+            name="alembic/env.py",
+        )
+        assert len(found) == 1
+        assert "no executed lock_timeout statement" in found[0]
+
     def test_env_executing_a_plain_set_statement_passes(self):
         """The other spelling someone could reasonably reach for."""
         assert (
@@ -441,9 +503,7 @@ class TestAgainstTheRepo:
         env_path = Path(checker.ENV_PATH)
         assert env_path.is_file()
         assert (
-            checker.find_violations(
-                env_path, env_path.read_text(encoding="utf-8")
-            )
+            checker.find_violations(env_path, env_path.read_text(encoding="utf-8"))
             == []
         )
 
@@ -504,3 +564,63 @@ class TestDuplicateRevisionIds:
 
         assert len(findings) == 1, "the annotated form must not be silently skipped"
         assert "bbb222_typed.py" in findings[0]
+
+
+class TestMigrationHeads:
+    """The checker must reject a graph that needs ``alembic upgrade heads``."""
+
+    def test_a_single_linear_head_is_accepted(self, tmp_path, monkeypatch):
+        """A normal chain has one leaf revision."""
+        versions = tmp_path / "versions"
+        versions.mkdir()
+        (versions / "aaa111_first.py").write_text(
+            'revision = "aaa111"\ndown_revision = None\n'
+        )
+        (versions / "bbb222_second.py").write_text(
+            'revision = "bbb222"\ndown_revision = "aaa111"\n'
+        )
+        monkeypatch.setattr(checker, "_VERSIONS_DIR", versions)
+
+        assert checker.migration_heads() == ["bbb222"]
+
+    def test_multiple_heads_are_reported(self, tmp_path, monkeypatch):
+        """Two unrelated leaves must fail before another migration is added."""
+        versions = tmp_path / "versions"
+        versions.mkdir()
+        (versions / "aaa111_first.py").write_text(
+            'revision = "aaa111"\ndown_revision = None\n'
+        )
+        (versions / "bbb222_second.py").write_text(
+            'revision = "bbb222"\ndown_revision = "aaa111"\n'
+        )
+        (versions / "ccc333_third.py").write_text(
+            'revision = "ccc333"\ndown_revision = "aaa111"\n'
+        )
+        monkeypatch.setattr(checker, "_VERSIONS_DIR", versions)
+
+        findings = checker.divergent_head_violations()
+
+        assert len(findings) == 1
+        assert "multiple heads" in findings[0]
+        assert "bbb222" in findings[0]
+        assert "ccc333" in findings[0]
+
+    def test_merge_revision_reduces_two_heads_to_one(self, tmp_path, monkeypatch):
+        """A tuple-valued down_revision is recognized as a merge."""
+        versions = tmp_path / "versions"
+        versions.mkdir()
+        (versions / "aaa111_first.py").write_text(
+            'revision = "aaa111"\ndown_revision = None\n'
+        )
+        (versions / "bbb222_second.py").write_text(
+            'revision = "bbb222"\ndown_revision = "aaa111"\n'
+        )
+        (versions / "ccc333_third.py").write_text(
+            'revision = "ccc333"\ndown_revision = "aaa111"\n'
+        )
+        (versions / "ddd444_merge.py").write_text(
+            'revision = "ddd444"\ndown_revision = ("bbb222", "ccc333")\n'
+        )
+        monkeypatch.setattr(checker, "_VERSIONS_DIR", versions)
+
+        assert checker.migration_heads() == ["ddd444"]
