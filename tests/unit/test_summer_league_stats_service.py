@@ -2,7 +2,8 @@
 
 Exercises the pure aggregation helper that powers the player-detail Summer
 League section: per-game/per-36/per-100 transforms, weighted shooting %,
-TS%, DNP exclusion, and graceful handling of missing pace / zero attempts.
+TS%, DNP exclusion, and graceful handling of missing engine possessions / zero
+attempts.
 """
 
 from __future__ import annotations
@@ -38,6 +39,16 @@ def _row(**kwargs: object) -> SimpleNamespace:
         pf=0,
     )
     base.update(kwargs)
+    if "engine_possessions" not in kwargs:
+        pace = base["pace"] if isinstance(base["pace"], (int, float)) else None
+        seconds = (
+            base["minutes_seconds"]
+            if isinstance(base["minutes_seconds"], (int, float))
+            else None
+        )
+        base["engine_possessions"] = (
+            float(pace) * (float(seconds) / 60.0) / 48.0 if pace and seconds else None
+        )
     return SimpleNamespace(**base)
 
 
@@ -140,8 +151,8 @@ def test_dnp_rows_excluded_from_games_and_totals() -> None:
     assert season.modes["per_game"].pts == pytest.approx(20.0)
 
 
-def test_missing_pace_yields_no_per_100() -> None:
-    """When no row has pace, per-100 is unavailable (None values)."""
+def test_missing_engine_possessions_yields_no_per_100() -> None:
+    """When no row has an engine estimate, per-100 is unavailable."""
     rows = [
         _row(minutes_seconds=1800, pace=None, pts=18, fga=12, fgm=6),
         _row(minutes_seconds=1200, pace=0, pts=10, fga=8, fgm=4),
@@ -154,6 +165,20 @@ def test_missing_pace_yields_no_per_100() -> None:
     assert p100.fga is None and p100.fta is None
     # per-game / per-36 still work.
     assert season.modes["per_game"].pts == pytest.approx(14.0)
+
+
+def test_career_extrapolates_only_complete_competitions() -> None:
+    """Career estimates extrapolate complete competition denominators only."""
+    rows = [
+        _row(venue_slug="complete", engine_possessions=50.0),
+        _row(venue_slug="complete", engine_possessions=50.0),
+        _row(venue_slug="gap", engine_possessions=None),
+    ]
+
+    season = _aggregate_season(rows, year=None, season_label="Career")
+
+    assert season is not None
+    assert season.total_possessions == pytest.approx(150.0)
 
 
 def test_zero_attempts_render_none_percentages() -> None:

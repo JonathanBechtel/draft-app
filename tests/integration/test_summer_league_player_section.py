@@ -23,6 +23,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
+    SummerLeagueTeamGameLog,
 )
 from tests.integration.conftest import make_player
 
@@ -146,6 +147,37 @@ async def _seed_game(
         tov=2,
     )
     db.add(log)
+    if pace is not None and minutes_seconds > 0:
+        db.add(
+            SummerLeagueTeamGameLog(
+                competition_id=comp.id,
+                game_id=game.id,
+                team_entry_id=team.id,
+                minutes=180,
+                fgm=50,
+                fga=50,
+                ftm=0,
+                fta=0,
+                oreb=0,
+                dreb=0,
+                tov=10,
+            )
+        )
+        db.add(
+            SummerLeagueTeamGameLog(
+                competition_id=comp.id,
+                game_id=game.id,
+                team_entry_id=opp.id,
+                minutes=180,
+                fgm=50,
+                fga=50,
+                ftm=0,
+                fta=0,
+                oreb=0,
+                dreb=0,
+                tov=10,
+            )
+        )
     await db.flush()
 
 
