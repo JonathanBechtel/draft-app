@@ -78,6 +78,7 @@ from app.schemas.summer_league import (
     SummerLeagueRawRun,
     SummerLeagueRawRunStatus,
 )
+from app.services.stats.percentiles import percentile as _percentile
 from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
 
 # discipline: file-size formula audit keeps this legacy aggregation module reviewable.
@@ -762,21 +763,6 @@ def build_profile_summary_view(
 # ===========================================================================
 # #617 — deterministic set-based aggregation, coverage, and publication.
 # ===========================================================================
-
-
-def _percentile(values: list[float], q: float) -> float:
-    """Linear-interpolated percentile ``q`` (0–1) over ``values`` (numpy default)."""
-    ordered = sorted(values)
-    if not ordered:
-        raise ValueError("percentile of an empty sequence")
-    if len(ordered) == 1:
-        return ordered[0]
-    idx = (len(ordered) - 1) * q
-    low = math.floor(idx)
-    high = math.ceil(idx)
-    if low == high:
-        return ordered[low]
-    return ordered[low] * (high - idx) + ordered[high] * (idx - low)
 
 
 def _age_years(birthdate: date, reference: date) -> float:

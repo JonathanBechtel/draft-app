@@ -9,7 +9,6 @@ from app.services.stats.formulas import (
     pace_per_48,
     pace_seconds_from_possessions,
     points_per_100,
-    scale_python,
     vorp82,
     vorp_total,
     win_shares_per_40,
@@ -18,8 +17,8 @@ from app.services.stats.registry import (
     net_rating_expr,
     pace_per_48_expr,
     points_per_100_expr,
-    scale_sql,
 )
+from app.services.stats.scaling import scale_python, scale_sql
 
 
 def test_scale_python_matches_the_published_display_factors() -> None:
@@ -63,5 +62,5 @@ def test_registry_sql_builders_use_the_same_neutral_field_shape() -> None:
         "PTS * 2160.0 / NULLIF(SEC, 0)"
     )
     assert "off_rating - def_rating" in str(net_rating_expr(column))
-    assert "nullif" in str(pace_per_48_expr(column)).lower()
-    assert "nullif" in str(points_per_100_expr(column)).lower()
+    assert "team_minutes" in str(pace_per_48_expr(column))
+    assert "possessions" in str(points_per_100_expr(column))

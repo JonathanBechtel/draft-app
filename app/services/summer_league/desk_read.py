@@ -105,6 +105,7 @@ from app.services.event_desk.registry import (
 )
 from app.services.event_desk.state_machine import inner_state
 from app.services.event_desk.timeutils import to_eastern, to_eastern_date
+from app.services.stats.registry import RollupClass, rollup_class_matches
 from app.services.summer_league.cohort_baselines import (
     blend_event_aggregates,
     cohort_key_for,
@@ -115,7 +116,8 @@ from app.services.summer_league.desk_grades import (
 )
 from app.services.summer_league.desk_selection import Surface
 from app.services.summer_league.constants import MINUTES_PER_GAME
-from app.services.stats.formulas import pace_seconds_from_possessions, scale_python
+from app.services.stats.formulas import pace_seconds_from_possessions
+from app.services.stats.scaling import scale_python
 from app.services.summer_league.desk_storylines import (
     ClassLeaderCandidate,
     draft_slot_fallback,
@@ -1517,6 +1519,25 @@ _ADV_RATE_COMPOSITE_KEYS: tuple[str, ...] = (
     "trb_pct",
     "ws82",
     "bpm",
+)
+# T8b (#729): ``ws82``/``bpm`` are registry pool_recalibrated composites --
+# minute-weighting them across pooled venue rows is the same cross-pool blend
+# approximation `summer_league_metrics_service._blend_leader_values` documents,
+# consistent with (not a re-derivation of) the registry's class.
+assert rollup_class_matches("ws82", RollupClass.POOL_RECALIBRATED)
+assert rollup_class_matches("bpm", RollupClass.POOL_RECALIBRATED)
+# **Known, flagged conflict -- not resolved here (T8b / #729 scope discipline,
+# same conflict raised in `_blend_leader_values`).** ``usg_pct``/``ast_pct``/
+# ``trb_pct``/``tov_pct`` are declared ``RollupClass.RECOMBINABLE`` in the
+# registry ("recompute from summed box totals"), not minute-weighted-average.
+# ``usg_pct``/``ast_pct``/``trb_pct`` genuinely can't be recombined from these
+# pooled rows (their formulas need team/opponent box totals this view doesn't
+# retain); ``tov_pct`` only needs ``tov``/``fga``/``fta`` -- already summed a
+# few lines below for the box-family FG%/3P%/FT% -- so it could be recombined
+# the same way and currently isn't.
+assert all(
+    rollup_class_matches(k, RollupClass.RECOMBINABLE)
+    for k in ("usg_pct", "ast_pct", "trb_pct", "tov_pct")
 )
 
 
