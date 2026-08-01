@@ -175,6 +175,10 @@
     "app/services/similarity_service.py": {
       "PLR0913": 1
     },
+    "app/services/stats/formulas.py": {
+      "PLR0913": 1,
+      "PLR0915": 1
+    },
     "app/services/summer_league/audit.py": {
       "PLR0913": 1
     },
@@ -215,9 +219,7 @@
       "PLR0913": 1
     },
     "app/services/summer_league/metrics.py": {
-      "C901": 2,
-      "PLR0913": 1,
-      "PLR0915": 1
+      "C901": 2
     },
     "app/services/summer_league/normalization.py": {
       "C901": 5,

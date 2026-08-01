@@ -12,6 +12,8 @@ A comprehensive, sortable leaderboard across five display modes:
 Every visible column is sortable.
 """
 
+# discipline: file-size Phase 2 formula wiring; no new scope in ticket #745
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -21,6 +23,7 @@ from sqlalchemy import case, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
+from app.services.stats.formulas import efg_pct_line, ts_pct_line
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
@@ -614,8 +617,8 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
         "fg_pct": _pct(_safe_div(fgm, fga)),
         "fg3_pct": _pct(_safe_div(fg3m, float(r.fg3a or 0))),
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
-        "efg_pct": _pct(_safe_div(fgm + 0.5 * fg3m, fga)),
-        "ts_pct": _pct(_safe_div(float(r.pts or 0), 2.0 * (fga + 0.44 * fta))),
+        "efg_pct": efg_pct_line(fgm=fgm, fga=fga, fg3m=fg3m),
+        "ts_pct": ts_pct_line(pts=r.pts, fga=fga, fta=fta),
     }
     return LeaderRow(
         rank=0, slug=r.slug, name=r.display_name or "Player", gp=gp, values=values
