@@ -20,8 +20,18 @@ from app.services.summer_league.metrics import (
     rebuild_staged,
     set_repeatable_read_snapshot,
 )
-from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
+from app.services.summer_league.write_lock import (
+    acquire_summer_league_writer_lock_bounded,
+)
 from app.utils.db_async import SessionLocal, engine
+
+# A manual rebuild racing a scheduled cron writer (the Desk backbone class,
+# or another manual run) previously took the unbounded blocking acquire,
+# which could hang indefinitely behind a long-running holder with no
+# feedback. The bounded acquire fails loudly with a clear timeout instead --
+# the same pattern the Desk tick classes use (see
+# `app/services/summer_league/desk_tick/shared.py`).
+DEFAULT_REBUILD_LOCK_MAX_WAIT_SECONDS = 30.0
 
 
 async def main() -> None:
@@ -34,7 +44,9 @@ async def main() -> None:
                 db, metrics_version=int(summary["version"])
             )
         async with db.begin():
-            await acquire_summer_league_writer_lock(db)
+            await acquire_summer_league_writer_lock_bounded(
+                db, max_wait_seconds=DEFAULT_REBUILD_LOCK_MAX_WAIT_SECONDS
+            )
             skipped_competition_ids = await publish_metric_version(
                 db,
                 version=int(summary["version"]),

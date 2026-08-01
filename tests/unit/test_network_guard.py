@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from unittest.mock import MagicMock
 
@@ -148,6 +149,53 @@ def test_writer_lock_guard_is_independent_of_transaction_listener() -> None:
 
     transaction.is_active = False
     assert writer_lock_depth() == 0
+
+
+@pytest.mark.asyncio
+async def test_child_task_inherits_frozen_transaction_depth_snapshot() -> None:
+    """A task spawned mid-transaction freezes its own copy of the guard's state.
+
+    ``ContextVar`` state is copied, not shared, at ``asyncio.create_task``
+    time: a child task spawned while a transaction is open inherits that
+    transaction as "active" in its own context, but never observes the
+    parent's later ``after_transaction_end`` removal -- there is no
+    cross-task propagation. This documents the resulting semantics: if the
+    parent's transaction closes before the child checks
+    :func:`transaction_depth`, the child reports a permanent false-positive
+    depth for the rest of its life, even though the real transaction is long
+    gone. No guarded production path uses ``create_task``/``gather`` today,
+    so this is latent rather than an active bug -- this test exists so the
+    behavior is explicit and intentional before the first concurrent
+    refactor risks tripping over it silently.
+    """
+    engine = create_engine("sqlite://")
+    child_ready = asyncio.Event()
+    let_child_check = asyncio.Event()
+    child_saw_depth: list[int] = []
+
+    async def _child() -> None:
+        child_ready.set()
+        await let_child_check.wait()
+        child_saw_depth.append(transaction_depth())
+
+    with Session(engine) as session:
+        session.execute(text("SELECT 1"))
+        assert transaction_depth() == 1
+        # copy_context() happens here, snapshotting the active transaction.
+        task = asyncio.create_task(_child())
+        await child_ready.wait()
+
+    # The parent's context observes the transaction end (Session.__exit__
+    # rolls back and fires after_transaction_end).
+    assert transaction_depth() == 0
+
+    let_child_check.set()
+    await task
+    engine.dispose()
+
+    # The child's frozen context copy never received the removal: it still
+    # believes the closed transaction is active.
+    assert child_saw_depth == [1]
 
 
 def test_production_warns_for_transaction_and_writer_lock(

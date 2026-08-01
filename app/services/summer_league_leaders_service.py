@@ -3,7 +3,7 @@
 A comprehensive, sortable leaderboard across five display modes:
 
 * ``totals`` / ``per_game`` / ``per_36`` / ``per_100`` — counting stats from the
-  box logs, scaled per the mode (per-100 uses NBA-supplied on-court ``pace``).
+  box logs, scaled per the mode (per-100 uses same-game engine possessions).
 * ``advanced`` — SL-calibrated composites (PER, ratings, BPM, WS, VORP, …) read
   from the materialized ``summer_league_player_seasons`` table. Those metrics are
   recalibrated per pool, so the advanced board is scoped to a single competition
@@ -19,15 +19,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from sqlalchemy import case, func, literal, select
+from sqlalchemy import and_, case, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.schemas.players_master import PlayerMaster
 from app.services.stats.formulas import efg_pct_line, ts_pct_line
-from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
+    SummerLeagueGame,
     SummerLeaguePlayerGameLog,
+    SummerLeagueTeamGameLog,
+)
+from app.services.stats.scaling import scale_python
+from app.services.summer_league.pace import (
+    aggregate_leader_rows,
+    team_box_columns,
 )
 from app.services.summer_league_metrics_service import (
     ADV_LEADER_COLUMNS,
@@ -518,67 +525,68 @@ async def _aggregate(
     min_games: int,
     min_minutes: int,
 ) -> list[Any]:
-    """Aggregate per-player box totals for the counting display modes."""
-    pgl = SummerLeaguePlayerGameLog
-    comp = SummerLeagueCompetition
-    sec: Any = pgl.minutes_seconds  # treat as a column expression for arithmetic
+    """Aggregate per-player box totals and same-game engine possessions.
+
+    Counting numerators remain sourced from player game logs, but a per-100
+    denominator is only valid when the corresponding competition has complete
+    same-game team and opponent boxes. This keeps a sparse source gap (notably
+    2012--2016) absent instead of turning a few NBA pace rows into a ranking.
+    """
+    pgl: Any = SummerLeaguePlayerGameLog
+    comp: Any = SummerLeagueCompetition
+    game: Any = SummerLeagueGame
+    team_log: Any = aliased(SummerLeagueTeamGameLog)
+    opponent_log: Any = aliased(SummerLeagueTeamGameLog)
 
     conds: list[Any] = [
         pgl.player_id.isnot(None),  # type: ignore[union-attr]
-        sec > 0,
+        pgl.minutes_seconds > 0,  # type: ignore[operator]
     ]
     if year is not None:
         conds.append(comp.year == year)  # type: ignore[arg-type]
     if venue:
         conds.append(comp.venue_slug == venue)  # type: ignore[arg-type]
 
-    # per_100's denominator is pace-derived possessions, but ``pace`` is NULL for
-    # pace-gap games (pre-2017 pools reconstructed without team box data). Summing
-    # only the pace-covered possessions while the counting-stat numerators cover
-    # *every* game inflates per-100 by ``total_min / pace_covered_min`` for any
-    # player whose career straddles the boundary. Extrapolate possessions to all
-    # minutes with the minute-weighted observed pace so numerator and denominator
-    # span the same games — mirroring the Explorer's ``pace_sec_expr``:
-    #   pace_sec = SUM(pace × sec) × SUM(sec) / SUM(sec where pace > 0).
-    # Complete coverage leaves this exact; no pace-covered games → NULL → per-100
-    # renders blank rather than a garbage rate.
-    paced_sec = func.sum(case((pgl.pace > 0, sec), else_=literal(0)))  # type: ignore[arg-type, operator]
-    pace_sec_expr = func.sum(pgl.pace * sec) * func.sum(sec) / func.nullif(paced_sec, 0)
-
+    opponent_team_id = case(
+        (game.home_team_entry_id == pgl.team_entry_id, game.away_team_entry_id),
+        else_=game.home_team_entry_id,
+    )
     stmt = (
         select(
-            pgl.player_id,
-            PlayerMaster.slug,
-            PlayerMaster.display_name,
-            func.count().label("gp"),
-            func.sum(sec).label("sec"),
-            pace_sec_expr.label("pace_sec"),
-            func.sum(pgl.pts).label("pts"),
-            func.sum(pgl.oreb).label("oreb"),
-            func.sum(pgl.dreb).label("dreb"),
-            func.sum(pgl.reb).label("reb"),
-            func.sum(pgl.ast).label("ast"),
-            func.sum(pgl.stl).label("stl"),
-            func.sum(pgl.blk).label("blk"),
-            func.sum(pgl.tov).label("tov"),
-            func.sum(pgl.pf).label("pf"),
-            func.sum(pgl.plus_minus).label("plus_minus"),
-            func.sum(pgl.fgm).label("fgm"),
-            func.sum(pgl.fga).label("fga"),
-            func.sum(pgl.fg3m).label("fg3m"),
-            func.sum(pgl.fg3a).label("fg3a"),
-            func.sum(pgl.ftm).label("ftm"),
-            func.sum(pgl.fta).label("fta"),
+            pgl,
+            PlayerMaster.slug.label("slug"),  # type: ignore[union-attr]
+            PlayerMaster.display_name.label("display_name"),  # type: ignore[union-attr]
+            *team_box_columns(team_log, "team"),
+            *team_box_columns(opponent_log, "opp"),
         )  # type: ignore[call-overload, misc]
         .select_from(pgl)
         .join(comp, comp.id == pgl.competition_id)
+        .join(game, game.id == pgl.game_id)
         .join(PlayerMaster, PlayerMaster.id == pgl.player_id)
+        .outerjoin(
+            team_log,
+            and_(
+                team_log.game_id == pgl.game_id,
+                team_log.team_entry_id == pgl.team_entry_id,
+            ),
+        )
+        .outerjoin(
+            opponent_log,
+            and_(
+                opponent_log.game_id == pgl.game_id,
+                opponent_log.team_entry_id == opponent_team_id,
+            ),
+        )
         .where(*conds)
-        .group_by(pgl.player_id, PlayerMaster.slug, PlayerMaster.display_name)
-        .having(func.count() >= min_games)
-        .having(func.sum(sec) >= min_minutes * 60)
     )
-    return list((await db.execute(stmt)).all())
+    raw_rows = (await db.execute(stmt)).all()
+
+    return aggregate_leader_rows(
+        raw_rows,
+        counting_fields=_COUNTING,
+        min_games=min_games,
+        min_minutes=min_minutes,
+    )
 
 
 def _compute_row(r: Any, mode: str) -> LeaderRow:
@@ -586,20 +594,19 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
     gp = int(r.gp)
     sec = float(r.sec or 0)
     minutes = sec / 60.0
-    poss = (r.pace_sec or 0) / (60.0 * MINUTES_PER_GAME)
-
-    if mode == "per_game":
-        factor = _safe_div(1.0, gp)
-        min_val: Optional[float] = round(minutes / gp, 1) if gp else None
-    elif mode == "per_36":
-        factor = _safe_div(36.0, minutes)
-        min_val = round(minutes / gp, 1) if gp else None
-    elif mode == "per_100":
-        factor = _safe_div(100.0, poss) if poss else None
-        min_val = round(minutes / gp, 1) if gp else None
-    else:  # totals
-        factor = 1.0
+    pace_seconds = float(r.pace_sec or 0)
+    factor = scale_python(
+        1.0,
+        mode,
+        gp=gp,
+        seconds=sec,
+        pace_seconds=pace_seconds,
+    )
+    min_val: Optional[float]
+    if mode == "totals":
         min_val = round(minutes, 1)
+    else:
+        min_val = round(minutes / gp, 1) if gp else None
 
     def scaled(total: Optional[float]) -> Optional[float]:
         if factor is None or total is None:

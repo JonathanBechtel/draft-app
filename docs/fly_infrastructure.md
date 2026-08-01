@@ -55,10 +55,15 @@ no healthy machine to shift traffic to) while risking machine churn. Its job is 
 gauges. It is bounded at 5s — deliberately under SQLAlchemy's 30s `pool_timeout` — so a
 saturated pool reports fast rather than hanging the probe.
 
-**Currently nothing polls it.** This is the known gap: incident #669 ran ~96 minutes with
-`/health` green and public routes 500ing, and until an external monitor watches
-`/health/db`, the signal exists but no one is listening. Wiring that monitor is tracked
-with the deploy-freshness work in the Phase 1 roadmap.
+**Polled daily from this repo.** The `db-health` job in
+`.github/workflows/deploy-freshness.yml` runs `scripts/check_health_db.py` against both
+`https://draft-app.fly.dev/health/db` and `https://draft-app-prod.fly.dev/health/db` on
+the same 13:00 UTC schedule as the deploy-freshness check, and fails the run on a 503.
+This closes the gap incident #669 exposed (~96 minutes with `/health` green and public
+routes 500ing) with a same-day, in-repo signal, but it is deliberately minimal: no
+retries, no paging, no history — one GET per app, once a day. It does not replace real
+external uptime monitoring; point that at `/health/db` too if faster detection or
+alerting matters more than a daily check.
 
 ### Cron Machines (news-ingestion-cron)
 
@@ -180,16 +185,27 @@ flight. A deploy never terminates a Desk tick to refresh its image.
     retried indefinitely within this job.
   - **Post-deploy verification** (`scripts/verify_cron_image_digests.py`, invoked
     from the "Verify Summer League cron image digests (post-deploy)" step, the last
-    step in the job): lists every named Summer League cron machine
+    step in the job): lists every named cron machine -- the Summer League set
     (`summer-league-ingestion-cron`, `summer-league-desk-cron`,
-    `summer-league-roster-cron`), compares each one's current `config.image` against
-    the just-deployed app image, and **fails the workflow** (`::error::`, non-zero
-    exit) if any machine that exists is on a different image. `summer-league-desk-cron`
-    is passed with `--optional-machine` so its total *absence* (never promoted to this
-    environment) doesn't fail the check, but drift on an *existing* Desk cron machine
-    fails exactly like the other two -- there is no more silent warning-only skip for
-    image drift. Both scripts are plain read-only-except-for-flyctl Python, callable
-    the same way from CI or by a human operator locally, following the same shape as
+    `summer-league-roster-cron`, `summer-league-metrics-compact-cron`, and the three
+    Desk latency-class machines) plus `news-ingestion-cron` -- compares each one's
+    current `config.image` against the just-deployed app image, and **fails the
+    workflow** (`::error::`, non-zero exit) if any machine that exists is on a
+    different image. The readiness-/preflight-gated crons (`summer-league-desk-cron`,
+    `summer-league-metrics-compact-cron`, the three Desk latency-class machines) are
+    passed with `--optional-machine` so total *absence* (never promoted to this
+    environment) doesn't fail the check, but drift on any of them once it *does* exist
+    fails exactly like the always-present machines -- there is no more silent
+    warning-only skip for image drift. `news-ingestion-cron` is not optional: it
+    always exists, is updated by the same "Update cron machine (if exists)" step every
+    deploy already runs, and has the identical drift failure mode as the Summer League
+    crons, but that update step is itself echo-and-continue on a missing machine ID --
+    this is the backstop for exactly that miss. **Both prod (`fly-deploy-prod.yml`)
+    and stage (`fly-deploy-stage.yml`) run this verification step** -- the #686
+    incident (a Desk cron left on a stale image) was first noticed manually on stage,
+    which had no verification step of its own until this was added. Both scripts are
+    plain read-only-except-for-flyctl Python, callable the same way from CI or by a
+    human operator locally, following the same shape as
     `scripts/check_sl_desk_readiness.py`.
 - **Full runbook** (baseline build, manual first tick, smoke check, stage-to-prod
   promotion, rollback): `docs/plans/summer-league-desk-536-deploy-runbook.md`.

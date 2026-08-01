@@ -8,6 +8,12 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Reverse of import contract 4 (which forbids event_desk -> Summer League):
+# this module imports FROM event_desk. That direction is uncovered by any
+# contract and is pervasive across Summer League today, not unique to this
+# module -- accepted as Phase 5 material rather than contracted now; see
+# "Accepted coupling" in docs/plans/summer-league-remediation-roadmap.md
+# (Phase 5).
 from app.services.event_desk.render_snapshots import upsert_render_snapshots
 from app.services.event_desk.snapshot_materialization import (
     prepare_desk_render_snapshots,
@@ -88,19 +94,30 @@ async def run_metrics_stage(
         and not inputs_changed
     ):
         logger.info(
-            "SL metrics rebuild skipped: input watermark unchanged watermark=%s",
+            "SL metrics rebuild skipped: input watermark unchanged "
+            "watermark=%s any_games=%s",
             current_input_watermark,
+            context.any_games,
         )
-        if context.any_games:
-            async with db.begin():
-                await complete_pipeline(
-                    db,
-                    job=SummerLeaguePipelineJob.FULL_INGESTION,
-                    metrics_rebuilt=False,
-                    snapshots_materialized=False,
-                )
-        else:
-            logger.info("No venue had games and no metrics inputs changed")
+        # Stamp a durable outcome whether or not any venue had games. This
+        # branch used to only record pipeline state when `any_games` was
+        # True, so an off-season/no-op run (no games, unchanged watermark)
+        # left `last_outcome` exactly as it was before this run -- `None` on
+        # a job that had never run, or a stale prior outcome otherwise --
+        # indistinguishable from "this job never executed" per #661's
+        # scheduler-vs-data distinction. There is no dedicated SKIPPED
+        # outcome value: adding one to `SummerLeaguePipelineOutcome` is a
+        # native-enum migration, out of scope for this fix. Reusing
+        # SUCCEEDED with `metrics_rebuilt=False` matches the precedent this
+        # same branch already established for the any_games=True case and
+        # durably records that the job ran and intentionally did nothing.
+        async with db.begin():
+            await complete_pipeline(
+                db,
+                job=SummerLeaguePipelineJob.FULL_INGESTION,
+                metrics_rebuilt=False,
+                snapshots_materialized=False,
+            )
         return False
 
     logger.info(

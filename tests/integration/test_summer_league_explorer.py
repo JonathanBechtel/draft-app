@@ -550,6 +550,22 @@ async def test_explorer_page_renders(
 
 
 @pytest.mark.asyncio
+async def test_team_metric_filters_render_and_preserve_selection(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """Team pages render the metric controls and keep an active filter visible."""
+    await _seed_teams(db_session)
+    resp = await app_client.get(
+        "/stats/summer-league/explorer?subject=teams&fcol0=net_rtg&fop0=gte&fval0=5"
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="metric-filter-section"' in body
+    assert 'value="net_rtg" selected' in body
+    assert "NetRtg" in body
+
+
+@pytest.mark.asyncio
 async def test_explorer_partial_returns_table_only(
     db_session: AsyncSession, app_client: AsyncClient
 ) -> None:

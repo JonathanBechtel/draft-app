@@ -86,6 +86,7 @@ from app.services.stats.formulas import (
     fg3ar_ratio,
     ftr_line,
     ftr_ratio,
+    net_rating,
     ts_pct_line,
     ts_pct_ratio,
     tov_pct_line,
@@ -933,11 +934,18 @@ _TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("diff", "DIFF"),
     # Advanced team metrics (pace + ratings) — grouped so the column-group toggle
     # can show/hide them alongside the player advanced columns.
-    ExplorerColumn("pace", "PACE", _GROUP_ADVANCED),
-    ExplorerColumn("ortg", "ORtg", _GROUP_ADVANCED),
-    ExplorerColumn("drtg", "DRtg", _GROUP_ADVANCED),
-    ExplorerColumn("net_rtg", "NetRtg", _GROUP_ADVANCED),
+    ExplorerColumn("pace", "PACE", _GROUP_ADVANCED, filterable=True),
+    ExplorerColumn("ortg", "ORtg", _GROUP_ADVANCED, filterable=True),
+    ExplorerColumn("drtg", "DRtg", _GROUP_ADVANCED, filterable=True),
+    ExplorerColumn("net_rtg", "NetRtg", _GROUP_ADVANCED, filterable=True),
 ]
+
+TEAM_FILTERABLE_COLUMNS: list[ExplorerColumn] = [
+    column for column in _TEAM_STAT_COLUMNS if column.filterable
+]
+_TEAM_FILTERABLE_KEYS: frozenset[str] = frozenset(
+    column.key for column in TEAM_FILTERABLE_COLUMNS
+)
 
 # Stat columns for the games subject (one row per game). The label carries date
 # + matchup + score; these are the sortable numeric dimensions.
@@ -2299,9 +2307,16 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     page = _to_int(params.get("page")) or 1
 
     is_competitions = subject == "competitions"
+    valid_filter_keys = (
+        _COMPETITION_FILTERABLE_KEYS
+        if is_competitions
+        else _TEAM_FILTERABLE_KEYS
+        if subject == "teams"
+        else _FILTERABLE_KEYS
+    )
     metric_filters = parse_metric_filters(
         params,
-        _COMPETITION_FILTERABLE_KEYS if is_competitions else _FILTERABLE_KEYS,
+        valid_filter_keys,
         errors=validation_errors if is_competitions else None,
     )
     if grain == "per_game":
@@ -3647,6 +3662,29 @@ class _SingleGameRow:
         self.plus_minus = row.plus_minus
 
 
+def _filter_team_rows(
+    rows: Sequence[ExplorerRow], filters: Sequence[MetricFilter]
+) -> list[ExplorerRow]:
+    """Apply team thresholds to the same values the table renders."""
+    filtered = list(rows)
+    for metric_filter in filters:
+        if metric_filter.col not in _TEAM_FILTERABLE_KEYS:
+            continue
+        next_rows: list[ExplorerRow] = []
+        for row in filtered:
+            value = row.values.get(metric_filter.col)
+            if value is None:
+                continue
+            if (
+                value >= metric_filter.value
+                if metric_filter.op == ">="
+                else value <= metric_filter.value
+            ):
+                next_rows.append(row)
+        filtered = next_rows
+    return filtered
+
+
 # --------------------------------------------------------------------------- #
 # Teams subject
 # --------------------------------------------------------------------------- #
@@ -3767,11 +3805,8 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         # so missing inputs degrade cleanly instead of producing 0 / NaN.
         ortg_val = _r1(rt.ortg) if rt else None
         drtg_val = _r1(rt.drtg) if rt else None
-        net_rtg_val = (
-            round(ortg_val - drtg_val, 1)
-            if (ortg_val is not None and drtg_val is not None)
-            else None
-        )
+        raw_net_rtg = net_rating(ortg_val, drtg_val)
+        net_rtg_val = round(raw_net_rtg, 1) if raw_net_rtg is not None else None
         rows.append(
             ExplorerRow(
                 label=f"{name} · {_venue_label(r.venue_slug)} {r.year}",
@@ -3790,6 +3825,10 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                 },
             )
         )
+
+    # Apply thresholds after assembling rows so filtering and rendering share one
+    # formula path; previously valid team metric filters were silently ignored.
+    rows = _filter_team_rows(rows, q.metric_filters)
 
     # Teams row count is bounded (hundreds at most), so sort + slice in Python.
     # This avoids the complexity of a multi-CTE SQL approach while still removing
