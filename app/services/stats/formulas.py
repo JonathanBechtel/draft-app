@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from typing import Any, Optional
 
 from app.services.stats.inputs import PlayerSeason, PoolContext, StatInputs, _d
-from app.services.stats.registry import RollupClass, get_metric
+from app.services.stats.registry import RollupClass, require_rollup_class
 
 # Pool-level pace floor below which the possession estimate is not real. Genuine
 # Summer League pools run ~85-115; pools reconstructed from season logs without
@@ -95,9 +95,10 @@ def game_score_line(
 # T8b (#729): read (not restate) the registry's rollup_class for gmsc, so a
 # future re-classification of Game Score in the registry fails this import
 # loudly instead of silently drifting from the recombination shortcut above.
-assert get_metric("gmsc").rollup_class is RollupClass.RECOMBINABLE, (
-    "game_score_line's linear-recombination shortcut requires gmsc to be "
-    "declared RollupClass.RECOMBINABLE in app.services.stats.registry"
+require_rollup_class(
+    "game_score_line's linear-recombination shortcut",
+    RollupClass.RECOMBINABLE,
+    "gmsc",
 )
 
 
