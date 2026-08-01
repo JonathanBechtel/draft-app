@@ -1222,3 +1222,18 @@ def registry_summary() -> RegistrySummary:
         metric_count=len(METRIC_DEFINITIONS),
         rollup_class_counts=rollup_counts,
     )
+
+
+def net_rating_expr(box: Callable[[str], Any]) -> Any:
+    """Build the neutral SQLAlchemy form of ``ORtg - DRtg``."""
+    return box("off_rating") - box("def_rating")
+
+
+def pace_per_48_expr(box: Callable[[str], Any]) -> Any:
+    """Build pooled possessions per 48 team minutes."""
+    return 48.0 * box("possessions") / (box("team_minutes") / 5.0)
+
+
+def points_per_100_expr(box: Callable[[str], Any]) -> Any:
+    """Build the neutral SQLAlchemy form of points per 100 possessions."""
+    return 100.0 * box("points") / box("possessions")

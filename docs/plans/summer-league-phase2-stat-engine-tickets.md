@@ -88,7 +88,7 @@ T1 (parity harness) ─┬──────────────────
 T2 (lift engine) ────┼──> T4 (scaling) ────────────┤
                      ├──> T5 (Python sites) ───────┼──> T9 (confinement rule)
                      ├──> T6 (SQL sites) ──────────┤
-                     └──> T7 (registry) ──> T8 (capability) 
+                     └──> T7 (registry) ──> T8 (capability)
                                         └──> T8b (rollup_class)
 T3 (percentile utility) — independent, start anytime
 ```

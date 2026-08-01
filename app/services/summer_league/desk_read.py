@@ -116,6 +116,8 @@ from app.services.summer_league.desk_grades import (
 )
 from app.services.summer_league.desk_selection import Surface
 from app.services.summer_league.constants import MINUTES_PER_GAME
+from app.services.stats.formulas import pace_seconds_from_possessions
+from app.services.stats.scaling import scale_python
 from app.services.summer_league.desk_storylines import (
     ClassLeaderCandidate,
     draft_slot_fallback,
@@ -1620,14 +1622,15 @@ def _build_stat_columns(
     gp_total = sum(r.gp for r in rows)
     minutes_total = sum(float(r.minutes or 0) for r in rows)
 
-    factor: Optional[float]
-    if stat_view == "per36":
-        factor = 36.0 / minutes_total if minutes_total else None
-    elif stat_view == "per100":
-        poss = _pooled_possessions(rows)
-        factor = 100.0 / poss if poss else None
-    else:  # "box" -- per-game average, the tracker's baseline display.
-        factor = 1.0 / gp_total if gp_total else None
+    mode = {"box": "per_game", "per36": "per_36", "per100": "per_100"}[stat_view]
+    possessions = _pooled_possessions(rows)
+    factor = scale_python(
+        1.0,
+        mode,
+        gp=gp_total,
+        seconds=minutes_total * 60.0,
+        pace_seconds=pace_seconds_from_possessions(possessions),
+    )
 
     def _scaled(key: str) -> Optional[float]:
         if factor is None:

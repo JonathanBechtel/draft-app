@@ -24,11 +24,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.services.stats.formulas import efg_pct_line, ts_pct_line
-from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeaguePlayerGameLog,
 )
+from app.services.stats.scaling import scale_python
 from app.services.summer_league_metrics_service import (
     ADV_LEADER_COLUMNS,
     VENUE_LABELS,
@@ -586,20 +586,19 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
     gp = int(r.gp)
     sec = float(r.sec or 0)
     minutes = sec / 60.0
-    poss = (r.pace_sec or 0) / (60.0 * MINUTES_PER_GAME)
-
-    if mode == "per_game":
-        factor = _safe_div(1.0, gp)
-        min_val: Optional[float] = round(minutes / gp, 1) if gp else None
-    elif mode == "per_36":
-        factor = _safe_div(36.0, minutes)
-        min_val = round(minutes / gp, 1) if gp else None
-    elif mode == "per_100":
-        factor = _safe_div(100.0, poss) if poss else None
-        min_val = round(minutes / gp, 1) if gp else None
-    else:  # totals
-        factor = 1.0
+    pace_seconds = float(r.pace_sec or 0)
+    factor = scale_python(
+        1.0,
+        mode,
+        gp=gp,
+        seconds=sec,
+        pace_seconds=pace_seconds,
+    )
+    min_val: Optional[float]
+    if mode == "totals":
         min_val = round(minutes, 1)
+    else:
+        min_val = round(minutes / gp, 1) if gp else None
 
     def scaled(total: Optional[float]) -> Optional[float]:
         if factor is None or total is None:
