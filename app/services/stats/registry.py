@@ -54,6 +54,8 @@ and for why a later agent's confinement-rule allowlist (T9 / #730) should treat
 exemption rather than an undeclared duplicate.
 """
 
+# discipline: file-size Phase 2 metric catalog; decomposition is tracked outside #745
+
 from __future__ import annotations
 
 from dataclasses import dataclass

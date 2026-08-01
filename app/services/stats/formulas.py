@@ -11,6 +11,8 @@ package docstring (``app/services/stats/__init__.py``) for the import contract
 this depends on.
 """
 
+# discipline: file-size Phase 2 engine extraction; decomposition is tracked outside #745
+
 from __future__ import annotations
 
 from collections.abc import Mapping

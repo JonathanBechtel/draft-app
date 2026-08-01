@@ -1,5 +1,7 @@
 """Normalize audited Summer League raw data into product tables."""
 
+# discipline: file-size Phase 2 normalization wiring; no new scope in ticket #745
+
 from __future__ import annotations
 
 import json
