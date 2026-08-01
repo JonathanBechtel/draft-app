@@ -438,7 +438,7 @@ async def extract_board_from_news_item(
         if board is None:
             # Fetch before opening the persistence transaction. The runtime
             # guard intentionally rejects HTTP while a DB transaction is open.
-            article_text = await board_extraction_service._default_fetcher(item.url)
+            article_text = await board_extraction_service.fetch_article_text(item.url)
 
             board = await board_extraction_service.extract_board_from_article(
                 db,
