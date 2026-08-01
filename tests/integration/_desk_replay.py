@@ -304,6 +304,7 @@ async def backbone_holding_writer_lock(
     test_schema: str,
     *,
     hold_seconds: float,
+    hold_game_rows: bool = False,
 ) -> AsyncIterator[asyncio.Task[None]]:
     """Run a stand-in backbone that holds the shared writer lock throughout.
 
@@ -324,6 +325,9 @@ async def backbone_holding_writer_lock(
             ``hashtext(current_schema())``, so a holder on the wrong schema
             would contend on an unrelated lock and silently prove nothing.
         hold_seconds: How long to hold the lock.
+        hold_game_rows: Also lock every existing ``summer_league_games`` row
+            with ``SELECT ... FOR UPDATE``. This models the normalization
+            phase's row-level contention separately from the advisory lock.
 
     Yields:
         The running holder task, so a caller can assert on its state.
@@ -336,6 +340,10 @@ async def backbone_holding_writer_lock(
             await holder.commit()
             async with holder.begin():
                 await acquire_summer_league_writer_lock(holder)
+                if hold_game_rows:
+                    await holder.execute(
+                        text("SELECT id FROM summer_league_games FOR UPDATE")
+                    )
                 holding.set()
                 await asyncio.sleep(hold_seconds)
 

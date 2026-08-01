@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -55,6 +56,27 @@ from app.services.summer_league.pipeline_telemetry import (  # noqa: E402
 )
 
 logger = logging.getLogger(__name__)
+
+FAST_LOCK_TIMEOUT = "3s"
+FAST_STATEMENT_TIMEOUT = "15s"
+
+
+async def configure_fast_session_timeouts(db: AsyncSession) -> None:
+    """Bound fast-class database waits on the current physical session.
+
+    ``set_config(..., false)`` makes these settings session-scoped rather than
+    transaction-local. The fast runner re-invokes this hook before each write
+    phase because its transaction boundary may return a connection to the
+    pool and the next checkout may be a different physical session.
+    """
+    await db.execute(
+        text("SELECT set_config('lock_timeout', :timeout, false)"),
+        {"timeout": FAST_LOCK_TIMEOUT},
+    )
+    await db.execute(
+        text("SELECT set_config('statement_timeout', :timeout, false)"),
+        {"timeout": FAST_STATEMENT_TIMEOUT},
+    )
 
 
 def _summarize(result: FastTickResult) -> str:
@@ -124,6 +146,7 @@ async def _run(args: argparse.Namespace) -> None:
                 # Only `app/cli/` decides *how* a transaction ends; the class
                 # only declares where it may (see TickContext).
                 transaction_boundary=db.commit,
+                session_configurator=configure_fast_session_timeouts,
                 telemetry=telemetry,
                 lock=NO_WRITER_LOCK,
             ),

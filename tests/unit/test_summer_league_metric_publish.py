@@ -50,9 +50,7 @@ async def test_publish_metric_model_refits_and_activates_existing_fit() -> None:
     db = MagicMock()
     db.execute = AsyncMock()
     existing = SimpleNamespace(is_active=False)
-    db.execute.return_value = SimpleNamespace(
-        scalar_one_or_none=lambda: existing
-    )
+    db.execute.return_value = SimpleNamespace(scalar_one_or_none=lambda: existing)
 
     await metric_publish.publish_metric_model(
         db,
@@ -90,13 +88,16 @@ async def test_publish_metric_version_flips_full_projection_and_fit() -> None:
     db = MagicMock()
     db.execute = AsyncMock()
     db.flush = AsyncMock()
+    db.execute.return_value = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: [])
+    )
 
     await metric_publish.publish_metric_version(
         db, version=9, model_version="candidate"
     )
 
     assert db.flush.await_count == 1
-    assert db.execute.await_count == 6
+    assert db.execute.await_count == 7
 
 
 @pytest.mark.asyncio
@@ -105,10 +106,33 @@ async def test_publish_metric_version_scopes_the_pointer_flip() -> None:
     db = MagicMock()
     db.execute = AsyncMock()
     db.flush = AsyncMock()
-
-    await metric_publish.publish_metric_version(
-        db, version=10, competition_ids={3, 5}
+    db.execute.return_value = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: [])
     )
 
+    await metric_publish.publish_metric_version(db, version=10, competition_ids={3, 5})
+
     assert db.flush.await_count == 1
-    assert db.execute.await_count == 4
+    assert db.execute.await_count == 5
+
+
+@pytest.mark.asyncio
+async def test_publish_metric_version_skips_newer_current_scope() -> None:
+    """A stale candidate excludes newer scopes from both projection updates."""
+    db = MagicMock()
+    db.execute = AsyncMock()
+    db.flush = AsyncMock()
+    db.execute.return_value = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: [3])
+    )
+
+    await metric_publish.publish_metric_version(db, version=9, competition_ids={3, 5})
+
+    assert db.flush.await_count == 1
+    assert db.execute.await_count == 5
+    statements = [call.args[0] for call in db.execute.await_args_list]
+    assert "published_at" not in str(statements[1])
+    assert "published_at" not in str(statements[2])
+    assert "published_at" in str(statements[3])
+    assert "published_at" in str(statements[4])
+    assert all("NOT IN" in str(statement) for statement in statements[1:])

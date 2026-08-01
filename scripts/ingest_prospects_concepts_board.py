@@ -21,6 +21,7 @@ import importlib
 import os
 import pkgutil
 import sys
+from typing import Any
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -208,6 +209,39 @@ async def _build_plan(db: AsyncSession) -> tuple[list[tuple], int]:
     return plan, blocked
 
 
+def _prepare_guarded_plan(
+    plan: list[tuple],
+    variant_index: Any,
+    *,
+    stub_method: Any,
+    exact_method: Any,
+    alias_method: Any,
+) -> list[tuple]:
+    """Apply identity-guard decisions before a board write can begin."""
+    from app.services.player_identity_guard import resolve_variant_identity_match
+
+    guarded_plan: list[tuple] = []
+    for rank, tier, name, pid, method, note in plan:
+        if method is stub_method:
+            identity = resolve_variant_identity_match(
+                name,
+                variant_index.matches_for(name),
+            )
+            if identity.status in {"exact", "alias"}:
+                if identity.player_id is None:
+                    raise SystemExit(f"{name!r} matched without a canonical player id.")
+                pid = identity.player_id
+                method = exact_method if identity.status == "exact" else alias_method
+                note = f"{method.value} -> #{pid} (reused existing player)"
+            elif identity.status != "none":
+                raise SystemExit(
+                    f"{name!r} requires identity review ({identity.status}); "
+                    "refusing to mint a duplicate stub."
+                )
+        guarded_plan.append((rank, tier, name, pid, method, note))
+    return guarded_plan
+
+
 async def _write_plan(
     db: AsyncSession, board_id: int, plan: list[tuple]
 ) -> tuple[int, int]:
@@ -218,6 +252,7 @@ async def _write_plan(
     """
     from app.schemas.boards import Board, BoardEntry, BoardKind, ResolutionMethod
     from app.schemas.players_master import PlayerMaster
+    from app.services.player_identity_guard import build_variant_identity_index
 
     board = (
         await db.execute(
@@ -245,7 +280,17 @@ async def _write_plan(
             f"  actual:                              {actual}"
         )
 
-    # Clear existing entries on the target board.
+    variant_index = await build_variant_identity_index(db)
+    write_plan = _prepare_guarded_plan(
+        plan,
+        variant_index,
+        stub_method=ResolutionMethod.STUB,
+        exact_method=ResolutionMethod.EXACT,
+        alias_method=ResolutionMethod.ALIAS,
+    )
+
+    # Clear existing entries only after every proposed stub passes the identity
+    # guard, so a blocked execute cannot partially replace the board.
     await db.execute(
         delete(BoardEntry).where(
             BoardEntry.board_id == board_id  # type: ignore[arg-type]
@@ -255,7 +300,7 @@ async def _write_plan(
 
     minted = 0
     reused = 0
-    for rank, tier, name, pid, method, _note in plan:
+    for rank, tier, name, pid, method, _note in write_plan:
         if method == ResolutionMethod.STUB:
             # Re-running --execute, or another workflow having added the name in
             # the meantime, must not mint a second canonical identity for the
@@ -285,7 +330,10 @@ async def _write_plan(
                 db.add(stub)
                 await db.flush()
                 pid = stub.id
+                if pid is None:
+                    raise RuntimeError("Stub player insert did not populate player.id")
                 minted += 1
+                variant_index.add_display_name(pid, name)
         db.add(
             BoardEntry(
                 board_id=board_id,
@@ -296,7 +344,7 @@ async def _write_plan(
                 resolution_method=method,
             )
         )
-    board.size = len(plan)
+    board.size = len(write_plan)
     db.add(board)
     return minted, reused
 

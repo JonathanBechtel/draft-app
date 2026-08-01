@@ -38,6 +38,10 @@ from app.services.player_bio.persistence import (
     _upsert_status,
 )
 from app.services.player_bio.rows import BioRow, load_bio_rows
+from app.services.player_identity_guard import (
+    build_variant_identity_index,
+    resolve_variant_identity_match,
+)
 from app.services.summer_league.bio_enrichment_targets import (
     select_bio_enrichment_targets,
 )
@@ -104,6 +108,7 @@ async def _ingest_rows(
     fixed_map = options.fixed_map
     report = IngestReport()
     ext_map, alias_map, last_idx, pm_by_id = await _load_lookup(db)
+    variant_index = await build_variant_identity_index(db)
 
     if options.cohort_scoped:
         targets = await select_bio_enrichment_targets(
@@ -128,6 +133,19 @@ async def _ingest_rows(
         # External ID (bbr)
         if player_id is None:
             player_id = ext_map.get(r.slug)
+        # Variant-aware identity guard. A unique punctuation/diacritic match
+        # is safe to reuse; suffix mismatches and collisions stay reviewable
+        # instead of falling through to the first/last-name heuristic.
+        if player_id is None:
+            identity = resolve_variant_identity_match(
+                r.full_name,
+                variant_index.matches_for(r.full_name),
+            )
+            if identity.status in {"exact", "alias"}:
+                player_id = identity.player_id
+            elif identity.status != "none":
+                report.ambiguous.append(r.slug)
+                continue
         # Exact alias
         if player_id is None:
             pids = alias_map.get(_norm(r.full_name), [])
@@ -160,6 +178,7 @@ async def _ingest_rows(
                     raise RuntimeError("PlayerMaster missing id after flush")
                 player_id = player_pk
                 pm_by_id[player_pk] = pm
+                variant_index.add_display_name(player_pk, pm.display_name)
                 # Update lookups for subsequent rows
                 alias_map.setdefault(_norm(r.full_name), []).append(player_pk)
                 if last:

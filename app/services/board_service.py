@@ -6,6 +6,9 @@ so they preserve a faithful record of the analyst's rankings (and the
 admin's review decision) for downstream consensus computation.
 """
 
+# discipline: file-size identity resolution is delegated to board_identity;
+# no new board CRUD surface is added here.
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,6 +27,10 @@ from app.schemas.boards import (
     ResolutionMethod,
 )
 from app.schemas.players_master import PlayerMaster
+from app.services.board_identity import (
+    BoardIdentityReviewError,
+    resolve_variant_identity_for_entry,
+)
 
 
 class BoardError(Exception):
@@ -67,6 +74,10 @@ class EntryAlreadyResolvedError(BoardError):
     or double-submits that would otherwise orphan a new row and clobber an
     existing resolution.
     """
+
+
+class IdentityMatchReviewError(BoardError):
+    """Raised when a raw name needs identity review before stub creation."""
 
 
 @dataclass(frozen=True)
@@ -433,13 +444,13 @@ async def mint_stub_for_entry(
     *,
     entry_id: int,
 ) -> BoardEntry:
-    """Create a stub PlayerMaster from an unresolved entry's raw_name.
+    """Resolve an unresolved entry by reusing a safe identity or minting a stub.
 
-    Mints a new ``PlayerMaster`` row with ``is_stub=True`` and
+    Reuses an exact or safe variant identity match when available. Otherwise,
+    mints a new ``PlayerMaster`` row with ``is_stub=True`` and
     ``display_name=raw_name``, then assigns it to the entry with
-    ``resolution_method=STUB``.  The ``before_insert`` listener
-    auto-generates the slug; the ``after_commit`` hook queues an
-    embedding.  The board must be PENDING; callers own the transaction.
+    ``resolution_method=STUB``. The board must be PENDING; callers own the
+    transaction.
 
     Args:
         db: Async session; caller owns commit.
@@ -473,6 +484,18 @@ async def mint_stub_for_entry(
             f"Entry {entry_id} is already resolved "
             f"(method={entry.resolution_method.value}); refusing to mint a stub."
         )
+
+    try:
+        reused = await resolve_variant_identity_for_entry(
+            db,
+            entry=entry,
+            board=board,
+            translate_integrity_error=_translate_entry_integrity_error,
+        )
+    except BoardIdentityReviewError as exc:
+        raise IdentityMatchReviewError(str(exc)) from exc
+    if reused:
+        return entry
 
     stub = PlayerMaster(
         display_name=entry.raw_name or f"Unknown #{entry_id}",

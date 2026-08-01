@@ -13,7 +13,6 @@ import pytest
 
 from app.services.player_mention_service import (
     PlayerMatch,
-    StubCreateResult,
     _LookupEntry,
     _PlayerNameLookup,
     create_stub_player,
@@ -30,9 +29,7 @@ def _empty_lookup() -> _PlayerNameLookup:
     )
 
 
-def _lookup_with_one_player(
-    player_id: int, display_name: str
-) -> _PlayerNameLookup:
+def _lookup_with_one_player(player_id: int, display_name: str) -> _PlayerNameLookup:
     """Return a lookup populated so the given player matches its own display name."""
     from app.services.player_mention_service import (
         _normalized_name_key,
@@ -76,7 +73,9 @@ def _lookup_with_two_players_same_key(
     return _PlayerNameLookup(
         display_exact={},
         alias_exact={},
-        display_relaxed={shared_relaxed_key: {player_id_a: entry_a, player_id_b: entry_b}},
+        display_relaxed={
+            shared_relaxed_key: {player_id_a: entry_a, player_id_b: entry_b}
+        },
         alias_relaxed={},
     )
 
@@ -149,8 +148,8 @@ class TestCreateStubPlayerBlockedExisting:
         mock_create.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_suffix_variant_blocks_creation(self) -> None:
-        """A relaxed suffix variant matching an existing player must block creation."""
+    async def test_suffix_variant_is_reviewable(self) -> None:
+        """A relaxed suffix variant must be reviewable, not linked or created."""
         db = MagicMock()
         lookup = _lookup_with_one_player(42, "Darius Acuff Jr.")
 
@@ -166,9 +165,9 @@ class TestCreateStubPlayerBlockedExisting:
         ):
             result = await create_stub_player(db, "Darius Acuff")
 
-        assert result.outcome == "blocked_existing"
-        assert result.match is not None
-        assert result.match.player_id == 42
+        assert result.outcome == "ambiguous"
+        assert result.candidates is not None
+        assert result.candidates[0].player_id == 42
         mock_create.assert_not_called()
 
 

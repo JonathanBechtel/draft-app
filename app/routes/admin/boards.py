@@ -43,7 +43,7 @@ _SUCCESS_MESSAGES: dict[str, str] = {
     "entry_added": "Entry added.",
     "entry_updated": "Entry updated.",
     "entry_deleted": "Entry removed.",
-    "stub_minted": "Stub player created and entry resolved.",
+    "stub_minted": "Player matched or stub created and entry resolved.",
     "stub_minted_inline": "Stub player created and entry added.",
     "approved": "Board approved.",
     "rejected": "Board rejected.",
@@ -945,11 +945,11 @@ async def mint_stub_player(
     entry_id: int,
     db: AsyncSession = Depends(get_session),
 ) -> Response:
-    """Create a stub PlayerMaster from an unresolved entry's raw_name.
+    """Resolve an unresolved entry using an existing identity or a new stub.
 
-    Mints a new ``PlayerMaster`` row with ``is_stub=True`` and assigns
-    it to the entry with ``resolution_method=STUB``.  The board must be
-    PENDING.  Redirects back to the board detail page on success.
+    Reuses a safe existing identity match when available, otherwise creates a
+    new ``PlayerMaster`` row with ``is_stub=True``. The board must be PENDING.
+    Redirects back to the board detail page on success.
     """
     redirect, user = await require_dataset_access(
         request,

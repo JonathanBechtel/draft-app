@@ -29,9 +29,13 @@ from app.schemas.summer_league import (
     SummerLeagueSourcePlayer,
 )
 from app.services.player_identity_guard import (
+    IdentityVariantIndex,
     IdentityVariantMatches,
+    build_variant_identity_index,
     find_variant_identity_matches,
+    identity_suffixes_differ,
     normalize_player_identity_name,
+    resolve_variant_identity_match,
 )
 from app.services.player_mention_service import parse_player_name
 
@@ -566,36 +570,64 @@ async def _confirm_resolution(
 def _plan_from_variant_matches(
     *,
     source_player_id: int,
+    source_player_name: str,
     matches: IdentityVariantMatches,
 ) -> SummerLeagueResolutionPlan | None:
     """Build a safe resolution plan from variant-normalized identity matches."""
-    player_ids = matches.player_ids
-    if not player_ids:
+    resolution = resolve_variant_identity_match(source_player_name, matches)
+    if resolution.status == "none":
         return None
-    if len(player_ids) == 1:
-        player_id = next(iter(player_ids))
+    if resolution.status == "suffix_mismatch":
+        assert resolution.player_id is not None
+        return SummerLeagueResolutionPlan(
+            source_player_id=source_player_id,
+            kind="VECTOR_CANDIDATE",
+            candidates=[
+                SummerLeagueResolutionCandidate(
+                    player_id=resolution.player_id,
+                    display_name=resolution.display_name,
+                    score=1.0,
+                    method="NORMALIZED_SUFFIX_MISMATCH",
+                )
+            ],
+        )
+    if resolution.status in {"exact", "alias"}:
+        assert resolution.player_id is not None
         kind: SummerLeagueResolutionPlanKind = (
-            "EXACT" if player_id in matches.display_names else "ALIAS"
+            "EXACT" if resolution.status == "exact" else "ALIAS"
         )
         return SummerLeagueResolutionPlan(
             source_player_id=source_player_id,
             kind=kind,
-            player_id=player_id,
+            player_id=resolution.player_id,
         )
-    candidates = [
-        SummerLeagueResolutionCandidate(
-            player_id=player_id,
-            display_name=matches.display_name_for(player_id),
-            score=1.0,
-            method="NORMALIZED_VARIANT_COLLISION",
+    if resolution.status == "ambiguous":
+        candidates = [
+            SummerLeagueResolutionCandidate(
+                player_id=player_id,
+                display_name=matches.display_name_for(player_id),
+                score=1.0,
+                method="NORMALIZED_VARIANT_COLLISION",
+            )
+            for player_id in resolution.candidate_ids
+        ]
+        return SummerLeagueResolutionPlan(
+            source_player_id=source_player_id,
+            kind="VECTOR_CANDIDATE",
+            candidates=candidates,
         )
-        for player_id in sorted(player_ids)
-    ]
-    return SummerLeagueResolutionPlan(
-        source_player_id=source_player_id,
-        kind="VECTOR_CANDIDATE",
-        candidates=candidates,
-    )
+    return None
+
+
+async def _find_prepared_variant_matches(
+    db: AsyncSession,
+    source_name: str,
+    identity_index: IdentityVariantIndex | None,
+) -> IdentityVariantMatches:
+    """Find variant matches, reusing the caller's batch index when available."""
+    if identity_index is None:
+        return await find_variant_identity_matches(db, source_name)
+    return await find_variant_identity_matches(db, source_name, index=identity_index)
 
 
 async def _create_stub_player(
@@ -704,6 +736,7 @@ async def prepare_source_player_resolution(
     source_player: SummerLeagueSourcePlayer,
     *,
     before_candidate_search: Callable[[], Awaitable[None]] | None = None,
+    identity_index: IdentityVariantIndex | None = None,
 ) -> SummerLeagueResolutionPlan:
     """Run the read-only resolution cascade for one source player.
 
@@ -716,6 +749,7 @@ async def prepare_source_player_resolution(
         db: Async database session.
         source_player: The source player to evaluate.
         before_candidate_search: Boundary closing the read transaction before search.
+        identity_index: Optional per-run display/alias index to reuse across rows.
 
     Returns:
         A :class:`SummerLeagueResolutionPlan` describing what
@@ -754,9 +788,11 @@ async def prepare_source_player_resolution(
 
     normalized_plan = _plan_from_variant_matches(
         source_player_id=source_player.id,
-        matches=await find_variant_identity_matches(
+        source_player_name=source_player.raw_player_name,
+        matches=await _find_prepared_variant_matches(
             db,
             source_player.raw_player_name,
+            identity_index,
         ),
     )
     if normalized_plan is not None:
@@ -891,6 +927,7 @@ async def apply_source_player_resolution_plan(
     if create_stub and recheck_variant_before_stub:
         late_normalized_plan = _plan_from_variant_matches(
             source_player_id=plan.source_player_id,
+            source_player_name=source_player.raw_player_name,
             matches=await find_variant_identity_matches(
                 db,
                 source_player.raw_player_name,
@@ -950,6 +987,7 @@ async def revalidate_source_player_resolution_plan(
     return (
         _plan_from_variant_matches(
             source_player_id=plan.source_player_id,
+            source_player_name=source_player.raw_player_name,
             matches=await find_variant_identity_matches(
                 db,
                 source_player.raw_player_name,
@@ -965,6 +1003,7 @@ async def resolve_source_player(
     *,
     create_stub: bool = False,
     before_candidate_search: Callable[[], Awaitable[None]] | None = None,
+    identity_index: IdentityVariantIndex | None = None,
 ) -> SummerLeagueResolutionResult:
     """Resolve one Summer League source player through the configured cascade.
 
@@ -979,6 +1018,7 @@ async def resolve_source_player(
         db,
         source_player,
         before_candidate_search=before_candidate_search,
+        identity_index=identity_index,
     )
     return await apply_source_player_resolution_plan(
         db, source_player, plan, create_stub=create_stub
@@ -1111,7 +1151,9 @@ async def resolve_summer_league_players(
     for source_player in source_players:
         if before_candidate_search is None:
             result = await resolve_source_player(
-                db, source_player, create_stub=create_stubs
+                db,
+                source_player,
+                create_stub=create_stubs,
             )
         else:
             result = await resolve_source_player(
@@ -1151,12 +1193,19 @@ async def prepare_summer_league_player_resolutions(
         :func:`resolve_summer_league_players` would process them.
     """
     source_players = await _load_source_players(db, year=year, league_id=league_id)
+    identity_index = await build_variant_identity_index(db)
     pairs: list[tuple[SummerLeagueSourcePlayer, SummerLeagueResolutionPlan]] = []
     for source_player in source_players:
         plan = await prepare_source_player_resolution(
             db,
             source_player,
             before_candidate_search=before_candidate_search,
+            identity_index=identity_index,
         )
         pairs.append((source_player, plan))
     return pairs
+
+
+def _suffixes_differ(source_name: str, candidate_name: str | None) -> bool:
+    """Return whether two names carry different recognized suffixes."""
+    return identity_suffixes_differ(source_name, candidate_name)
