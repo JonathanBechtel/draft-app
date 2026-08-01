@@ -66,6 +66,7 @@ async def _season(
         player_id=player.id,
         year=comp.year,
         venue_slug=comp.venue_slug,
+        is_current=True,
         gp=metrics.pop("gp", 3),
         minutes=metrics.pop("minutes", 90.0),
         adv_eligible=adv_eligible,
@@ -139,12 +140,28 @@ async def test_career_rollup_sums_and_weights(db_session: AsyncSession) -> None:
     )
 
     await _season(
-        db_session, comp=lv, player=player, minutes=100.0, per=18.0, bpm=4.0,
-        ws=1.0, vorp=0.6, ws82=8.0, vorp82=6.0,
+        db_session,
+        comp=lv,
+        player=player,
+        minutes=100.0,
+        per=18.0,
+        bpm=4.0,
+        ws=1.0,
+        vorp=0.6,
+        ws82=8.0,
+        vorp82=6.0,
     )
     await _season(
-        db_session, comp=slc, player=player, minutes=300.0, per=22.0, bpm=8.0,
-        ws=2.0, vorp=1.4, ws82=12.0, vorp82=10.0,
+        db_session,
+        comp=slc,
+        player=player,
+        minutes=300.0,
+        per=22.0,
+        bpm=8.0,
+        ws=2.0,
+        vorp=1.4,
+        ws82=12.0,
+        vorp82=10.0,
     )
     await db_session.flush()
 
@@ -169,9 +186,7 @@ async def test_sub_threshold_minutes_excluded(db_session: AsyncSession) -> None:
         db_session, year=2025, venue_slug="las_vegas", league_id="15"
     )
     # Adv-eligible pool, but the player logged only 12 minutes — PER would be noise.
-    await _season(
-        db_session, comp=comp, player=player, minutes=12.0, gp=1, per=70.0
-    )
+    await _season(db_session, comp=comp, player=player, minutes=12.0, gp=1, per=70.0)
     await db_session.flush()
 
     assert player.id is not None
@@ -302,9 +317,22 @@ async def test_player_page_renders_advanced_table(
     assert "24.7" in html  # PER value rendered
     # Full BBRef-parity advanced header set renders with stored values.
     for header in (
-        ">3PAr<", ">FTr<", ">AST'd%<", ">ORB%<", ">DRB%<", ">TRB%<",
-        ">AST%<", ">STL%<", ">BLK%<", ">TOV%<", ">USG%<",
-        ">OBPM<", ">DBPM<", ">OWS<", ">DWS<", ">WS/40<",
+        ">3PAr<",
+        ">FTr<",
+        ">AST'd%<",
+        ">ORB%<",
+        ">DRB%<",
+        ">TRB%<",
+        ">AST%<",
+        ">STL%<",
+        ">BLK%<",
+        ">TOV%<",
+        ">USG%<",
+        ">OBPM<",
+        ">DBPM<",
+        ">OWS<",
+        ">DWS<",
+        ">WS/40<",
     ):
         assert header in html
     assert "0.420" in html  # FTr as a 3-decimal fraction

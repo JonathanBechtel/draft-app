@@ -179,6 +179,7 @@ async def _seed_roster_scenario(
                 player_id=player.id,
                 year=year,
                 venue_slug=comp.venue_slug,
+                is_current=True,
                 gp=4,
                 minutes=120.0,
                 gmsc=45.0 + i,

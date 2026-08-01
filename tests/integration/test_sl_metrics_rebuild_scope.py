@@ -57,6 +57,7 @@ from app.services.summer_league.audit import audit_summer_league_raw
 from app.services.summer_league import metrics
 from app.services.summer_league.metrics import game_score_line, rebuild
 from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.summer_league.metric_publish import publish_metric_version
 from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.conftest import make_player
 
@@ -457,6 +458,89 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
     assert {s.player_id: s.gp for s in a_seasons_twice} == {
         s.player_id: 5 for s in a_seasons_twice
     }
+
+
+async def test_metric_publish_stamps_source_watermark_and_hides_candidates(
+    db_session: AsyncSession,
+) -> None:
+    """Candidates stay invisible until publication stamps their source currency."""
+    comp_id = await _seed_pool(
+        db_session,
+        year=2026,
+        venue="las_vegas",
+        league_id="15",
+        players_per_team=6,
+        n_games=4,
+    )
+    await db_session.commit()
+
+    staged = await metrics.rebuild_staged(db_session, model_version="watermark-fit")
+    watermark = staged["as_of"]
+    assert watermark is not None
+    version = staged["version"]
+    await db_session.commit()
+
+    staged_contexts = (
+        (
+            await db_session.execute(
+                select(SummerLeagueMetricContext).where(
+                    SummerLeagueMetricContext.competition_id == comp_id,
+                    SummerLeagueMetricContext.version == version,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    staged_seasons = (
+        (
+            await db_session.execute(
+                select(SummerLeaguePlayerSeason).where(
+                    SummerLeaguePlayerSeason.competition_id == comp_id,
+                    SummerLeaguePlayerSeason.version == version,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert staged_contexts and staged_seasons
+    assert all(row.is_current is False for row in [*staged_contexts, *staged_seasons])
+
+    async with db_session.begin():
+        await publish_metric_version(
+            db_session,
+            version=version,
+            model_version="watermark-fit",
+            as_of=watermark,
+        )
+
+    current_context = (
+        (
+            await db_session.execute(
+                select(SummerLeagueMetricContext).where(
+                    SummerLeagueMetricContext.competition_id == comp_id,
+                    SummerLeagueMetricContext.is_current.is_(True),  # type: ignore[attr-defined]
+                )
+            )
+        )
+        .scalars()
+        .one()
+    )
+    current_seasons = (
+        (
+            await db_session.execute(
+                select(SummerLeaguePlayerSeason).where(
+                    SummerLeaguePlayerSeason.competition_id == comp_id,
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert current_context.as_of == watermark
+    assert current_seasons and all(row.as_of == watermark for row in current_seasons)
 
 
 def _scoped_projection(result: metrics.ComputeResult, competition_id: int) -> tuple:
@@ -954,6 +1038,7 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
         player_id=player.id,
         year=year,
         venue_slug="vegas-tick-stale",
+        is_current=True,
         gp=99,
         minutes=1.0,
         gmsc=-999.0,
@@ -991,6 +1076,7 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
         player_id=other_player.id,
         year=year - 1,
         venue_slug="vegas-untouched",
+        is_current=True,
         gp=7,
         minutes=123.0,
         gmsc=55.5,
@@ -1127,6 +1213,7 @@ async def test_desk_tick_off_window_never_touches_player_seasons(
         player_id=player.id,
         year=year,
         venue_slug="off-window",
+        is_current=True,
         gp=3,
         minutes=42.0,
         gmsc=12.3,

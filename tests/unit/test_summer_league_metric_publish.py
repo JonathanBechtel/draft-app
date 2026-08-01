@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -98,6 +99,29 @@ async def test_publish_metric_version_flips_full_projection_and_fit() -> None:
 
     assert db.flush.await_count == 1
     assert db.execute.await_count == 7
+
+
+@pytest.mark.asyncio
+async def test_publish_metric_version_stamps_input_watermark_on_promoted_rows() -> None:
+    """The source watermark is written at the pointer flip, not left on candidates."""
+    db = MagicMock()
+    db.execute = AsyncMock()
+    db.flush = AsyncMock()
+    db.execute.return_value = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: [])
+    )
+    watermark = datetime(2026, 7, 28, 12, 0)
+
+    await metric_publish.publish_metric_version(
+        db,
+        version=9,
+        model_version="candidate",
+        as_of=watermark,
+    )
+
+    statements = [call.args[0] for call in db.execute.await_args_list]
+    assert "as_of" in str(statements[3])
+    assert "as_of" in str(statements[4])
 
 
 @pytest.mark.asyncio

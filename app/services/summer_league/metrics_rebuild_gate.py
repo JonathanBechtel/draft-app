@@ -176,11 +176,25 @@ async def run_metrics_stage(
                         "the candidate remains invisible for a later scheduled run"
                     )
                 else:
-                    skipped_competition_ids = await publish_metric_version(
-                        db,
-                        version=metrics_version,
-                        model_version=str(summary["model_version"]),
-                    )
+                    summary_as_of = summary.get("as_of")
+                    # ``as_of`` is computed from the exact source rows used by the
+                    # staged build. Carry it into the pointer-flip transaction so
+                    # promoted rows cannot retain a stale/null candidate stamp. Keep
+                    # the conditional for older operator/test rebuild shims that do
+                    # not return the optional field.
+                    if summary_as_of is None:
+                        skipped_competition_ids = await publish_metric_version(
+                            db,
+                            version=metrics_version,
+                            model_version=str(summary["model_version"]),
+                        )
+                    else:
+                        skipped_competition_ids = await publish_metric_version(
+                            db,
+                            version=metrics_version,
+                            model_version=str(summary["model_version"]),
+                            as_of=summary_as_of,
+                        )
                     if skipped_competition_ids:
                         logger.info(
                             "SL render snapshot refresh skipped because metric "

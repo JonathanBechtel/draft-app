@@ -598,6 +598,7 @@ async def test_compute_desk_storylines_second_look_for_returning_player_and_no_d
         player_id=player.id,
         year=2025,
         venue_slug="las_vegas",
+        is_current=True,
         gp=5,
         minutes=100.0,
         gmsc=8.0,

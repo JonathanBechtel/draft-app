@@ -931,6 +931,7 @@ async def _rebuild_with_options(
             "adv_pools": 0,
             "version": 0,
             "model_version": model_version or "",
+            "as_of": None,
             "published": publish,
         }
 
@@ -1041,7 +1042,11 @@ async def _rebuild_with_options(
             version=publication_version,
             competition_ids=scope,
             model_version=generated_model_version if scope is None else None,
+            as_of=result.as_of,
         )
+    # Keep the source watermark alongside the row counts so the gate can carry the
+    # exact input currency into the final publication transaction.
+    summary["as_of"] = result.as_of
     return summary
 
 

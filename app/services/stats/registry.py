@@ -128,33 +128,17 @@ class ReferenceKind(str, Enum):
 # Version.
 # ---------------------------------------------------------------------------
 #
-# This is the canonical value. ``app/schemas/summer_league_metrics.py`` currently
-# declares its own ``DEFAULT_METRIC_REGISTRY_VERSION = "2026.07.1"`` -- the same
-# literal, not a fresh one -- because Phase 1's version-flip (#697) minted it first
-# and this ticket (T7 / #724) is scoped to *new files only* (its own "Files to
-# change" list names exactly this module and its test). Re-pointing that schema
-# constant to import ``METRIC_REGISTRY_VERSION`` from here is Phase 3 materialization
-# work (doc #2 §5, explicitly out of Phase 2 scope: "registry_version should be
-# sourced from the metric registry in §2" describes the target end state, not a
-# Phase 2 deliverable).
-#
-# The layering that makes that future re-point possible without a cycle: contract 3
-# forbids ``app.services.stats -> app.schemas.summer_league_metrics``, but nothing
-# forbids the reverse (``app.schemas.summer_league_metrics -> app.services.stats``)
-# -- schemas are not covered by contract 3's source list, and this module imports
-# nothing from ``app.schemas`` or ``app.services.summer_league*``, so there is no
-# cycle either direction. Phase 3 changes exactly one line in the schema module:
-# ``DEFAULT_METRIC_REGISTRY_VERSION = "2026.07.1"`` becomes
-# ``from app.services.stats.registry import METRIC_REGISTRY_VERSION as
-# DEFAULT_METRIC_REGISTRY_VERSION``. Until that lands, this constant and the schema's
-# are two literals that must be bumped together; a unit test
-# (``tests/unit/services/stats/test_registry.py``) asserts they still agree so that
-# drift fails a test rather than silently diverging.
+# These are the canonical values. The materialized Summer League schema imports them
+# rather than declaring a second pair of literals. Keeping the calculation stamp tied
+# to the registry stamp means a formula-registry bump propagates to newly published
+# rows with one edit; the names remain separate in the row shape so a future pipeline
+# change can split them deliberately.
 #
 # Bump this (and update the assertion test) whenever any formula/rollup/comparison
 # field on a non-exempt entry below changes; bump each affected entry's own
 # ``definition_version`` in the same change.
 METRIC_REGISTRY_VERSION = "2026.07.1"
+METRIC_CALCULATION_VERSION = METRIC_REGISTRY_VERSION
 
 
 @dataclass(frozen=True)

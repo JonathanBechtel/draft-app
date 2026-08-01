@@ -17,7 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueGame
-from app.schemas.summer_league_desk import SummerLeagueDeskPlayerGrade, SummerLeagueDeskSlate
+from app.schemas.summer_league_desk import (
+    SummerLeagueDeskPlayerGrade,
+    SummerLeagueDeskSlate,
+)
 from app.services.summer_league.cohort_baselines import build_baselines
 from app.services.summer_league.desk_commentary import (
     persist_grade_facts,
@@ -87,6 +90,7 @@ async def _seed_season(
             player_id=player.id,
             year=year,
             venue_slug=competition.venue_slug,
+            is_current=True,
             gp=gp,
             minutes=minutes,
             gmsc=gmsc,
@@ -103,7 +107,13 @@ async def _seed_lottery_cohort_history(
         comp = await _seed_competition(db, year=year)
         player = await _seed_player(db, name=f"Hist{i}", draft_round=1, draft_pick=1)
         await _seed_season(
-            db, competition=comp, player=player, year=year, gmsc=gmsc, minutes=100.0, gp=5
+            db,
+            competition=comp,
+            player=player,
+            year=year,
+            gmsc=gmsc,
+            minutes=100.0,
+            gp=5,
         )
 
 
@@ -114,20 +124,31 @@ async def test_persist_grade_facts_writes_rendered_prose_chip_and_provenance(
     prose + chip + provenance onto the existing T2 row."""
     history = [float(v) for v in range(10, 101, 10)]  # 10 confident historical points
     await _seed_lottery_cohort_history(db_session, values=history, start_year=2014)
-    version = await build_baselines(db_session, season_range="2014-2023", min_minutes=40.0)
+    version = await build_baselines(
+        db_session, season_range="2014-2023", min_minutes=40.0
+    )
     await db_session.flush()
 
     subject_comp = await _seed_competition(db_session, year=2024)
-    subject = await _seed_player(db_session, name="Subject", draft_round=1, draft_pick=1)
+    subject = await _seed_player(
+        db_session, name="Subject", draft_round=1, draft_pick=1
+    )
     await _seed_season(
-        db_session, competition=subject_comp, player=subject, year=2024, gmsc=95.0,
-        minutes=150.0, gp=5,
+        db_session,
+        competition=subject_comp,
+        player=subject,
+        year=2024,
+        gmsc=95.0,
+        minutes=150.0,
+        gp=5,
     )
     assert subject.id is not None
     assert subject_comp.id is not None
 
     grade = await grade_player_event(
-        db_session, player_id=subject.id, competition_id=subject_comp.id,
+        db_session,
+        player_id=subject.id,
+        competition_id=subject_comp.id,
         baseline_version=version,
     )
     assert grade.gated is False
@@ -135,7 +156,9 @@ async def test_persist_grade_facts_writes_rendered_prose_chip_and_provenance(
     fact = Fact(
         kind=FactKind.PERCENTILE,
         subject=FactSubject(
-            player_id=subject.id, player_label="Subject Test", competition_id=subject_comp.id
+            player_id=subject.id,
+            player_label="Subject Test",
+            competition_id=subject_comp.id,
         ),
         metric="gmsc",
         cohort=grade.cohort_key,
@@ -147,7 +170,9 @@ async def test_persist_grade_facts_writes_rendered_prose_chip_and_provenance(
         },
         notability=1.0,
         provenance=FactProvenance(
-            detector_id="percentile", baseline_version=version, cohort_key=grade.cohort_key
+            detector_id="percentile",
+            baseline_version=version,
+            cohort_key=grade.cohort_key,
         ),
     )
 
@@ -191,20 +216,29 @@ async def test_persist_grade_facts_gated_grade_has_chip_but_no_prose(
     prose, but the chip renders regardless)."""
     history = [float(v) for v in range(10, 101, 10)]
     await _seed_lottery_cohort_history(db_session, values=history, start_year=2014)
-    version = await build_baselines(db_session, season_range="2014-2023", min_minutes=40.0)
+    version = await build_baselines(
+        db_session, season_range="2014-2023", min_minutes=40.0
+    )
     await db_session.flush()
 
     subject_comp = await _seed_competition(db_session, year=2024)
     subject = await _seed_player(db_session, name="Thin", draft_round=1, draft_pick=1)
     await _seed_season(
-        db_session, competition=subject_comp, player=subject, year=2024, gmsc=55.0,
-        minutes=15.0, gp=1,
+        db_session,
+        competition=subject_comp,
+        player=subject,
+        year=2024,
+        gmsc=55.0,
+        minutes=15.0,
+        gp=1,
     )
     assert subject.id is not None
     assert subject_comp.id is not None
 
     grade = await grade_player_event(
-        db_session, player_id=subject.id, competition_id=subject_comp.id,
+        db_session,
+        player_id=subject.id,
+        competition_id=subject_comp.id,
         baseline_version=version,
     )
     assert grade.gated is True
@@ -212,7 +246,9 @@ async def test_persist_grade_facts_gated_grade_has_chip_but_no_prose(
     fact = Fact(
         kind=FactKind.PERCENTILE,
         subject=FactSubject(
-            player_id=subject.id, player_label="Thin Test", competition_id=subject_comp.id
+            player_id=subject.id,
+            player_label="Thin Test",
+            competition_id=subject_comp.id,
         ),
         metric="gmsc",
         cohort=grade.cohort_key,
@@ -230,8 +266,11 @@ async def test_persist_grade_facts_gated_grade_has_chip_but_no_prose(
     )
 
     payload = await persist_grade_facts(
-        db_session, player_id=subject.id, competition_id=subject_comp.id,
-        baseline_version=version, facts=[fact],
+        db_session,
+        player_id=subject.id,
+        competition_id=subject_comp.id,
+        baseline_version=version,
+        facts=[fact],
     )
     entry = payload[0]
     assert entry["selected_for"] == []
@@ -244,8 +283,11 @@ async def test_persist_grade_facts_raises_for_missing_t2_row(
 ) -> None:
     with pytest.raises(ValueError, match="summer_league_desk_player_grades"):
         await persist_grade_facts(
-            db_session, player_id=999999, competition_id=999999,
-            baseline_version="nope", facts=[],
+            db_session,
+            player_id=999999,
+            competition_id=999999,
+            baseline_version="nope",
+            facts=[],
         )
 
 
@@ -256,22 +298,30 @@ async def test_persist_slate_facts_hero_row_includes_hero_tagline_surface(
     comp = await _seed_competition(db_session, year=2026)
     assert comp.id is not None
     game = SummerLeagueGame(
-        competition_id=comp.id, nba_stats_game_id="test-hero-game", game_date=date(2026, 7, 10)
+        competition_id=comp.id,
+        nba_stats_game_id="test-hero-game",
+        game_date=date(2026, 7, 10),
     )
     db_session.add(game)
     await db_session.flush()
     assert game.id is not None
 
     slate_row = SummerLeagueDeskSlate(
-        game_date=date(2026, 7, 10), competition_id=comp.id, game_id=game.id,
-        total_weight=90.0, rank=1, is_hero=True,
+        game_date=date(2026, 7, 10),
+        competition_id=comp.id,
+        game_id=game.id,
+        total_weight=90.0,
+        rank=1,
+        is_hero=True,
     )
     db_session.add(slate_row)
     await db_session.flush()
 
     fact = Fact(
         kind=FactKind.DEBUT_VS_BAR,
-        subject=FactSubject(player_id=1, player_label="Hero Prospect", competition_id=comp.id),
+        subject=FactSubject(
+            player_id=1, player_label="Hero Prospect", competition_id=comp.id
+        ),
         metric="gmsc",
         cohort="debut:1-4",
         values={"value": 22.0, "bar": 11.2, "delta": 10.8},
@@ -306,7 +356,8 @@ async def test_persist_slate_facts_non_hero_row_excludes_hero_tagline_surface(
     comp = await _seed_competition(db_session, year=2026)
     assert comp.id is not None
     game = SummerLeagueGame(
-        competition_id=comp.id, nba_stats_game_id="test-nonhero-game",
+        competition_id=comp.id,
+        nba_stats_game_id="test-nonhero-game",
         game_date=date(2026, 7, 10),
     )
     db_session.add(game)
@@ -314,15 +365,21 @@ async def test_persist_slate_facts_non_hero_row_excludes_hero_tagline_surface(
     assert game.id is not None
 
     slate_row = SummerLeagueDeskSlate(
-        game_date=date(2026, 7, 10), competition_id=comp.id, game_id=game.id,
-        total_weight=40.0, rank=3, is_hero=False,
+        game_date=date(2026, 7, 10),
+        competition_id=comp.id,
+        game_id=game.id,
+        total_weight=40.0,
+        rank=3,
+        is_hero=False,
     )
     db_session.add(slate_row)
     await db_session.flush()
 
     fact = Fact(
         kind=FactKind.DEBUT_VS_BAR,
-        subject=FactSubject(player_id=2, player_label="Non-hero Prospect", competition_id=comp.id),
+        subject=FactSubject(
+            player_id=2, player_label="Non-hero Prospect", competition_id=comp.id
+        ),
         metric="gmsc",
         cohort="debut:1-4",
         values={"value": 22.0, "bar": 11.2, "delta": 10.8},
@@ -351,41 +408,62 @@ async def test_persist_grade_facts_rerun_overwrites_facts_in_place(
     used elsewhere in this pipeline)."""
     history = [float(v) for v in range(10, 101, 10)]
     await _seed_lottery_cohort_history(db_session, values=history, start_year=2014)
-    version = await build_baselines(db_session, season_range="2014-2023", min_minutes=40.0)
+    version = await build_baselines(
+        db_session, season_range="2014-2023", min_minutes=40.0
+    )
     await db_session.flush()
 
     subject_comp = await _seed_competition(db_session, year=2024)
     subject = await _seed_player(db_session, name="Rerun", draft_round=1, draft_pick=1)
     await _seed_season(
-        db_session, competition=subject_comp, player=subject, year=2024, gmsc=95.0,
-        minutes=150.0, gp=5,
+        db_session,
+        competition=subject_comp,
+        player=subject,
+        year=2024,
+        gmsc=95.0,
+        minutes=150.0,
+        gp=5,
     )
     assert subject.id is not None
     assert subject_comp.id is not None
 
     grade = await grade_player_event(
-        db_session, player_id=subject.id, competition_id=subject_comp.id,
+        db_session,
+        player_id=subject.id,
+        competition_id=subject_comp.id,
         baseline_version=version,
     )
     subject_ref = FactSubject(
         player_id=subject.id, player_label="Rerun Test", competition_id=subject_comp.id
     )
     fact = Fact(
-        kind=FactKind.PERCENTILE, subject=subject_ref, metric="gmsc", cohort=grade.cohort_key,
+        kind=FactKind.PERCENTILE,
+        subject=subject_ref,
+        metric="gmsc",
+        cohort=grade.cohort_key,
         values={
-            "value": grade.subject_value, "pctl": grade.pctl, "n_cohort": grade.n_cohort,
+            "value": grade.subject_value,
+            "pctl": grade.pctl,
+            "n_cohort": grade.n_cohort,
             "gated": grade.gated,
         },
-        notability=1.0, provenance=FactProvenance(detector_id="percentile"),
+        notability=1.0,
+        provenance=FactProvenance(detector_id="percentile"),
     )
 
     await persist_grade_facts(
-        db_session, player_id=subject.id, competition_id=subject_comp.id,
-        baseline_version=version, facts=[fact, fact],
+        db_session,
+        player_id=subject.id,
+        competition_id=subject_comp.id,
+        baseline_version=version,
+        facts=[fact, fact],
     )
     second = await persist_grade_facts(
-        db_session, player_id=subject.id, competition_id=subject_comp.id,
-        baseline_version=version, facts=[fact],
+        db_session,
+        player_id=subject.id,
+        competition_id=subject_comp.id,
+        baseline_version=version,
+        facts=[fact],
     )
 
     persisted = (

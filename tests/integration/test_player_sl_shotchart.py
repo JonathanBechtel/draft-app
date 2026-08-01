@@ -246,6 +246,7 @@ async def _seed_rich_player(
         player_id=player.id,
         year=year,
         venue_slug="las_vegas",
+        is_current=True,
         gp=1,
         minutes=30.0,
         rim_rate=0.60,
@@ -478,6 +479,7 @@ async def test_competition_resolver_honors_venue(db_session: AsyncSession) -> No
                 player_id=player.id,
                 year=2024,
                 venue_slug=venue,
+                is_current=True,
                 gp=1,
                 minutes=20.0,
             )

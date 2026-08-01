@@ -115,6 +115,7 @@ async def test_rebuild_staged_writes_an_inactive_candidate_version(
         "adv_pools": 1,
         "version": 7,
         "model_version": "candidate",
+        "as_of": datetime(2026, 7, 28, 12, 0),
         "published": False,
     }
     publish_model.assert_awaited_once_with(
@@ -148,7 +149,11 @@ async def test_scoped_rebuild_publishes_only_the_requested_candidate_scope(
     assert summary["version"] == 8
     assert summary["model_version"] == "active-fit"
     publish_version.assert_awaited_once_with(
-        db, version=8, competition_ids=frozenset({1}), model_version=None
+        db,
+        version=8,
+        competition_ids=frozenset({1}),
+        model_version=None,
+        as_of=datetime(2026, 7, 28, 12, 0),
     )
     idle_timeout.assert_awaited_once_with(db)
     assert db.add.call_count == 2

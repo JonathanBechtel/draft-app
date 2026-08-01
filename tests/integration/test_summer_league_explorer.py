@@ -876,6 +876,7 @@ async def _season(
             player_id=player.id,
             year=year,
             venue_slug=venue_slug,
+            is_current=True,
             gp=gp,
             minutes=minutes,
             pts=pts,
@@ -1793,6 +1794,7 @@ async def _seed_per_comp_filters(db: AsyncSession) -> None:
             player_id=player.id,
             year=2024,
             venue_slug="las_vegas",
+            is_current=True,
             gp=2,
             minutes=60.0,
             pts=pts,
@@ -2381,6 +2383,7 @@ async def _metric_context(
         competition_id=comp_id,
         year=year,
         venue_slug=venue_slug,
+        is_current=True,
         adv_eligible=adv_eligible,
     )
     db.add(ctx)
@@ -2413,6 +2416,7 @@ async def _season_with_composites(
             player_id=player.id,
             year=year,
             venue_slug=venue_slug,
+            is_current=True,
             gp=gp,
             minutes=minutes,
             pts=pts,
@@ -3056,6 +3060,7 @@ async def _seed_age_filter_per_comp(
                 player_id=player.id,
                 year=2023,
                 venue_slug="las_vegas",
+                is_current=True,
                 gp=2,
                 minutes=60.0,
                 pts=pts,
@@ -3707,6 +3712,7 @@ async def test_career_box_parity_after_source_switch(
             player_id=player.id,
             year=2024,
             venue_slug="las_vegas",
+            is_current=True,
             gp=3,
             minutes=95.0,  # ≠ 90 (3 × 30 min log sum)
             pts=20,  # ≠ 15 (log sum)
@@ -5161,7 +5167,9 @@ _BOX_LINE = dict(
 assert _BOX_LINE["minutes"] >= MIN_COMPLETE_TEAM_MP
 
 
-async def _cc_team_log(db: AsyncSession, *, comp_id: int, game_id: int, team_id: int) -> None:
+async def _cc_team_log(
+    db: AsyncSession, *, comp_id: int, game_id: int, team_id: int
+) -> None:
     db.add(
         SummerLeagueTeamGameLog(
             competition_id=comp_id, game_id=game_id, team_entry_id=team_id, **_BOX_LINE
@@ -5259,10 +5267,18 @@ async def _seed_competition_context(db: AsyncSession) -> dict[str, int]:
         await _cc_team_log(db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=home.id)  # type: ignore[arg-type]
         await _cc_team_log(db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=away.id)  # type: ignore[arg-type]
         await _cc_player_log(
-            db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=home.id, player=scorer  # type: ignore[arg-type]
+            db,
+            comp_id=comp_vegas_24.id,  # type: ignore[arg-type]
+            game_id=g.id,  # type: ignore[arg-type]
+            team_id=home.id,  # type: ignore[arg-type]
+            player=scorer,  # type: ignore[arg-type]
         )
         await _cc_shots(
-            db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=home.id, player=scorer  # type: ignore[arg-type]
+            db,
+            comp_id=comp_vegas_24.id,  # type: ignore[arg-type]
+            game_id=g.id,  # type: ignore[arg-type]
+            team_id=home.id,  # type: ignore[arg-type]
+            player=scorer,  # type: ignore[arg-type]
         )
 
     # -- 2024 Salt Lake City: box-incomplete (one team-box row only) --
@@ -5274,7 +5290,11 @@ async def _seed_competition_context(db: AsyncSession) -> dict[str, int]:
     await _cc_team_log(db, comp_id=comp_slc_24.id, game_id=g2.id, team_id=home2.id)  # type: ignore[arg-type]
     # No away team-box row -> pairing fails -> box_complete_games stays 0 here.
     await _cc_player_log(
-        db, comp_id=comp_slc_24.id, game_id=g2.id, team_id=home2.id, player=scorer  # type: ignore[arg-type]
+        db,
+        comp_id=comp_slc_24.id,  # type: ignore[arg-type]
+        game_id=g2.id,  # type: ignore[arg-type]
+        team_id=home2.id,  # type: ignore[arg-type]
+        player=scorer,  # type: ignore[arg-type]
     )
 
     # -- 2023 Las Vegas: no box, no shots at all (unavailable coverage) --
@@ -5284,7 +5304,11 @@ async def _seed_competition_context(db: AsyncSession) -> dict[str, int]:
     away3 = await _cc_team(db, comp_vegas_23.id)  # type: ignore[arg-type]
     g3 = await _cc_game(db, comp_id=comp_vegas_23.id, home=home3, away=away3)  # type: ignore[arg-type]
     await _cc_player_log(
-        db, comp_id=comp_vegas_23.id, game_id=g3.id, team_id=home3.id, player=scorer  # type: ignore[arg-type]
+        db,
+        comp_id=comp_vegas_23.id,  # type: ignore[arg-type]
+        game_id=g3.id,  # type: ignore[arg-type]
+        team_id=home3.id,  # type: ignore[arg-type]
+        player=scorer,  # type: ignore[arg-type]
     )
 
     await db.commit()
@@ -5300,7 +5324,9 @@ async def _seed_competition_context(db: AsyncSession) -> dict[str, int]:
 
 
 @pytest.mark.asyncio
-async def test_competitions_season_list_pools_across_venues(db_session: AsyncSession) -> None:
+async def test_competitions_season_list_pools_across_venues(
+    db_session: AsyncSession,
+) -> None:
     """Season scope returns one row per year, pooling every venue in it."""
     await _seed_competition_context(db_session)
     result = await run_explorer_query(
@@ -5347,13 +5373,17 @@ async def test_competitions_competition_scope_one_row_per_edition(
     assert (2024, "Salt Lake City") in labels
     assert (2023, "Las Vegas") in labels
     vegas_2024 = next(
-        r for r in result.rows if r.values["year"] == 2024 and r.values["venue"] == "Las Vegas"
+        r
+        for r in result.rows
+        if r.values["year"] == 2024 and r.values["venue"] == "Las Vegas"
     )
     assert vegas_2024.values["final_games"] == 2
 
 
 @pytest.mark.asyncio
-async def test_competitions_venue_filters_competition_scope(db_session: AsyncSession) -> None:
+async def test_competitions_venue_filters_competition_scope(
+    db_session: AsyncSession,
+) -> None:
     await _seed_competition_context(db_session)
     result = await run_explorer_query(
         db_session,
@@ -5413,7 +5443,9 @@ async def test_competitions_min_gp_default_zero_shows_zero_game_rows(
 
 
 @pytest.mark.asyncio
-async def test_competitions_coverage_box_complete_filter(db_session: AsyncSession) -> None:
+async def test_competitions_coverage_box_complete_filter(
+    db_session: AsyncSession,
+) -> None:
     """coverage=box_complete keeps only rows whose overall box input is complete."""
     await _seed_competition_context(db_session)
     result = await run_explorer_query(
@@ -5490,7 +5522,12 @@ async def test_competitions_sort_and_pagination(db_session: AsyncSession) -> Non
     desc = await run_explorer_query(
         db_session,
         parse_query(
-            {"subject": "competitions", "profile_scope": "season", "sort": "year", "dir": "desc"}
+            {
+                "subject": "competitions",
+                "profile_scope": "season",
+                "sort": "year",
+                "dir": "desc",
+            }
         ),
     )
     assert [r.values["year"] for r in desc.rows] == [2024, 2023]
@@ -5498,7 +5535,12 @@ async def test_competitions_sort_and_pagination(db_session: AsyncSession) -> Non
     asc = await run_explorer_query(
         db_session,
         parse_query(
-            {"subject": "competitions", "profile_scope": "season", "sort": "year", "dir": "asc"}
+            {
+                "subject": "competitions",
+                "profile_scope": "season",
+                "sort": "year",
+                "dir": "asc",
+            }
         ),
     )
     assert [r.values["year"] for r in asc.rows] == [2023, 2024]
@@ -5514,7 +5556,11 @@ async def test_competitions_season_detail_by_detail_year_includes_membership(
     result = await run_explorer_query(
         db_session,
         parse_query(
-            {"subject": "competitions", "profile_scope": "season", "detail_year": "2024"}
+            {
+                "subject": "competitions",
+                "profile_scope": "season",
+                "detail_year": "2024",
+            }
         ),
     )
     detail = result.competition_detail
@@ -5572,13 +5618,16 @@ async def test_competitions_unknown_competition_id_yields_no_detail(
 
 
 @pytest.mark.asyncio
-async def test_competitions_facets_are_year_and_venue_only(db_session: AsyncSession) -> None:
+async def test_competitions_facets_are_year_and_venue_only(
+    db_session: AsyncSession,
+) -> None:
     """Competitions facets never load draft/country/position/team/round-type
     values — those are player/team-only (contract §9).
     """
     await _seed_competition_context(db_session)
     result = await run_explorer_query(
-        db_session, parse_query({"subject": "competitions", "profile_scope": "competition"})
+        db_session,
+        parse_query({"subject": "competitions", "profile_scope": "competition"}),
     )
     assert set(result.facets.years) == {2023, 2024}
     assert {v for v, _label in result.facets.venues} == {"las_vegas", "salt_lake_city"}
@@ -5626,7 +5675,9 @@ async def test_competitions_csv_and_table_values_agree(
         parse_query({"subject": "competitions", "profile_scope": "competition"}),
     )
     vegas_row = next(
-        r for r in result.rows if r.values["year"] == 2024 and r.values["venue"] == "Las Vegas"
+        r
+        for r in result.rows
+        if r.values["year"] == 2024 and r.values["venue"] == "Las Vegas"
     )
 
     resp = await app_client.get(
@@ -5646,7 +5697,8 @@ async def test_competitions_csv_and_table_values_agree(
             break
         data_rows.append(row)
     matching = [
-        row for row in data_rows
+        row
+        for row in data_rows
         if len(row) > year_idx and row[year_idx] == "2024" and "Las Vegas" in row
     ]
     assert matching, "expected a 2024 Las Vegas CSV row"

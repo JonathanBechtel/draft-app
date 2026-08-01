@@ -35,9 +35,15 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from app.schemas.base import DatedVersionMixin
+from app.services.stats.registry import (
+    METRIC_CALCULATION_VERSION,
+    METRIC_REGISTRY_VERSION,
+)
 
-DEFAULT_METRIC_REGISTRY_VERSION = "2026.07.1"
-DEFAULT_METRIC_CALCULATION_VERSION = "2026.07.1"
+# Backwards-compatible schema names for callers that import the defaults directly.
+# The stat-engine registry owns the values; this module must not mint a second pair.
+DEFAULT_METRIC_REGISTRY_VERSION = METRIC_REGISTRY_VERSION
+DEFAULT_METRIC_CALCULATION_VERSION = METRIC_CALCULATION_VERSION
 
 
 class SummerLeagueMetricModel(SQLModel, table=True):  # type: ignore[call-arg]
@@ -110,11 +116,7 @@ class SummerLeagueMetricContext(DatedVersionMixin, SQLModel, table=True):  # typ
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    # Direct fixture/manual construction predates dated metrics. The rebuild path
-    # always supplies an inactive candidate explicitly; these defaults keep legacy
-    # seed helpers readable while the migration backfills their equivalent v1 row.
     version: int = Field(default=1, nullable=False)
-    is_current: bool = Field(default=True, nullable=False)
     registry_version: str = Field(
         default=DEFAULT_METRIC_REGISTRY_VERSION, nullable=False
     )
@@ -179,11 +181,7 @@ class SummerLeaguePlayerSeason(DatedVersionMixin, SQLModel, table=True):  # type
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    # See the compatibility note on SummerLeagueMetricContext above. Candidate
-    # rows written by the versioned rebuild override these defaults with
-    # is_current=False and their publication metadata.
     version: int = Field(default=1, nullable=False)
-    is_current: bool = Field(default=True, nullable=False)
     registry_version: str = Field(
         default=DEFAULT_METRIC_REGISTRY_VERSION, nullable=False
     )

@@ -184,6 +184,7 @@ async def publish_metric_version(
     version: int,
     competition_ids: set[int] | frozenset[int] | None = None,
     model_version: str | None = None,
+    as_of: datetime | None = None,
 ) -> set[int]:
     """Atomically expose one staged metric version to all eligible readers.
 
@@ -192,8 +193,10 @@ async def publish_metric_version(
     candidate rows promoted. If a newer version is already current for a competition,
     both projections leave that competition untouched while older scopes may still
     flip. Demoted rows retain their original ``published_at``; only newly promoted rows
-    receive the flip timestamp. A failed caller transaction therefore leaves the
-    previous current version untouched.
+    receive the flip timestamp. When supplied, ``as_of`` is also written to promoted
+    rows so source currency is stamped at publication rather than inherited from an
+    incomplete candidate. A failed caller transaction therefore leaves the previous
+    current version untouched.
 
     Returns:
         Competition IDs whose newer current publication prevented this candidate
@@ -270,8 +273,13 @@ async def publish_metric_version(
         context_promote = context_promote.where(
             SummerLeagueMetricContext.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
         )
-    await db.execute(season_promote.values(is_current=True, published_at=published_at))
-    await db.execute(context_promote.values(is_current=True, published_at=published_at))
+    promotion_values: dict[str, object] = {
+        "is_current": True,
+        "published_at": published_at,
+    }
+    promotion_values.update({"as_of": as_of} if as_of is not None else {})
+    await db.execute(season_promote.values(**promotion_values))
+    await db.execute(context_promote.values(**promotion_values))
 
     # The global fit is staged inactive alongside a full rebuild. Scoped ticks reuse the
     # already-active fit and therefore do not touch this table.

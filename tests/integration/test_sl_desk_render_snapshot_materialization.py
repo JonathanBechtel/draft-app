@@ -227,6 +227,7 @@ async def _seed_roster_player(
             player_id=player.id,
             year=year,
             venue_slug=competition.venue_slug,
+            is_current=True,
             gp=gp,
             minutes=minutes,
             gmsc=gmsc,
