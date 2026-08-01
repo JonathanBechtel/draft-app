@@ -76,6 +76,8 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
+from app.services.stats.formulas import net_rating, scale_python
+from app.services.stats.registry import scale_sql
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_environment_registry import (
@@ -904,11 +906,18 @@ _TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("diff", "DIFF"),
     # Advanced team metrics (pace + ratings) — grouped so the column-group toggle
     # can show/hide them alongside the player advanced columns.
-    ExplorerColumn("pace", "PACE", _GROUP_ADVANCED),
-    ExplorerColumn("ortg", "ORtg", _GROUP_ADVANCED),
-    ExplorerColumn("drtg", "DRtg", _GROUP_ADVANCED),
-    ExplorerColumn("net_rtg", "NetRtg", _GROUP_ADVANCED),
+    ExplorerColumn("pace", "PACE", _GROUP_ADVANCED, filterable=True),
+    ExplorerColumn("ortg", "ORtg", _GROUP_ADVANCED, filterable=True),
+    ExplorerColumn("drtg", "DRtg", _GROUP_ADVANCED, filterable=True),
+    ExplorerColumn("net_rtg", "NetRtg", _GROUP_ADVANCED, filterable=True),
 ]
+
+TEAM_FILTERABLE_COLUMNS: list[ExplorerColumn] = [
+    column for column in _TEAM_STAT_COLUMNS if column.filterable
+]
+_TEAM_FILTERABLE_KEYS: frozenset[str] = frozenset(
+    column.key for column in TEAM_FILTERABLE_COLUMNS
+)
 
 # Stat columns for the games subject (one row per game). The label carries date
 # + matchup + score; these are the sortable numeric dimensions.
@@ -1400,8 +1409,14 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
             float(getattr(r, "pace", None) or 0) * float(getattr(r, "minutes", 0) or 0)
             for r in rows
         )
-        poss = (pace_min_sum / MINUTES_PER_GAME) * (total_min / covered_min)
-        return 100.0 * pts / poss if poss else None
+        pace_seconds_effective = pace_min_sum * 60.0 * total_min / covered_min
+        return scale_python(
+            pts,
+            "per_100",
+            gp=0,
+            seconds=0.0,
+            pace_seconds=pace_seconds_effective,
+        )
     # Unknown key — callers should only pass recombinable keys from the catalog.
     return None
 
@@ -2244,9 +2259,16 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     page = _to_int(params.get("page")) or 1
 
     is_competitions = subject == "competitions"
+    valid_filter_keys = (
+        _COMPETITION_FILTERABLE_KEYS
+        if is_competitions
+        else _TEAM_FILTERABLE_KEYS
+        if subject == "teams"
+        else _FILTERABLE_KEYS
+    )
     metric_filters = parse_metric_filters(
         params,
-        _COMPETITION_FILTERABLE_KEYS if is_competitions else _FILTERABLE_KEYS,
+        valid_filter_keys,
         errors=validation_errors if is_competitions else None,
     )
     if grain == "per_game":
@@ -2474,20 +2496,19 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
     gp = int(r.gp)
     sec = float(r.sec or 0)
     minutes = sec / 60.0
-    poss = (r.pace_sec or 0) / (60.0 * _MINUTES_PER_GAME)
-
-    if mode == "per_game":
-        factor: Optional[float] = _safe_div(1.0, gp)
-        min_val: Optional[float] = round(minutes / gp, 1) if gp else None
-    elif mode == "per_36":
-        factor = _safe_div(36.0, minutes)
-        min_val = round(minutes / gp, 1) if gp else None
-    elif mode == "per_100":
-        factor = _safe_div(100.0, poss) if poss else None
-        min_val = round(minutes / gp, 1) if gp else None
-    else:  # totals
-        factor = 1.0
+    pace_seconds = float(r.pace_sec or 0)
+    factor = scale_python(
+        1.0,
+        mode,
+        gp=gp,
+        seconds=sec,
+        pace_seconds=pace_seconds,
+    )
+    min_val: Optional[float]
+    if mode == "totals":
         min_val = round(minutes, 1)
+    else:
+        min_val = round(minutes / gp, 1) if gp else None
 
     def scaled(total: float) -> Optional[float]:
         if factor is None:
@@ -2546,20 +2567,12 @@ def _astd_pct(r: Any) -> Optional[float]:
 def _scaled_sort_expr(num: str, gp: str, sec: str, pace_sec: str, mode: str) -> str:
     """Scale a counting-stat numerator into the displayed per-mode rate.
 
-    Mirrors the arithmetic in :func:`_compute_player_values` so ORDER BY ranks on
-    exactly what the cell shows.  ``num``/``gp``/``sec``/``pace_sec`` are SQL
-    fragments (aggregates for career, raw labels for per_competition); ``sec`` is
-    seconds played and ``pace_sec`` the pace-weighted seconds.
+    Delegate the arithmetic to the registry SQL form so ORDER BY ranks on exactly
+    what the Python display path shows.  ``num``/``gp``/``sec``/``pace_sec`` are
+    SQL fragments (aggregates for career, raw labels for per_competition); ``sec``
+    is seconds played and ``pace_sec`` the pace-weighted seconds.
     """
-    if mode == "per_game":
-        # * 1.0 forces float division (counts/totals are integers in Postgres,
-        # and integer division would truncate the rate into non-monotonic ties).
-        return f"{num} * 1.0 / NULLIF({gp}, 0)"
-    if mode == "per_36":  # 36 min / (sec/60) = num * 36 * 60 / sec
-        return f"{num} * 2160.0 / NULLIF({sec}, 0)"
-    if mode == "per_100":  # 100 poss; poss = pace_sec / (60 * 48)
-        return f"{num} * 288000.0 / NULLIF({pace_sec}, 0)"
-    return num  # totals
+    return scale_sql(num, gp, sec, pace_sec, mode)
 
 
 def _game_score_sql(box: Callable[[str], str]) -> str:
@@ -3604,6 +3617,29 @@ class _SingleGameRow:
         self.plus_minus = row.plus_minus
 
 
+def _filter_team_rows(
+    rows: Sequence[ExplorerRow], filters: Sequence[MetricFilter]
+) -> list[ExplorerRow]:
+    """Apply team metric thresholds to the same values the table renders."""
+    filtered = list(rows)
+    for metric_filter in filters:
+        if metric_filter.col not in _TEAM_FILTERABLE_KEYS:
+            continue
+        next_rows: list[ExplorerRow] = []
+        for row in filtered:
+            value = row.values.get(metric_filter.col)
+            if value is None:
+                continue
+            if (
+                value >= metric_filter.value
+                if metric_filter.op == ">="
+                else value <= metric_filter.value
+            ):
+                next_rows.append(row)
+        filtered = next_rows
+    return filtered
+
+
 # --------------------------------------------------------------------------- #
 # Teams subject
 # --------------------------------------------------------------------------- #
@@ -3724,11 +3760,8 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         # so missing inputs degrade cleanly instead of producing 0 / NaN.
         ortg_val = _r1(rt.ortg) if rt else None
         drtg_val = _r1(rt.drtg) if rt else None
-        net_rtg_val = (
-            round(ortg_val - drtg_val, 1)
-            if (ortg_val is not None and drtg_val is not None)
-            else None
-        )
+        raw_net_rtg = net_rating(ortg_val, drtg_val)
+        net_rtg_val = round(raw_net_rtg, 1) if raw_net_rtg is not None else None
         rows.append(
             ExplorerRow(
                 label=f"{name} · {_venue_label(r.venue_slug)} {r.year}",
@@ -3747,6 +3780,11 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                 },
             )
         )
+
+    # Team advanced metrics are assembled from the same values displayed below.
+    # Applying thresholds after assembly keeps filtering and rendering on one
+    # formula path; previously a valid ``net_rtg`` filter was silently ignored.
+    rows = _filter_team_rows(rows, q.metric_filters)
 
     # Teams row count is bounded (hundreds at most), so sort + slice in Python.
     # This avoids the complexity of a multi-CTE SQL approach while still removing

@@ -60,6 +60,13 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricModel,
     SummerLeaguePlayerSeason,
 )
+from app.services.stats.formulas import (
+    net_rating,
+    points_per_100,
+    vorp82,
+    vorp_total,
+    win_shares_per_40,
+)
 
 # Qualification / gating thresholds.
 QUALIFY_MIN_MINUTES = 40.0  # minutes for a season to feed fits / leaders
@@ -682,7 +689,8 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     # skeletal one leaves NULL (per-100 renders blank, as it did before #473).
     if ctx.pace >= MIN_POOL_PACE and tm_poss > 0:
         m["pace"] = round(tm_pace, 1)
-        m["pts_per100"] = round(100.0 * _d(b.pts, player_poss), 1)
+        pts_per100 = points_per_100(b.pts, player_poss)
+        m["pts_per100"] = round(pts_per100, 1) if pts_per100 is not None else None
     else:
         m["pace"] = None
         m["pts_per100"] = None
@@ -742,7 +750,8 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     drtg = compute_drtg(b, tm, opp, tm_poss)
     m["ortg"] = round(ortg, 1)
     m["drtg"] = round(drtg, 1)
-    m["net"] = round(ortg - drtg, 1)
+    net = net_rating(ortg, drtg)
+    m["net"] = round(net, 1) if net is not None else None
 
     mppw = ws_ppw_coeff * ctx.ppg * _d(tm_pace, ctx.pace)
     marg_off = pprod - 0.92 * ctx.pts_per_poss * tot_poss
@@ -751,7 +760,8 @@ def compute_metrics(ps: PlayerSeason, ctx: LeagueContext, ws_ppw_coeff: float) -
     m["ows"] = round(ows, 2)
     m["dws"] = round(dws, 2)
     m["ws"] = round(ows + dws, 2)
-    m["ws40"] = round(40.0 * _d(ows + dws, b.mp), 3)
+    ws40 = win_shares_per_40(ows + dws, b.mp)
+    m["ws40"] = round(ws40, 3) if ws40 is not None else None
     # Full-season projection: scale the accumulated WS by an 82-game / 48-min
     # "season" relative to the minutes actually available here. ``k82`` ~= 82/G.
     k82 = _d(48.0 * 82.0, tm_mp5)
@@ -893,13 +903,11 @@ def apply_sl_bpm(
             # Cumulative VORP: points-above-replacement → wins, accrued over the
             # minutes actually played (standard BBRef identity MP/(48*82)). Small
             # for a few-game SL sample, and additive across competitions.
-            ps.metrics["vorp"] = round(
-                (bpm - VORP_REPLACEMENT) * ps.box.mp / (48.0 * 82.0), 2
-            )
+            ps.metrics["vorp"] = round(vorp_total(bpm, ps.box.mp), 2)
             # VORP/82: the same rate projected to a full 82-game season
             # (``pct_min`` is the share of available lineup-minutes). This is the
             # prior bare-"VORP" value, now labelled as the per-season pace.
-            ps.metrics["vorp82"] = round((bpm - VORP_REPLACEMENT) * ps.pct_min, 2)
+            ps.metrics["vorp82"] = round(vorp82(bpm, ps.pct_min), 2)
 
 
 # --------------------------------------------------------------------------- #

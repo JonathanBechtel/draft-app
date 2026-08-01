@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.stats.formulas import win_shares_per_40
 
 # Minimum total minutes in a competition before its rate composites are
 # trustworthy enough to surface. Small-sample pools blow PER/BPM up well past
@@ -212,7 +213,7 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
     vorp_vals = [s.vorp for s in seasons if s.vorp is not None]
     ws_total = sum(ws_vals) if ws_vals else None
     # Recompute WS/40 from the summed shares so it stays internally consistent.
-    ws40 = (ws_total / minutes * 40.0) if (ws_total is not None and minutes) else None
+    ws40 = win_shares_per_40(ws_total, minutes) if ws_total is not None else None
     # FTr / 3PAr / TOV% pool exactly from summed box volume (like career TS%).
     fga = sum(s.fga for s in seasons)
     fg3a = sum(s.fg3a for s in seasons)
@@ -729,11 +730,8 @@ def _blend_leader_values(
 
     # WS/40 recomputed from summed shares so it stays internally consistent.
     ws_total = out["ws"]
-    out["ws40"] = (
-        round(ws_total / minutes * 40.0, 2)
-        if (ws_total is not None and minutes)
-        else None
-    )
+    ws40 = win_shares_per_40(ws_total, minutes) if ws_total is not None else None
+    out["ws40"] = round(ws40, 2) if ws40 is not None else None
 
     # GmSc is a per-game score; blend it game-weighted.
     out["gmsc"] = _round1(_weighted_mean([(s.gmsc, float(s.gp)) for s in seasons]))

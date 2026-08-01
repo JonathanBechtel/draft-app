@@ -29,6 +29,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.stats.formulas import pace_seconds_from_possessions, scale_python
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_shotchart_service import (
@@ -206,10 +207,27 @@ def _aggregate_season(
 
     venues = sorted({VENUE_LABELS.get(r.venue_slug, r.venue_slug) for r in played})
 
-    per_game_factor = 1.0 / gp
-    per_36_factor = _safe_div(36.0, total_minutes)
-    per_100_factor = (
-        _safe_div(100.0, total_possessions) if total_possessions is not None else None
+    pace_seconds = pace_seconds_from_possessions(total_possessions)
+    per_game_factor = scale_python(
+        1.0,
+        "per_game",
+        gp=gp,
+        seconds=total_minutes * 60.0,
+        pace_seconds=pace_seconds,
+    )
+    per_36_factor = scale_python(
+        1.0,
+        "per_36",
+        gp=gp,
+        seconds=total_minutes * 60.0,
+        pace_seconds=pace_seconds,
+    )
+    per_100_factor = scale_python(
+        1.0,
+        "per_100",
+        gp=gp,
+        seconds=total_minutes * 60.0,
+        pace_seconds=pace_seconds,
     )
 
     def _mode(name: str, factor: Optional[float]) -> SummerLeagueModeStats:
