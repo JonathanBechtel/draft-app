@@ -1,9 +1,9 @@
 """Tests for the stat-constant confinement checker (T9, #730).
 
 Phase 2's closing ratchet: designated stat coefficients (the TS%/TOV% free-throw
-term 0.44, and the Hollinger Game Score weights) may appear only under
-`app/services/stats/`. Without a mechanical guard, "the eight copies regrow the
-next time someone needs a formula in a query"
+term 0.44, and the Hollinger Game Score weights), registered SQL text, and
+registered SQLAlchemy expression shapes may appear only under `app/services/stats/`.
+Without a mechanical guard, "the eight copies regrow the next time someone needs a formula in a query"
 (docs/plans/programmatic-code-discipline.md §1.3). These tests pin: both rules
 firing on the shapes that actually caused the duplication, both rules staying
 quiet on the false-positive shapes verified against this codebase while building
@@ -441,6 +441,69 @@ class TestRegistryFormulaReappearanceRule:
         three T10 functions (plus the pre-existing ones), not just an empty list."""
         names = {name for name, _grain, _text in checker._known_registry_formula_texts()}
         assert {"efg_pct_sql_text", "fg3ar_sql_text", "ftr_sql_text"} <= names
+
+
+class TestRegistryExpressionReappearanceRule:
+    """Rule 4 (R5, #745): registry SQLAlchemy arithmetic cannot be retyped outside
+    the engine package.
+
+    The test uses ``astd_pct`` because it has no designated numeric coefficient;
+    that proves the new rule is comparing an introspected arithmetic shape rather
+    than merely repeating R1c's eFG% constant check.
+    """
+
+    def test_astd_expression_duplicate_is_flagged(self):
+        """A hand-written ORM expression matching the registry form goes red."""
+        found = _violations(
+            """
+            def having(ps):
+                return ps.ast_fgm + ps.unast_fgm
+            """
+        )
+        assert len(found) == 1
+        assert found[0].code == "R5"
+        assert "astd_pct_denom_expr" in found[0].message
+
+    def test_aggregate_column_wrappers_match_the_same_registry_shape(self):
+        """Row and ``func.sum`` aggregate leaves share one registry declaration."""
+        found = _violations(
+            """
+            def having(ps, func):
+                return func.sum(ps.ast_fgm) + func.sum(ps.unast_fgm)
+            """
+        )
+        assert len(found) == 1
+        assert found[0].code == "R5"
+
+    def test_unregistered_shooting_split_shape_is_not_flagged(self):
+        """fg_pct remains outside the registry-derived expression family."""
+        found = _violations(
+            """
+            def shooting_split(ps, func):
+                return func.sum(ps.fgm) / func.nullif(func.sum(ps.fga), 0)
+            """
+        )
+        assert found == []
+
+    def test_expression_waiver_suppresses_a_registry_shape(self):
+        found = _violations(
+            """
+            def having(ps):
+                # discipline: stat-constants legacy expression, see #746
+                return ps.ast_fgm + ps.unast_fgm
+            """
+        )
+        assert found == []
+
+    def test_expression_functions_are_discovered_from_the_registry(self):
+        """The R5 surface is introspected rather than hand-maintained."""
+        names = set(checker._registry_expression_functions())
+        assert names == {
+            "astd_pct_denom_expr",
+            "efg_pct_num_expr",
+            "tov_pct_denom_expr",
+            "ts_pct_denom_expr",
+        }
 
 
 class TestPackageScoping:
