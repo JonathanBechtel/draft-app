@@ -219,7 +219,7 @@
       "PLR0913": 1
     },
     "app/services/summer_league/metrics.py": {
-      "C901": 2
+      "C901": 1
     },
     "app/services/summer_league/normalization.py": {
       "C901": 5,
