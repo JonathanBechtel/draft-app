@@ -34,7 +34,16 @@ Usage:
     python -m app.cli.summer_league_roster_runner
 
 Environment overrides:
-    SL_ROSTER_YEAR - four-digit Summer League year (default: 2026)
+    SL_ROSTER_YEAR - four-digit Summer League year to scope this run to
+        (default: the current Eastern calendar year). Setting this only
+        narrows which year's competitions the lifecycle window check
+        considers -- it does NOT bypass the window gate. For example,
+        setting it to a year whose event has already ended still leaves
+        the run dormant.
+    SL_ROSTER_FORCE - set to "1" to bypass the lifecycle window gate
+        entirely and run regardless of phase. This is the explicit,
+        operator-directed backfill escape hatch; combine with
+        SL_ROSTER_YEAR to target a specific season's data.
     SL_ROSTER_LEAGUE_IDS - comma-separated NBA.com LeagueIDs
         (default: "13,16,15")
 
@@ -64,6 +73,7 @@ from app.services.summer_league.endpoints import (
     SUPPORTED_SUMMER_LEAGUES,
     normalize_league_id,
 )
+from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.event_window import is_summer_league_window_open
 from app.services.player_bio.bbref_parse import PlayerBio
 from app.services.player_bio.bbref_scrape import scrape_letters
@@ -93,7 +103,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("summer_league_roster_runner")
 
-DEFAULT_YEAR = 2026
 DEFAULT_LEAGUE_IDS = ("13", "16", "15")
 RAW_ROOT = Path("data/raw/nba_stats/summer_league")
 
@@ -110,6 +119,17 @@ BIO_SCRAPE_TIMEOUT_SECONDS = 30.0
 _BIO_CSV_FIELDNAMES = [f.name for f in dataclass_fields(PlayerBio)]
 
 
+def _default_year() -> int:
+    """Return the current Eastern calendar year as the roster-poll default.
+
+    Mirrors the today's-year fallback ``resolve_target_competitions`` already
+    uses (``app/services/summer_league/scoreboard_ingest.py``) so the cron
+    follows the calendar without a code change each season -- no more
+    hard-coded season year to bump every summer.
+    """
+    return to_eastern_date(datetime.now(timezone.utc)).year
+
+
 def _resolve_year() -> int:
     """Resolve the Summer League year, defaulting to the current season.
 
@@ -122,7 +142,7 @@ def _resolve_year() -> int:
     """
     raw = os.getenv("SL_ROSTER_YEAR")
     if not raw or not raw.strip():
-        return DEFAULT_YEAR
+        return _default_year()
     stripped = raw.strip()
     try:
         year = int(stripped)

@@ -89,21 +89,108 @@ async def test_window_guard_scopes_requested_year(
     )
 
 
+def _2027_competition() -> SummerLeagueCompetition:
+    """Build a 2027 competition window, mirroring the 2026 fixture a year later."""
+    return SummerLeagueCompetition(
+        year=2027,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2027 Las Vegas",
+        starts_on=date(2027, 7, 9),
+        ends_on=date(2027, 7, 19),
+    )
+
+
 @pytest.mark.asyncio
-async def test_explicit_year_override_bypasses_window(
+async def test_year_scoped_to_finished_event_stays_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An explicit roster year permits an operator-directed backfill."""
-    monkeypatch.setenv("SL_ROSTER_YEAR", "2025")
+    """Scenario (a): the gate stays closed even when a year is scoped.
+
+    SL_ROSTER_YEAR set to a year whose event already ended scopes -- but does
+    not bypass -- the window, so the gate stays closed.
+    """
+    monkeypatch.setenv("SL_ROSTER_YEAR", "2027")
+
+    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
+        return [_2027_competition()]
+
+    monkeypatch.setattr(event_window, "resolve_target_competitions", _resolve)
+
+    assert not await event_window.is_summer_league_window_open(
+        object(),
+        now=datetime(2027, 7, 25, tzinfo=timezone.utc),  # type: ignore[arg-type]
+        year=2027,
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_year_set_opens_in_announced_window_next_season(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario (b): no year override still opens next season on its own.
+
+    With no year override, next season's competitions open the gate in the
+    Announced window without any code change.
+    """
+    monkeypatch.delenv("SL_ROSTER_YEAR", raising=False)
+
+    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
+        return [_2027_competition()]
+
+    monkeypatch.setattr(event_window, "resolve_target_competitions", _resolve)
+
+    assert await event_window.is_summer_league_window_open(
+        object(),
+        now=datetime(2027, 6, 27, tzinfo=timezone.utc),  # type: ignore[arg-type]
+    )
+
+
+@pytest.mark.asyncio
+async def test_force_flag_bypasses_window_regardless_of_year(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scenario (c): the force flag bypasses the window regardless of year.
+
+    SL_ROSTER_FORCE=1 permits an operator-directed backfill regardless of
+    the resolved year or lifecycle phase.
+    """
+    monkeypatch.setenv("SL_ROSTER_FORCE", "1")
 
     async def _unexpected_resolve(
         _db: object, *, today: date
     ) -> list[SummerLeagueCompetition]:
-        raise AssertionError("explicit overrides should not resolve the active event")
+        raise AssertionError("a force override should not resolve the active event")
 
-    monkeypatch.setattr(event_window, "resolve_target_competitions", _unexpected_resolve)
+    monkeypatch.setattr(
+        event_window, "resolve_target_competitions", _unexpected_resolve
+    )
 
     assert await event_window.is_summer_league_window_open(
+        object(),
+        now=datetime(2027, 1, 1, tzinfo=timezone.utc),  # type: ignore[arg-type]
+        year=2025,
+    )
+
+
+@pytest.mark.asyncio
+async def test_year_alone_no_longer_bypasses_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Setting only SL_ROSTER_YEAR must not bypass the gate.
+
+    This is the exact defect the ticket closes: SL_ROSTER_YEAR alone used to
+    return True unconditionally.
+    """
+    monkeypatch.setenv("SL_ROSTER_YEAR", "2025")
+    monkeypatch.delenv("SL_ROSTER_FORCE", raising=False)
+
+    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
+        return [_competition()]
+
+    monkeypatch.setattr(event_window, "resolve_target_competitions", _resolve)
+
+    assert not await event_window.is_summer_league_window_open(
         object(),
         now=datetime(2026, 7, 29, tzinfo=timezone.utc),  # type: ignore[arg-type]
         year=2025,

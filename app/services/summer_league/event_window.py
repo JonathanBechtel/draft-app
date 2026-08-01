@@ -26,10 +26,21 @@ SCHEDULE_ELIGIBLE_PHASES = frozenset(
 )
 
 
-def has_explicit_year_override() -> bool:
-    """Return whether the operator explicitly selected a roster year."""
-    raw = os.getenv("SL_ROSTER_YEAR")
-    return bool(raw and raw.strip())
+_FALSY_ENV_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+def has_force_override() -> bool:
+    """Return whether the operator explicitly forced the window bypass.
+
+    ``SL_ROSTER_FORCE=1`` is the explicit, standalone escape hatch for
+    operator-directed backfills. It is distinct from ``SL_ROSTER_YEAR``,
+    which only scopes *which* year's competitions the window check
+    considers -- setting a year no longer implies bypassing the gate.
+    """
+    raw = os.getenv("SL_ROSTER_FORCE")
+    if not raw or not raw.strip():
+        return False
+    return raw.strip().lower() not in _FALSY_ENV_VALUES
 
 
 def synthetic_schedule_dates(
@@ -60,12 +71,17 @@ async def is_summer_league_window_open(
     competition date windows keep the pre-game polling window available before
     any ``summer_league_games`` rows exist.
 
+    ``SL_ROSTER_YEAR`` (surfaced here via the ``year`` argument) only scopes
+    *which* year's competitions are considered -- it does not bypass the
+    gate. ``SL_ROSTER_FORCE=1`` is the explicit, separate bypass for
+    operator-directed backfills.
+
     Args:
         db: Async database session.
         now: Timestamp used to evaluate the lifecycle phase.
         year: Optional roster year to scope the resolved competitions.
     """
-    if has_explicit_year_override():
+    if has_force_override():
         return True
     competitions = await resolve_target_competitions(db, today=to_eastern_date(now))
     if year is not None:
