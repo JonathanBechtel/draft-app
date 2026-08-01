@@ -166,6 +166,13 @@ target across several natural overlapping cycles; no transaction holds a lock ac
 a rebuild is safely re-runnable; **a deploy cannot block public reads** (migration lock-safety
 verified against a staging reproduction) and **production is not silently behind `main`**.
 
+**Dated, owned plan for closing this out:** `docs/plans/summer-league-2027-preflight-runbook.md`
+(#718) turns the above into a T-30d/T-14d/during-event/T+close sequence — including the #699
+desk latency-class promotion (production is dormant on it by default) and where to read the
+live-window completion measurement — plus a scheduled reminder
+(`.github/workflows/preflight-reminder.yml`) that opens an issue when the T-30d window opens for
+2027.
+
 ---
 
 ## Phase 2 — Stat engine consolidation
