@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import os
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,6 +27,44 @@ SCHEDULE_ELIGIBLE_PHASES = frozenset(
 
 
 _FALSY_ENV_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+def default_roster_year() -> int:
+    """Return the current Eastern calendar year as the roster-poll default.
+
+    Mirrors the today's-year fallback ``resolve_target_competitions`` already
+    uses (``app/services/summer_league/scoreboard_ingest.py``) so the cron
+    follows the calendar without a code change each season -- no more
+    hard-coded season year to bump every summer.
+    """
+    return to_eastern_date(datetime.now(timezone.utc)).year
+
+
+def resolve_roster_year() -> int:
+    """Resolve the Summer League year, defaulting to the current season.
+
+    Raises:
+        ValueError: If ``SL_ROSTER_YEAR`` is set but is not a plausible
+            four-digit season year. Failing here (rather than deep inside a
+            per-venue fetch) makes a misconfigured schedule fail loudly with
+            a non-zero exit code instead of silently fetching nothing for
+            every venue.
+    """
+    raw = os.getenv("SL_ROSTER_YEAR")
+    if not raw or not raw.strip():
+        return default_roster_year()
+    stripped = raw.strip()
+    try:
+        year = int(stripped)
+    except ValueError as exc:
+        raise ValueError(
+            f"SL_ROSTER_YEAR must be a four-digit year, got {stripped!r}"
+        ) from exc
+    if not 1900 <= year <= 2100:
+        raise ValueError(
+            f"SL_ROSTER_YEAR must be a four-digit year in [1900, 2100], got {year}"
+        )
+    return year
 
 
 def has_force_override() -> bool:
