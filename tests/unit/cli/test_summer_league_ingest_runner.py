@@ -1139,6 +1139,42 @@ async def test_main_unchanged_inputs_skip_full_metrics_rebuild(
 
 
 @pytest.mark.asyncio
+async def test_main_no_games_unchanged_watermark_stamps_durable_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A fully quiet off-season run (no games, unchanged watermark) still stamps state.
+
+    Previously this branch only recorded pipeline state when at least one
+    venue had games, so a wholly quiet run left ``last_outcome`` exactly as
+    it was before -- indistinguishable from "this job never ran", which is
+    borderline against #661's scheduler-vs-data distinction.
+    """
+    monkeypatch.setenv("SL_INGEST_LEAGUE_IDS", "15")
+    events = _patch_main(monkeypatch, venue_results={"15": (False, False)})
+
+    async def _unchanged_state(_db: object, _job: object) -> object:
+        return SimpleNamespace(last_metrics_input_watermark="unit-input-watermark")
+
+    monkeypatch.setattr(metrics_gate, "get_pipeline_freshness", _unchanged_state)
+    caplog.set_level("INFO", logger="summer_league_ingest_runner")
+
+    result = await runner.main()
+
+    assert result == 0
+    assert events["rebuild_called"] is False
+    assert events["snapshots_refreshed"] is False
+    assert "input watermark unchanged" in caplog.text
+    assert events["completion_calls"] == [
+        {
+            "job": runner.SummerLeaguePipelineJob.FULL_INGESTION,
+            "metrics_rebuilt": False,
+            "snapshots_materialized": False,
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_main_drains_a_deferred_reconciliation_without_new_games(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

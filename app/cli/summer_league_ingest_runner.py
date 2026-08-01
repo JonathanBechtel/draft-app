@@ -720,10 +720,24 @@ async def _run_resolution_phase(
         when a write batch could not acquire the writer lock -- reconciliation
         was deferred, and the caller should stop this venue's pipeline for
         the rest of this run. A later scheduled run resumes correctly with no
-        extra bookkeeping: confirmed/stubbed source players from already-
-        committed batches durably drop out of the next run's candidate scope
-        (see ``_load_source_players``'s status filter), so only the
-        genuinely still-unresolved ones are re-prepared.
+        extra bookkeeping, but *not* because already-resolved source players
+        drop out of the load scope -- they don't. This caller always passes
+        both ``year`` and ``league_id``, which routes ``_load_source_players``
+        through its scoped branch (competition game-log/participation
+        membership), and that branch carries no ``resolution_status`` filter
+        (unlike the unscoped ``year is None and league_id is None`` branch).
+        Every source player reachable in this competition is reloaded and
+        re-prepared on every run, resolved or not. What actually makes a
+        resolved player's re-preparation cheap is
+        :func:`prepare_source_player_resolution` short-circuiting on a
+        non-``None`` ``canonical_player_id`` before it ever reaches candidate
+        search. Source players still pending -- ``VECTOR_CANDIDATE`` or
+        ``UNRESOLVED``, with no ``canonical_player_id`` to short-circuit on --
+        have no such shortcut: they re-run the full candidate-search cascade,
+        including its Gemini embedding call, on every hourly invocation until
+        they resolve. There is currently no status filter or re-embed
+        cooldown bounding that repeated cost; see item 6 of the Phase 1
+        post-merge minor-findings bundle (#719).
     """
     with _telemetry_step(telemetry, f"venue:{league_id}:resolution_preparation"):
         pairs = await prepare_summer_league_player_resolutions(

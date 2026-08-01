@@ -519,6 +519,9 @@ class TestRegistryExpressionReappearanceRule:
         assert names == {
             "astd_pct_denom_expr",
             "efg_pct_num_expr",
+            "net_rating_expr",
+            "pace_per_48_expr",
+            "points_per_100_expr",
             "tov_pct_denom_expr",
             "ts_pct_denom_expr",
         }
@@ -557,7 +560,7 @@ class TestFrozenExemptionAllowlist:
         sites, _ = checker._parse_exemption_sites()
         exempted, vacuous = checker._resolve_exemptions(sites)
         assert vacuous == []
-        assert exempted == {("app/services/summer_league_environment_service.py", 1716)}
+        assert exempted == {("app/services/summer_league_environment_service.py", 1718)}
 
     def test_allowlisted_site_is_not_reported_by_the_full_check(self):
         """check() suppresses whatever _resolve_exemptions matched in the full pipeline."""

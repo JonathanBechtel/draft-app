@@ -85,6 +85,8 @@ from app.services.stats.formulas import (  # noqa: F401
     game_score_line,
     ftr_line,
     tov_pct_line,
+    vorp82,
+    vorp_total,
 )
 from app.services.stats.inputs import (  # noqa: F401
     BOX_INT_FIELDS as _BOX_INT_FIELDS,
@@ -346,13 +348,11 @@ def apply_sl_bpm(
             # Cumulative VORP: points-above-replacement → wins, accrued over the
             # minutes actually played (standard BBRef identity MP/(48*82)). Small
             # for a few-game SL sample, and additive across competitions.
-            ps.metrics["vorp"] = round(
-                (bpm - VORP_REPLACEMENT) * ps.box.mp / (48.0 * 82.0), 2
-            )
+            ps.metrics["vorp"] = round(vorp_total(bpm, ps.box.mp), 2)
             # VORP/82: the same rate projected to a full 82-game season
             # (``pct_min`` is the share of available lineup-minutes). This is the
             # prior bare-"VORP" value, now labelled as the per-season pace.
-            ps.metrics["vorp82"] = round((bpm - VORP_REPLACEMENT) * ps.pct_min, 2)
+            ps.metrics["vorp82"] = round(vorp82(bpm, ps.pct_min), 2)
 
 
 # --------------------------------------------------------------------------- #

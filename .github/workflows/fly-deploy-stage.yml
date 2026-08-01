@@ -303,3 +303,30 @@ jobs:
                 -- -m "$MODULE"
             fi
           done
+
+      # Post-deploy verification, mirroring the prod step in fly-deploy-prod.yml.
+      # The #686 incident (Desk cron left on a stale image) was noticed manually on
+      # stage first -- this closing net previously existed only for prod, so the same
+      # drift shape on stage had no backstop of its own. summer-league-desk-cron and
+      # the latency-class/metrics-compaction crons are optional here because they are
+      # preflight-/readiness-gated and may not exist yet on a fresh staging
+      # environment; drift on one that DOES exist still fails regardless.
+      - name: Verify Summer League cron image digests (post-deploy)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          python scripts/verify_cron_image_digests.py \
+            --app draft-app \
+            --machine news-ingestion-cron \
+            --machine summer-league-ingestion-cron \
+            --machine summer-league-desk-cron \
+            --machine summer-league-roster-cron \
+            --machine summer-league-metrics-compact-cron \
+            --machine summer-league-desk-fast-cron \
+            --machine summer-league-desk-projection-cron \
+            --machine summer-league-desk-backbone-cron \
+            --optional-machine summer-league-desk-cron \
+            --optional-machine summer-league-metrics-compact-cron \
+            --optional-machine summer-league-desk-fast-cron \
+            --optional-machine summer-league-desk-projection-cron \
+            --optional-machine summer-league-desk-backbone-cron

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 import pytest
 
 from app.cli import summer_league_roster_runner as runner
+from app.services.summer_league import event_window
 
 
 # ---------------------------------------------------------------------------
@@ -209,26 +211,41 @@ def _patch_enrichment_steps(  # noqa: C901
 
 
 # ---------------------------------------------------------------------------
-# _resolve_year
+# resolve_roster_year (lives in event_window; exercised here because the
+# runner is its consumer)
 # ---------------------------------------------------------------------------
 
 
 def test_resolve_year_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Absent env var yields the default Summer League year."""
+    """Absent env var yields the current Eastern-calendar-year default."""
     monkeypatch.delenv("SL_ROSTER_YEAR", raising=False)
-    assert runner._resolve_year() == runner.DEFAULT_YEAR
+    assert event_window.resolve_roster_year() == event_window.default_roster_year()
+
+
+def test_default_year_derives_from_current_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default year follows the calendar rather than a hard-coded value.
+
+    This is the exact defect the ticket closes: a hard-coded ``DEFAULT_YEAR``
+    required a code change every season.
+    """
+
+    def _fake_to_eastern_date(_value: object) -> date:
+        return date(2027, 6, 15)
+
+    monkeypatch.setattr(event_window, "to_eastern_date", _fake_to_eastern_date)
+    assert event_window.default_roster_year() == 2027
 
 
 def test_resolve_year_override(monkeypatch: pytest.MonkeyPatch) -> None:
     """SL_ROSTER_YEAR overrides the default year."""
     monkeypatch.setenv("SL_ROSTER_YEAR", "2025")
-    assert runner._resolve_year() == 2025
+    assert event_window.resolve_roster_year() == 2025
 
 
 def test_resolve_year_blank_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
     """A blank/whitespace SL_ROSTER_YEAR falls back to the default."""
     monkeypatch.setenv("SL_ROSTER_YEAR", "   ")
-    assert runner._resolve_year() == runner.DEFAULT_YEAR
+    assert event_window.resolve_roster_year() == event_window.default_roster_year()
 
 
 @pytest.mark.parametrize("value", ["26", "20260", "abc"])
@@ -242,13 +259,13 @@ def test_resolve_year_invalid_raises(
     """
     monkeypatch.setenv("SL_ROSTER_YEAR", value)
     with pytest.raises(ValueError):
-        runner._resolve_year()
+        event_window.resolve_roster_year()
 
 
 def test_resolve_year_valid_four_digit(monkeypatch: pytest.MonkeyPatch) -> None:
     """A valid four-digit season year is accepted."""
     monkeypatch.setenv("SL_ROSTER_YEAR", "2025")
-    assert runner._resolve_year() == 2025
+    assert event_window.resolve_roster_year() == 2025
 
 
 # ---------------------------------------------------------------------------

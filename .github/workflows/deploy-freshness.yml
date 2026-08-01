@@ -7,6 +7,13 @@ name: Deploy freshness
 # Deliberately a scheduled *observation*, not a deploy gate. It cannot deploy, and a red
 # run here means "someone should look", not "the build is broken" -- the deploy decision
 # stays a human one.
+#
+# Also carries the `/health/db` probe (Finding 4 of #714): PR #684 shipped that readiness
+# endpoint specifically so #669's shape (public routes 500ing while a DB-free `/health`
+# stayed green) would be visible, but wiring it up was left as an operator step --
+# `docs/fly_infrastructure.md` said to point *external* uptime monitoring at it, and until
+# someone did, nothing was listening. This is the cheapest in-repo fix: not a replacement
+# for real uptime monitoring, just a daily red run if either app's database is unreachable.
 
 on:
   schedule:
@@ -55,3 +62,24 @@ jobs:
             --app draft-app-prod \
             --against origin/main \
             --max-age-hours "${{ inputs.max_age_hours || '48' }}"
+
+  db-health:
+    # Independent of the freshness job on purpose: a stale-deploy failure above must
+    # not hide a database outage, and this needs neither FLY_API_TOKEN nor an
+    # environment-scoped secret -- it only issues unauthenticated GETs against each
+    # app's public health endpoint.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Probe /health/db (stage + prod)
+        run: |
+          python scripts/check_health_db.py \
+            --url https://draft-app.fly.dev \
+            --url https://draft-app-prod.fly.dev

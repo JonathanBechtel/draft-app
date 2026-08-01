@@ -13,6 +13,21 @@ expensive compute/materialization path never waits for or performs retention
 work. The publication state is part of the ranking: an uncommitted candidate
 remains present while the rebuild is in flight, but it cannot displace the last
 published daily close if it is abandoned.
+
+Retention rationale (abandoned candidates): ``_delete_superseded_closed_day_rows``
+partitions by ``(*scope_columns, source_day, publication_state)`` and keeps rank 1
+of each partition, so at most one unpublished ("abandoned") candidate survives
+per scope per closed UTC day -- alongside the one published daily close. A
+candidate is "abandoned" when a rebuild staged rows for a day but a later
+publish never promoted them (superseded by a newer rebuild, or the run never
+reached the publish step). This is a deliberate, amended-spec trade-off, not an
+oversight: growth is bounded at exactly one extra row per scope per day
+regardless of how many rebuilds ran that day, which is the same order of
+magnitude as the published row it sits beside and provides useful audit trail
+(what almost got published, and when) at negligible storage cost. No
+additional time-based sweep removes these rows; if the bound ever needs to
+tighten further, add an explicit "abandoned candidates older than N days" pass
+rather than folding it into the daily-rank logic here.
 """
 
 from __future__ import annotations

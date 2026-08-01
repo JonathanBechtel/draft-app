@@ -548,7 +548,7 @@ def compute_metrics(ps: PlayerSeason, ctx: PoolContext, ws_ppw_coeff: float) -> 
     # skeletal one leaves NULL (per-100 renders blank, as it did before #473).
     if ctx.pace >= MIN_POOL_PACE and tm_poss > 0:
         m["pace"] = round(tm_pace, 1)
-        m["pts_per100"] = round(100.0 * _d(b.pts, player_poss), 1)
+        m["pts_per100"] = round(points_per_100(b.pts, player_poss) or 0.0, 1)
     else:
         m["pace"] = None
         m["pts_per100"] = None
@@ -608,7 +608,7 @@ def compute_metrics(ps: PlayerSeason, ctx: PoolContext, ws_ppw_coeff: float) -> 
     drtg = compute_drtg(b, tm, opp, tm_poss)
     m["ortg"] = round(ortg, 1)
     m["drtg"] = round(drtg, 1)
-    m["net"] = round(ortg - drtg, 1)
+    m["net"] = round(net_rating(ortg, drtg) or 0.0, 1)
 
     mppw = ws_ppw_coeff * ctx.ppg * _d(tm_pace, ctx.pace)
     marg_off = pprod - 0.92 * ctx.pts_per_poss * tot_poss
@@ -617,8 +617,61 @@ def compute_metrics(ps: PlayerSeason, ctx: PoolContext, ws_ppw_coeff: float) -> 
     m["ows"] = round(ows, 2)
     m["dws"] = round(dws, 2)
     m["ws"] = round(ows + dws, 2)
-    m["ws40"] = round(40.0 * _d(ows + dws, b.mp), 3)
+    m["ws40"] = round(win_shares_per_40(ows + dws, b.mp) or 0.0, 3)
     # Full-season projection: scale the accumulated WS by an 82-game / 48-min
     # "season" relative to the minutes actually available here. ``k82`` ~= 82/G.
     k82 = _d(48.0 * 82.0, tm_mp5)
     m["ws82"] = round((ows + dws) * k82, 2)
+
+
+# Residue-audit helpers -----------------------------------------------------
+# These neutral identities are also used by read-side and environment projection
+# paths; callers own display rounding.
+PACE_MINUTES = 48.0
+WS_MINUTES = 40.0
+VORP_GAMES = 82.0
+VORP_REPLACEMENT = -2.0
+
+
+def pace_seconds_from_possessions(possessions: Optional[float]) -> float:
+    """Convert possessions into the pace-weighted-seconds denominator."""
+    return possessions * 60.0 * PACE_MINUTES if possessions else 0.0
+
+
+def points_per_100(points: float, possessions: float) -> Optional[float]:
+    """Return points per 100 possessions, or ``None`` without possessions."""
+    return 100.0 * points / possessions if possessions else None
+
+
+def pace_per_48(possessions: float, team_minutes: float) -> Optional[float]:
+    """Return pooled possessions per 48 team minutes."""
+    team_minutes_fifths = team_minutes / 5.0
+    return (
+        PACE_MINUTES * possessions / team_minutes_fifths
+        if team_minutes_fifths
+        else None
+    )
+
+
+def net_rating(
+    off_rating: Optional[float], def_rating: Optional[float]
+) -> Optional[float]:
+    """Return net rating only when both component ratings are present."""
+    if off_rating is None or def_rating is None:
+        return None
+    return off_rating - def_rating
+
+
+def win_shares_per_40(win_shares: float, minutes: float) -> Optional[float]:
+    """Return Win Shares scaled to 40 minutes."""
+    return WS_MINUTES * win_shares / minutes if minutes else None
+
+
+def vorp_total(bpm: float, minutes: float) -> float:
+    """Return cumulative VORP from BPM and minutes played."""
+    return (bpm - VORP_REPLACEMENT) * minutes / (PACE_MINUTES * VORP_GAMES)
+
+
+def vorp82(bpm: float, percent_available_minutes: float) -> float:
+    """Return full-season VORP projected from available-minute share."""
+    return (bpm - VORP_REPLACEMENT) * percent_available_minutes

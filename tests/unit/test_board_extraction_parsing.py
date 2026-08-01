@@ -727,6 +727,29 @@ async def test_default_fetcher_falls_back_to_html_for_non_substack(
     assert "Real content here" in text
 
 
+@pytest.mark.asyncio
+async def test_fetch_article_text_delegates_to_default_fetcher(monkeypatch) -> None:
+    """The public wrapper is a thin pass-through to the module's default fetcher.
+
+    Callers outside this module (admin routes) should use
+    ``fetch_article_text`` rather than reaching into the private
+    ``_default_fetcher`` helper directly. See #719 item 11.
+    """
+
+    async def _fake_default_fetcher(url: str) -> str:
+        assert url == "https://example.com/2026-big-board"
+        return "fetched article text"
+
+    monkeypatch.setattr(
+        board_extraction_service, "_default_fetcher", _fake_default_fetcher
+    )
+
+    text = await board_extraction_service.fetch_article_text(
+        "https://example.com/2026-big-board"
+    )
+    assert text == "fetched article text"
+
+
 # --- _build_extraction_schema -------------------------------------------
 
 

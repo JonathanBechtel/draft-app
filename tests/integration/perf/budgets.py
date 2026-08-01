@@ -167,6 +167,59 @@ ROUTE_BUDGETS: dict[str, int] = {
 # fixture never exercises.
 DESK_TICK_DURATION_BUDGET_MS = 120_000
 
+# Summer League Desk -- PER-CLASS query-count budgets (#699 follow-up, #716).
+# #699's acceptance checklist included "Query budgets extended per class
+# (discipline §3.3)"; PR #706 shipped the latency-class partition without it,
+# so query-count growth inside one class only failed CI if it happened to
+# also trip the composite duration budget above. These count SQL statements
+# (not timing) for one steady-state run of each class's entrypoint --
+# `run_fast_tick` / `run_projection_tick` / `run_backbone_tick` -- against the
+# real-capture replay fixtures in `tests/integration/_desk_replay.py`, the
+# same live-window scenario the #699 acceptance suite
+# (`test_sl_desk_latency_classes.py`) proves is reliable under contention.
+# Asserted by `tests/integration/perf/test_desk_class_query_budgets.py`,
+# which follows the #488 warm-up convention (run once untracked, then
+# measure) so the count reflects steady state rather than a cold-start shape.
+#
+# Measured baselines (2026-08, this guard's introduction) -- against the real
+# `scheduleleaguev2_15_2026_live_pretip.json` capture, which carries 76 games
+# across an 11-day window (7/9-7/19), 8 of them on the replay's reference day:
+#   fast:        89 -- step 0 (scoreboard ingest) upserts the event's FULL known
+#                      schedule every tick by design (fast.py: "the active
+#                      event's full known schedule"), not just today's slate --
+#                      so this scales with total tournament games/teams
+#                      resolved, all 76 of them here, plus window resolution
+#                      and the live raw-refresh selection query (step 1).
+#   projection:  487 -- dominated by step 7, `materialize_render_snapshots`
+#                      (462 of the 487): it assembles the COMPLETE Preview/
+#                      Live/Recap x Tracker cohort/stat-view variant matrix
+#                      (72 variants here) and while the WRITE is one bounded
+#                      upsert statement (#551), the READ side that builds each
+#                      variant's payload (`build_desk_render_variants`) is not
+#                      batched across variants -- confirmed by isolating each
+#                      step under `count_queries` (resolve_target_competitions=2,
+#                      active_roster_player_ids=1, grade_players_bulk=0 [empty
+#                      roster], compute_desk_storylines=13, commentary=0,
+#                      event_desk_state upsert=9, snapshot materialization=462).
+#                      This is real, measured tick-time cost, not roster-size
+#                      growth (#548 remains about roster/slot scaling, which
+#                      this fixture has none of -- 0 rostered players); it is a
+#                      distinct, already-known cost center (see #701's "full-pool
+#                      compute() on every in-event run" note in backbone.py) that
+#                      this budget now makes visible to CI for the first time.
+#   backbone:     13 -- window resolution + resolve_target_competitions + the
+#                      uncontended writer-lock acquire (production always takes
+#                      it, see `app/cli/sl_desk_backbone_tick.py`) + one
+#                      best-effort normalize attempt that raises/short-circuits
+#                      before any write (no audited raw run on disk yet -- the
+#                      common case between raw fetch/audit cycles).
+# These are regression ratchets, not targets: if a refactor genuinely lowers a
+# count, lower the budget too so the win is locked in (bump-the-number
+# protocol, see `ROUTE_BUDGETS` above).
+DESK_FAST_TICK_QUERY_BUDGET = 89
+DESK_PROJECTION_TICK_QUERY_BUDGET = 487
+DESK_BACKBONE_TICK_QUERY_BUDGET = 13
+
 # Admin route budgets (authentication-gated; tested separately via
 # test_stubs_tab.py which sets up an admin session before rendering).
 # Kept here as a single source-of-truth reference for the max query count.
