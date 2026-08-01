@@ -101,10 +101,14 @@ class SummerLeagueCohortBaseline(SQLModel, table=True):  # type: ignore[call-arg
             "cohort_key",
             name="uq_summer_league_cohort_baselines_version_cohort",
         ),
+        # Exactly one active baseline may exist for each cohort.  Historical
+        # versions remain queryable with ``is_active=False`` while publication
+        # flips the newest row into the active slot.
         Index(
-            "ix_summer_league_cohort_baselines_cohort_active",
+            "uq_summer_league_cohort_baselines_active",
             "cohort_key",
-            "is_active",
+            unique=True,
+            postgresql_where=text("is_active"),
         ),
     )
 
