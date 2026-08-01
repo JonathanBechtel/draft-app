@@ -550,6 +550,22 @@ async def test_explorer_page_renders(
 
 
 @pytest.mark.asyncio
+async def test_team_metric_filters_render_and_preserve_selection(
+    db_session: AsyncSession, app_client: AsyncClient
+) -> None:
+    """Team pages render the metric controls and keep an active filter visible."""
+    await _seed_teams(db_session)
+    resp = await app_client.get(
+        "/stats/summer-league/explorer?subject=teams&fcol0=net_rtg&fop0=gte&fval0=5"
+    )
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="metric-filter-section"' in body
+    assert 'value="net_rtg" selected' in body
+    assert "NetRtg" in body
+
+
+@pytest.mark.asyncio
 async def test_explorer_partial_returns_table_only(
     db_session: AsyncSession, app_client: AsyncClient
 ) -> None:
@@ -988,6 +1004,114 @@ async def test_per_100_mode_per_competition_uses_pace(
     by_name = {r.label.split(" · ")[0]: r for r in result.rows}
     assert by_name["Pace Setter"].values["pts"] == pytest.approx(48.0, abs=0.05)
     assert by_name["Nopace Row"].values["pts"] is None
+
+
+@pytest.mark.asyncio
+async def test_per_100_sort_matches_display_order_with_null_pace_and_zero_minutes(
+    db_session: AsyncSession,
+) -> None:
+    """Display order must equal SQL sort order in per_100 mode (COALESCE gotcha guard).
+
+    Regression guard for ``app.services.stats.scaling`` (Phase 2, T4 / #725): the SQL
+    sort expression (``scale_sql``, via ``_scaled_sort_expr``) and the Python display
+    path (``scale_python``, via ``_compute_player_values``) must derive the same
+    per-100 value for every row -- including the null cases. Two different ways to
+    land on a null per-100 denominator are seeded here: a row with no pace at all,
+    and a row with pace set but zero minutes played (``pace_sec = pace * minutes *
+    60 = 0``). Both must render ``None`` *and* sort last, not merely one or the
+    other -- if either path's null handling drifted from the other, a row would
+    sort in one position but display a value implying a different one.
+    """
+    alpha = make_player("Alpha", "Fast")
+    bravo = make_player("Bravo", "Slow")
+    charlie = make_player("Charlie", "Nopace")
+    delta = make_player("Delta", "Noplay")
+    db_session.add_all([alpha, bravo, charlie, delta])
+    await db_session.flush()
+
+    c = await _comp(db_session, year=2024, venue_slug="las_vegas", league_id="15")
+
+    # Alpha: pace 50 (poss/48), 60 min → poss = 50*60/48 = 62.5 → 60*100/62.5 = 96.0/100.
+    await _season(
+        db_session,
+        player=alpha,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=60,
+        pace=50.0,
+    )
+    # Bravo: pace 200, 60 min → poss = 200*60/48 = 250 → 60*100/250 = 24.0/100.
+    await _season(
+        db_session,
+        player=bravo,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=60,
+        pace=200.0,
+    )
+    # Charlie: no pace at all -- huge raw PTS must NOT rank first; per-100 is None.
+    await _season(
+        db_session,
+        player=charlie,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=60.0,
+        pts=999,
+        pace=None,
+    )
+    # Delta: pace is set but zero minutes played -- pace_sec = pace*minutes*60 = 0,
+    # the *other* way to hit a null per-100 denominator (not a missing pace value).
+    await _season(
+        db_session,
+        player=delta,
+        comp_id=c,
+        year=2024,
+        venue_slug="las_vegas",
+        gp=2,
+        minutes=0.0,
+        pts=0,
+        pace=100.0,
+    )
+    await db_session.commit()
+
+    result = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            mode="per_100",
+            sort="pts",
+            direction="desc",
+            min_games=0,
+            min_minutes=0,
+        ),
+    )
+    assert result.total == 4
+    ordered_names = [r.label.split(" · ")[0] for r in result.rows]
+    ordered_values = [r.values["pts"] for r in result.rows]
+
+    # SQL ORDER BY placed the null-per-100 rows last (nulls_last), matching the
+    # displayed None -- not ahead of a lower-but-real value and not by raw PTS.
+    assert ordered_names[:2] == ["Alpha Fast", "Bravo Slow"]
+    assert set(ordered_names[2:]) == {"Charlie Nopace", "Delta Noplay"}
+
+    # The values the display path renders reproduce the exact ordering the SQL
+    # ORDER BY imposed: non-null values strictly descending, then the null rows.
+    non_null = [v for v in ordered_values if v is not None]
+    assert non_null == sorted(non_null, reverse=True)
+    assert ordered_values[2:] == [None, None]
+    assert ordered_values[:2] == [
+        pytest.approx(96.0, abs=0.05),
+        pytest.approx(24.0, abs=0.05),
+    ]
 
 
 @pytest.mark.asyncio

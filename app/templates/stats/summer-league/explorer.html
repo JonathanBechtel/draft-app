@@ -240,6 +240,8 @@
       <label for="ex-min-min">Min MIN</label>
       <input id="ex-min-min" type="number" name="min_min" min="0" value="{{ q.min_minutes }}">
     </div>
+    {% endif %}
+    {% if q.subject in ['players', 'teams'] %}
     {# ── Metric threshold filters (up to 3 rows) ──────────────────────────── #}
     <div class="slg-filter slg-filter--full" id="metric-filter-section">
       <label class="slg-filter__label--metric">{{ 'Game stat filters' if q.grain == 'per_game' else 'Stat filters' }}</label>

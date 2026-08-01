@@ -120,6 +120,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskGrain,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.stats.percentiles import percentile
 from app.services.summer_league.metrics import game_score_from_row
 
 # --------------------------------------------------------------------------- #
@@ -262,18 +263,9 @@ def compute_breakpoints(
     """
     if not values:
         return {}
-    ordered = sorted(values)
-    n = len(ordered)
     out: dict[str, float] = {}
     for p in percentiles:
-        if n == 1:
-            out[str(p)] = round(ordered[0], 2)
-            continue
-        rank = (p / 100.0) * (n - 1)
-        lo = int(rank)
-        hi = min(lo + 1, n - 1)
-        frac = rank - lo
-        out[str(p)] = round(ordered[lo] + (ordered[hi] - ordered[lo]) * frac, 2)
+        out[str(p)] = round(percentile(values, p / 100.0), 2)
     return out
 
 

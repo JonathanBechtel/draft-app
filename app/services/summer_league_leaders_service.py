@@ -12,6 +12,8 @@ A comprehensive, sortable leaderboard across five display modes:
 Every visible column is sortable.
 """
 
+# discipline: file-size Phase 2 formula wiring; no new scope in ticket #745
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -21,11 +23,12 @@ from sqlalchemy import case, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
-from app.services.summer_league.constants import MINUTES_PER_GAME
+from app.services.stats.formulas import efg_pct_line, ts_pct_line
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeaguePlayerGameLog,
 )
+from app.services.stats.scaling import scale_python
 from app.services.summer_league_metrics_service import (
     ADV_LEADER_COLUMNS,
     VENUE_LABELS,
@@ -53,8 +56,6 @@ GATE_LADDER: tuple[tuple[int, int], ...] = (
 # and the ladder keeps relaxing (stopping at the floor rung regardless). A
 # board smaller than this reads as broken/unsatisfying rather than exclusive.
 TARGET_BOARD_ROWS = 10
-
-_MINUTES_PER_GAME = MINUTES_PER_GAME
 
 MODES = ("totals", "per_game", "per_36", "per_100", "advanced")
 MODE_LABELS = {
@@ -585,20 +586,19 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
     gp = int(r.gp)
     sec = float(r.sec or 0)
     minutes = sec / 60.0
-    poss = (r.pace_sec or 0) / (60.0 * _MINUTES_PER_GAME)
-
-    if mode == "per_game":
-        factor = _safe_div(1.0, gp)
-        min_val: Optional[float] = round(minutes / gp, 1) if gp else None
-    elif mode == "per_36":
-        factor = _safe_div(36.0, minutes)
-        min_val = round(minutes / gp, 1) if gp else None
-    elif mode == "per_100":
-        factor = _safe_div(100.0, poss) if poss else None
-        min_val = round(minutes / gp, 1) if gp else None
-    else:  # totals
-        factor = 1.0
+    pace_seconds = float(r.pace_sec or 0)
+    factor = scale_python(
+        1.0,
+        mode,
+        gp=gp,
+        seconds=sec,
+        pace_seconds=pace_seconds,
+    )
+    min_val: Optional[float]
+    if mode == "totals":
         min_val = round(minutes, 1)
+    else:
+        min_val = round(minutes / gp, 1) if gp else None
 
     def scaled(total: Optional[float]) -> Optional[float]:
         if factor is None or total is None:
@@ -614,8 +614,8 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
         "fg_pct": _pct(_safe_div(fgm, fga)),
         "fg3_pct": _pct(_safe_div(fg3m, float(r.fg3a or 0))),
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
-        "efg_pct": _pct(_safe_div(fgm + 0.5 * fg3m, fga)),
-        "ts_pct": _pct(_safe_div(float(r.pts or 0), 2.0 * (fga + 0.44 * fta))),
+        "efg_pct": efg_pct_line(fgm=fgm, fga=fga, fg3m=fg3m),
+        "ts_pct": ts_pct_line(pts=r.pts, fga=fga, fta=fta),
     }
     return LeaderRow(
         rank=0, slug=r.slug, name=r.display_name or "Player", gp=gp, values=values

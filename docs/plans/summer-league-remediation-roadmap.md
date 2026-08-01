@@ -271,6 +271,65 @@ The live issue queue and this plan describe the same work; keep them pointing at
 - **Level-adjusted metric translation model** — still open; Phase 2 supplies the engine it lives
   in, not the translation study.
 
+### Parked as Phase 2 follow-ups (owner decision, 2026-07-29)
+
+Both are scheduled **after** Phase 2 rather than inside it. Recorded with reasoning and trigger
+conditions so neither gets re-derived.
+
+- **Canonical pace source for per-100 surfaces (#732)** — the leaderboard divides by
+  `SummerLeaguePlayerGameLog.pace` (NBA-supplied) while the Explorer, stored column, and engine
+  divide by `SummerLeaguePlayerSeason.pace` (our possession estimate). A *data-source* divergence,
+  not a duplicated formula, so Phase 2's consolidation cannot fix it. **Decided direction:** the
+  engine estimate is canonical, computed at each surface's own grain from the one formula — never
+  a season-grain pace under a game-grain numerator. Found by #721's harness, which excluded
+  leaderboard per-100 as a result.
+  **Why parked:** it changes published numbers, and every Phase 2 ticket is behavior-preserving.
+  Admitting it would cost the QA gate (#731) its "no user-visible number changed" acceptance bar —
+  the property that makes the phase safe to run unattended.
+  **Trigger:** Phase 2 closes.
+- **Scoped per-tick metrics compute (#701)** — Phase 1 work by this roadmap despite its title;
+  the remaining half of #669's cost finding after #694 closed the off-season half.
+  **Why parked, not rushed:** its preferred fix (separate the slow league-wide fit from the
+  per-competition projection) needs Phase 2's `rollup_class` to know which metrics require the
+  full-pool fit — otherwise that taxonomy gets hand-derived a sixth time. Its acceptance criterion
+  ("identical to a full recompute, verified against production values") is exactly #721's harness.
+  And there is no operational pressure: Vegas ended 2026-07-19, so the per-tick cost is burning
+  compute on an empty stage until roughly mid-2027.
+  **Trigger:** Phase 2 closes, **or** a live event lands on the calendar sooner. Whichever first.
+
+### Consolidation residue found at the Phase 2 QA gate (#731, 2026-07-30)
+
+The gate closed the one finding that broke an exit criterion — the Explorer's three
+SQLAlchemy-expression eFG% filter sites, which restated the half-credit weight outside the
+engine and were demonstrated to drift silently from it (fixed: `efg_pct_num_expr` plus
+confinement rule R1c). A wider metric-by-metric sweep of `app/` found further restatements of
+registry-declared formulas that were **outside every Phase 2 ticket's file list** and that
+change no number today. They are recorded here rather than fixed at the gate, because each is a
+behavior-risk edit and Phase 2's acceptance bar is "no user-visible number changed":
+
+- **Per-36 / per-100 scaling, three more call sites.** T4 (#725) consolidated the Explorer's
+  three sites into `app.services.stats.scaling`, but `summer_league_stats_service.py:212-216`,
+  `summer_league_leaders_service.py:589-599`, and `summer_league/desk_read.py:1616-1622` each
+  still build their own `36.0 / minutes` and `100.0 / poss` factors. `desk_read._pooled_possessions`
+  says so in its own docstring ("Mirrors the denominator …").
+- **`ws40` re-derived** at `summer_league_metrics_service.py:260` and `:818` (and at 2 decimals,
+  where the engine rounds to 3).
+- **`vorp` / `vorp82`** computed at `summer_league/metrics.py:349-355` rather than in the engine;
+  the `48*82` and `VORP_REPLACEMENT` constants sit outside it too.
+- **`pace_per_48` and the `×100` rating shape** restated at
+  `summer_league_environment_service.py:1707,1709,1071`. Its *possession estimate* correctly calls
+  into the engine; only the normalization is local. Unlike `turnover_rate` on the same surface,
+  these carry no frozen-exemption registration.
+- **`net_rating`** re-derived at `summer_league_explorer_service.py:3774-3778`.
+
+Why the guards do not catch these: `scripts/check_stat_constants.py` designates `0.44`, the Game
+Score weights, and (as of #731) eFG%'s `0.5`; rule R4 matches only *string* literals. The
+scaling/WS/VORP/pace constants are not designated, and SQLAlchemy-expression arithmetic is
+invisible to R4. Closing the residue and widening the checker to cover it belong together.
+
+**Trigger:** the next phase that touches these files, or the first time one of these numbers is
+reported wrong.
+
 ## Standing caveats
 
 - **The transaction diagnosis is now observed, not just read from code.** Incident #669 confirmed

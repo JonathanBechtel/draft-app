@@ -78,7 +78,11 @@ from app.schemas.summer_league import (
     SummerLeagueRawRun,
     SummerLeagueRawRunStatus,
 )
+from app.services.stats.percentiles import percentile as _percentile
 from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
+
+# discipline: file-size formula audit keeps this legacy aggregation module reviewable.
+from app.services.stats.formulas import pace_per_48, points_per_100
 from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import (
     CALCULATION_VERSION,
@@ -761,21 +765,6 @@ def build_profile_summary_view(
 # ===========================================================================
 
 
-def _percentile(values: list[float], q: float) -> float:
-    """Linear-interpolated percentile ``q`` (0–1) over ``values`` (numpy default)."""
-    ordered = sorted(values)
-    if not ordered:
-        raise ValueError("percentile of an empty sequence")
-    if len(ordered) == 1:
-        return ordered[0]
-    idx = (len(ordered) - 1) * q
-    low = math.floor(idx)
-    high = math.ceil(idx)
-    if low == high:
-        return ordered[low]
-    return ordered[low] * (high - idx) + ordered[high] * (idx - low)
-
-
 def _age_years(birthdate: date, reference: date) -> float:
     """Age in years at ``reference`` for a player born on ``birthdate``."""
     return (reference - birthdate).days / 365.25
@@ -1081,8 +1070,8 @@ async def _load_team_boxes(
             acc.team_entry_ids.add(team_id)
             poss = box.poss(opp)
             acc.total_possessions += poss
-            if poss > 0:
-                acc.team_ortgs.append(100.0 * box.pts / poss)
+            if (team_ortg := points_per_100(box.pts, poss)) is not None:
+                acc.team_ortgs.append(team_ortg)
             acc.team_points.append(float(box.pts))
             acc.provenance["box"].observe(updated_at)
 
@@ -1718,9 +1707,8 @@ def _environment_metric_values(pooled: _PooledScope) -> dict[str, Optional[float
 
     values["points_per_team_game"] = safe_ratio(box.pts, team_games)
     values["estimated_possessions"] = safe_ratio(poss, team_games)
-    values["pace_per_48"] = safe_ratio(48.0 * poss, pooled.team_minutes / 5.0)
-    ortg = safe_ratio(box.pts, poss)
-    values["offensive_rating"] = None if ortg is None else 100.0 * ortg
+    values["pace_per_48"] = pace_per_48(poss, pooled.team_minutes)
+    values["offensive_rating"] = points_per_100(box.pts, poss)
     values["three_attempt_share"] = safe_ratio(box.fg3a, box.fga)
     values["three_fg_pct"] = safe_ratio(box.fg3m, box.fg3a)
     values["free_throw_rate"] = safe_ratio(box.fta, box.fga)

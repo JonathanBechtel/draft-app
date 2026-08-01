@@ -135,7 +135,7 @@ bio.ingest:
 	$(PYTHON) scripts/ingest_player_bios.py --file $(BBIO) --cache-dir $(CACHE) $(if $(DRY),--dry-run,) $(if $(VERBOSE),--verbose,) $(if $(OVERWRITE_MASTER),--overwrite-master,) $(if $(CREATE_MISSING),--create-missing,) $(if $(FIX),--fix-ambiguities $(FIX),)
 
 # Lint & format
-.PHONY: fmt lint lint.imports lint.filesize lint.complexity lint.complexity.update lint.migrations deploy.freshness fix precommit test coverage coverage.diff visual visual.headed
+.PHONY: fmt lint lint.imports lint.filesize lint.complexity lint.complexity.update lint.migrations lint.stat-constants deploy.freshness fix precommit test coverage coverage.diff visual visual.headed
 fmt:
 	ruff format .
 
@@ -168,6 +168,13 @@ lint.complexity.update:
 # import. See CLAUDE.md "Executable code lives in two places".
 lint.entrypoints:
 	python scripts/check_runtime_entrypoints.py
+
+# Stat-constant confinement (docs/plans/programmatic-code-discipline.md §1.3). Phase 2's
+# closing ratchet: designated stat coefficients (0.44, the Game Score weights) may appear
+# only under app/services/stats/. The one legitimate exemption is read from
+# app.services.stats.registry.frozen_exemptions(), not hand-written here.
+lint.stat-constants:
+	python scripts/check_stat_constants.py
 
 # Index-build safety in new Alembic revisions (docs/plans/programmatic-code-discipline.md §1.7).
 # Diff-scoped against main the way CI is: existing revisions have already run in

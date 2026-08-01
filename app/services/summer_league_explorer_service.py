@@ -43,7 +43,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from sqlalchemy import and_, case, func, literal, nulls_last, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,7 +76,39 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
-from app.services.summer_league.constants import MINUTES_PER_GAME
+from app.services.stats.capabilities import is_computable
+from app.services.stats.formulas import (
+    astd_pct_line,
+    astd_pct_ratio,
+    efg_pct_line,
+    efg_pct_ratio,
+    fg3ar_line,
+    fg3ar_ratio,
+    ftr_line,
+    ftr_ratio,
+    net_rating,
+    ts_pct_line,
+    ts_pct_ratio,
+    tov_pct_line,
+)
+from app.services.stats.registry import (
+    METRICS_BY_KEY,
+    RollupClass,
+    astd_pct_denom_expr,
+    astd_pct_sql_text,
+    efg_pct_num_expr,
+    efg_pct_sql_text,
+    fg3ar_sql_text,
+    ftr_sql_text,
+    game_score_sql_text,
+    rollup_class_matches,
+    ts_pct_denom_expr,
+    ts_pct_sql_text,
+    tov_pct_denom_expr,
+    tov_pct_sql_text,
+)
+from app.services.stats.scaling import scale_python, scale_sql
+from app.services.summer_league.capabilities import row_provides, rows_provide
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league_environment_registry import (
     PROFILE_STALE_AFTER_HOURS,
@@ -147,8 +179,6 @@ DEFAULT_MODE = "per_game"
 # full history, so "2nd" means the same season regardless of any year/venue scope.
 APPEARANCE_MIN = 1
 APPEARANCE_TOP = 4
-
-_MINUTES_PER_GAME = MINUTES_PER_GAME
 
 # Position filter vocabulary, sourced from the canonical taxonomy
 # (app/models/position_taxonomy.py) — the same module that derives
@@ -904,11 +934,18 @@ _TEAM_STAT_COLUMNS: list[ExplorerColumn] = [
     ExplorerColumn("diff", "DIFF"),
     # Advanced team metrics (pace + ratings) — grouped so the column-group toggle
     # can show/hide them alongside the player advanced columns.
-    ExplorerColumn("pace", "PACE", _GROUP_ADVANCED),
-    ExplorerColumn("ortg", "ORtg", _GROUP_ADVANCED),
-    ExplorerColumn("drtg", "DRtg", _GROUP_ADVANCED),
-    ExplorerColumn("net_rtg", "NetRtg", _GROUP_ADVANCED),
+    ExplorerColumn("pace", "PACE", _GROUP_ADVANCED, filterable=True),
+    ExplorerColumn("ortg", "ORtg", _GROUP_ADVANCED, filterable=True),
+    ExplorerColumn("drtg", "DRtg", _GROUP_ADVANCED, filterable=True),
+    ExplorerColumn("net_rtg", "NetRtg", _GROUP_ADVANCED, filterable=True),
 ]
+
+TEAM_FILTERABLE_COLUMNS: list[ExplorerColumn] = [
+    column for column in _TEAM_STAT_COLUMNS if column.filterable
+]
+_TEAM_FILTERABLE_KEYS: frozenset[str] = frozenset(
+    column.key for column in TEAM_FILTERABLE_COLUMNS
+)
 
 # Stat columns for the games subject (one row per game). The label carries date
 # + matchup + score; these are the sortable numeric dimensions.
@@ -1268,6 +1305,10 @@ _ADV_COMPOSITE_SORT_KEYS: frozenset[str] = frozenset(
 #   additive       → rollup_additive       (sum values, skip None)
 #   rate_composite → rollup_rate_composite (minute-weighted avg, skip None pools)
 #
+# ``rollup_recombinable`` reads ``app.services.stats.registry``'s ``rollup_class``
+# as a live gate rather than re-deriving which keys are recombinable in a comment
+# (T8b / #729) -- see its docstring.
+#
 # All percentage columns are stored as percentages (e.g. 60.6 not 0.606) and
 # the roll-up output preserves that convention.
 # --------------------------------------------------------------------------- #
@@ -1336,7 +1377,13 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
     box sheet.
 
     Supported keys: ``ts_pct``, ``efg_pct``, ``fg_pct``, ``fg3_pct``, ``ft_pct``,
-    ``fg3ar``, ``ftr``, ``pts_per100``.
+    ``fg3ar``, ``ftr``, ``astd_pct``, ``pts_per100``. Of these,
+    ``app.services.stats.registry`` declares ``ts_pct``/``efg_pct``/``fg3ar``/
+    ``ftr``/``astd_pct``/``pts_per100`` as ``RollupClass.RECOMBINABLE`` --
+    ``fg_pct``/``fg3_pct``/``ft_pct`` are raw shooting splits the registry
+    hasn't been extended to cover yet (T7 scoped it to the metrics T4-T6
+    consolidated). A key the registry *does* declare under a different class
+    is refused below, the same as an unrecognised key.
 
     Args:
         rows: Per-competition rows with box-total attributes (``pts``, ``fgm``, …).
@@ -1344,9 +1391,17 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
 
     Returns:
         Recomputed metric value (stored as a percentage, e.g. 60.6), or ``None``
-        when the denominator sums to zero (no attempts).
+        when the denominator sums to zero (no attempts), or when ``key`` is
+        declared in the registry under a rollup_class other than recombinable.
     """
     if not rows:
+        return None
+    if key in METRICS_BY_KEY and not rollup_class_matches(
+        key, RollupClass.RECOMBINABLE
+    ):
+        # T8b (#729): a registry-declared key under a different rollup_class must
+        # not be recomputed here -- same graceful-None contract as an unrecognised
+        # key, but derived from the live registry instead of an implicit omission.
         return None
 
     fgm = _sum_attr(rows, "fgm")
@@ -1358,10 +1413,9 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
     pts = _sum_attr(rows, "pts")
 
     if key == "ts_pct":
-        denom = 2.0 * (fga + 0.44 * fta)
-        return 100.0 * pts / denom if denom else None
+        return ts_pct_ratio(pts=pts, fga=fga, fta=fta)
     if key == "efg_pct":
-        return 100.0 * (fgm + 0.5 * fg3m) / fga if fga else None
+        return efg_pct_ratio(fgm=fgm, fga=fga, fg3m=fg3m)
     if key == "fg_pct":
         return 100.0 * fgm / fga if fga else None
     if key == "fg3_pct":
@@ -1371,16 +1425,21 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
     if key == "fg3ar":
         # 3-point attempt rate: share of field-goal attempts that are 3-pointers.
         # 0-1 fraction (BBRef scale), matching the stored season column.
-        return fg3a / fga if fga else None
+        return fg3ar_ratio(fg3a=fg3a, fga=fga)
     if key == "ftr":
         # Free-throw rate: FTA per FGA (ability to draw fouls). 0-1 fraction.
-        return fta / fga if fga else None
+        return ftr_ratio(fga=fga, fta=fta)
     if key == "astd_pct":
-        # Assisted share of made FGs from PBP counts; None outside the PBP era.
+        # Assisted share of made FGs from PBP counts. Availability comes from the
+        # T8 capability model (#728) -- metric.requires <= source.provides, resolved
+        # from the registry's astd_pct.requires (ast_fgm/unast_fgm) rather than a
+        # hand-rolled "outside the PBP era" check -- so a pool that never had PBP
+        # normalized is structurally absent instead of merely dividing by zero.
+        if not is_computable("astd_pct", rows_provide(rows)):
+            return None
         ast_fgm = _sum_attr(rows, "ast_fgm")
         unast_fgm = _sum_attr(rows, "unast_fgm")
-        made = ast_fgm + unast_fgm
-        return 100.0 * ast_fgm / made if made else None
+        return astd_pct_ratio(ast_fgm=ast_fgm, unast_fgm=unast_fgm)
     if key == "pts_per100":
         # ``pace`` is possessions per 48 minutes (NBA's normalization base, kept even
         # for 40-minute Summer League games — see summer_league.constants). Sum
@@ -1400,8 +1459,15 @@ def rollup_recombinable(rows: Sequence[Any], key: str) -> Optional[float]:
             float(getattr(r, "pace", None) or 0) * float(getattr(r, "minutes", 0) or 0)
             for r in rows
         )
-        poss = (pace_min_sum / MINUTES_PER_GAME) * (total_min / covered_min)
-        return 100.0 * pts / poss if poss else None
+        # Feed the extrapolated pace-weighted minutes into the shared per-mode
+        # scaler (app.services.stats.scaling.scale_python) as an "effective
+        # pace_sec": pace_min_sum * 60 converts to pace-weighted seconds, and
+        # * (total_min / covered_min) is the same extrapolation the comment above
+        # describes. gp/seconds are unused by scale_python's per_100 branch.
+        pace_sec_effective = pace_min_sum * 60.0 * total_min / covered_min
+        return scale_python(
+            pts, "per_100", gp=0, seconds=0.0, pace_seconds=pace_sec_effective
+        )
     # Unknown key — callers should only pass recombinable keys from the catalog.
     return None
 
@@ -1600,11 +1666,8 @@ def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
         return _op(func.sum(ps.minutes))  # type: ignore[attr-defined]
     # Recombinable percentage metrics — pool ratio from summed box components.
     if col == "efg_pct":
-        return _op(
-            100.0
-            * (func.sum(ps.fgm) + 0.5 * func.sum(ps.fg3m))  # type: ignore[attr-defined]
-            / func.nullif(func.sum(ps.fga), 0)  # type: ignore[attr-defined]
-        )
+        num = efg_pct_num_expr(lambda name: func.sum(getattr(ps, name)))  # type: ignore[attr-defined]
+        return _op(100.0 * num / func.nullif(func.sum(ps.fga), 0))  # type: ignore[attr-defined]
     if col == "fg_pct":
         return _op(100.0 * func.sum(ps.fgm) / func.nullif(func.sum(ps.fga), 0))  # type: ignore[attr-defined]
     if col == "fg3_pct":
@@ -1612,7 +1675,7 @@ def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
     if col == "ft_pct":
         return _op(100.0 * func.sum(ps.ftm) / func.nullif(func.sum(ps.fta), 0))  # type: ignore[attr-defined]
     if col == "ts_pct":
-        denom = 2.0 * (func.sum(ps.fga) + 0.44 * func.sum(ps.fta))  # type: ignore[attr-defined]
+        denom = ts_pct_denom_expr(lambda name: func.sum(getattr(ps, name)))  # type: ignore[attr-defined]
         return _op(100.0 * func.sum(ps.pts) / func.nullif(denom, 0))  # type: ignore[attr-defined]
     # Attempt rates — 0-1 fraction ratios from summed box (thresholds on the
     # displayed fraction scale, e.g. fval=0.4 means FTr ≥ .400).
@@ -1626,8 +1689,8 @@ def _career_metric_having(f: MetricFilter, ps: Any) -> Any:
         )
     # Assisted share of made FGs (0-100 scale) from summed PBP counts.
     if col == "astd_pct":
-        made = func.sum(ps.ast_fgm) + func.sum(ps.unast_fgm)  # type: ignore[attr-defined]
-        return _op(100.0 * func.sum(ps.ast_fgm) / func.nullif(made, 0))  # type: ignore[attr-defined]
+        denom = astd_pct_denom_expr(lambda name: func.sum(getattr(ps, name)))  # type: ignore[attr-defined]
+        return _op(100.0 * func.sum(ps.ast_fgm) / func.nullif(denom, 0))  # type: ignore[attr-defined]
     return None
 
 
@@ -1676,7 +1739,8 @@ def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
         return _op(ps.minutes)
     # Recombinable percentages from season box components.
     if col == "efg_pct":
-        return _op(100.0 * (ps.fgm + 0.5 * ps.fg3m) / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
+        num = efg_pct_num_expr(lambda name: getattr(ps, name))
+        return _op(100.0 * num / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
     if col == "fg_pct":
         return _op(100.0 * ps.fgm / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
     if col == "fg3_pct":
@@ -1684,7 +1748,7 @@ def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
     if col == "ft_pct":
         return _op(100.0 * ps.ftm / func.nullif(ps.fta, 0))  # type: ignore[attr-defined]
     if col == "ts_pct":
-        denom = 2.0 * (ps.fga + 0.44 * ps.fta)
+        denom = ts_pct_denom_expr(lambda name: getattr(ps, name))
         return _op(100.0 * ps.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
     # Attempt rates — 0-1 fraction ratios from the row's box components.
     if col == "fg3ar":
@@ -1693,8 +1757,8 @@ def _per_comp_metric_where(f: MetricFilter, ps: Any) -> Any:
         return _op(ps.fta * 1.0 / func.nullif(ps.fga, 0))  # type: ignore[attr-defined]
     # Assisted share of made FGs (0-100 scale) from the row's PBP counts.
     if col == "astd_pct":
-        made = ps.ast_fgm + ps.unast_fgm
-        return _op(100.0 * ps.ast_fgm / func.nullif(made, 0))  # type: ignore[attr-defined]
+        denom = astd_pct_denom_expr(lambda name: getattr(ps, name))
+        return _op(100.0 * ps.ast_fgm / func.nullif(denom, 0))  # type: ignore[attr-defined]
     return None
 
 
@@ -1722,9 +1786,8 @@ def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
         return _op(pgl.minutes_seconds / 60.0)  # type: ignore[attr-defined]
     # Percentage metrics from game-log box columns.
     if col == "efg_pct":
-        return _op(
-            100.0 * (pgl.fgm + 0.5 * pgl.fg3m) / func.nullif(pgl.fga, 0)  # type: ignore[attr-defined]
-        )
+        num = efg_pct_num_expr(lambda name: getattr(pgl, name))
+        return _op(100.0 * num / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
     if col == "fg_pct":
         return _op(100.0 * pgl.fgm / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
     if col == "fg3_pct":
@@ -1732,7 +1795,7 @@ def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
     if col == "ft_pct":
         return _op(100.0 * pgl.ftm / func.nullif(pgl.fta, 0))  # type: ignore[attr-defined]
     if col == "ts_pct":
-        denom = 2.0 * (pgl.fga + 0.44 * pgl.fta)
+        denom = ts_pct_denom_expr(lambda name: getattr(pgl, name))
         return _op(100.0 * pgl.pts / func.nullif(denom, 0))  # type: ignore[attr-defined]
     # Box-derived rates work per game from the row's own line (thresholds on
     # the same scale the other grains use: 0-1 fractions for attempt rates,
@@ -1742,7 +1805,7 @@ def _per_game_metric_where(f: MetricFilter, pgl: Any) -> Any:
     if col == "ftr":
         return _op(pgl.fta * 1.0 / func.nullif(pgl.fga, 0))  # type: ignore[attr-defined]
     if col == "tov_pct":
-        plays = pgl.fga + 0.44 * pgl.fta + pgl.tov
+        plays = tov_pct_denom_expr(lambda name: getattr(pgl, name))
         return _op(100.0 * pgl.tov / func.nullif(plays, 0))  # type: ignore[attr-defined]
     # Advanced composites and team/PBP-context rates (USG%, AST%, AST'd%,
     # rebound/steal/block %s) are not derivable per game log — silently skip.
@@ -2244,9 +2307,16 @@ def parse_query(params: dict[str, str]) -> ExplorerQuery:
     page = _to_int(params.get("page")) or 1
 
     is_competitions = subject == "competitions"
+    valid_filter_keys = (
+        _COMPETITION_FILTERABLE_KEYS
+        if is_competitions
+        else _TEAM_FILTERABLE_KEYS
+        if subject == "teams"
+        else _FILTERABLE_KEYS
+    )
     metric_filters = parse_metric_filters(
         params,
-        _COMPETITION_FILTERABLE_KEYS if is_competitions else _FILTERABLE_KEYS,
+        valid_filter_keys,
         errors=validation_errors if is_competitions else None,
     )
     if grain == "per_game":
@@ -2474,25 +2544,20 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
     gp = int(r.gp)
     sec = float(r.sec or 0)
     minutes = sec / 60.0
-    poss = (r.pace_sec or 0) / (60.0 * _MINUTES_PER_GAME)
+    pace_sec = float(r.pace_sec or 0)
 
-    if mode == "per_game":
-        factor: Optional[float] = _safe_div(1.0, gp)
-        min_val: Optional[float] = round(minutes / gp, 1) if gp else None
-    elif mode == "per_36":
-        factor = _safe_div(36.0, minutes)
+    if mode == "totals":
+        min_val: Optional[float] = round(minutes, 1)
+    else:  # per_game, per_36, per_100 all display per-game minutes
         min_val = round(minutes / gp, 1) if gp else None
-    elif mode == "per_100":
-        factor = _safe_div(100.0, poss) if poss else None
-        min_val = round(minutes / gp, 1) if gp else None
-    else:  # totals
-        factor = 1.0
-        min_val = round(minutes, 1)
 
     def scaled(total: float) -> Optional[float]:
-        if factor is None:
+        # app.services.stats.scaling.scale_python is the single per-mode scaling
+        # definition (shared with the SQL sort path via scale_sql); this closure
+        # only layers on this view's display rounding.
+        v = scale_python(total, mode, gp=gp, seconds=sec, pace_seconds=pace_sec)
+        if v is None:
             return None
-        v = total * factor
         return round(v) if mode == "totals" else round(v, 1)
 
     fga, fta = float(r.fga or 0), float(r.fta or 0)
@@ -2516,67 +2581,50 @@ def _compute_player_values(r: Any, mode: str) -> dict[str, Any]:
         "min": min_val,
         **{c: scaled(float(getattr(r, c) or 0)) for c in _COUNTING},
         "plus_minus": plus_minus_val,
-        "efg_pct": _pct(_safe_div(float(r.fgm or 0) + 0.5 * float(r.fg3m or 0), fga)),
+        "efg_pct": efg_pct_line(fgm=r.fgm, fga=fga, fg3m=r.fg3m),
         "fg_pct": _pct(_safe_div(float(r.fgm or 0), fga)),
         "fg3_pct": _pct(_safe_div(float(r.fg3m or 0), float(r.fg3a or 0))),
         "ft_pct": _pct(_safe_div(float(r.ftm or 0), fta)),
-        "ts_pct": _pct(_safe_div(float(r.pts or 0), 2.0 * (fga + 0.44 * fta))),
+        "ts_pct": ts_pct_line(pts=r.pts, fga=fga, fta=fta),
         # Attempt rates: 0-1 fractions at 3 decimals (recombinable — exact from
         # the summed box at any grain, like the shooting percentages above).
-        "fg3ar": (round(float(r.fg3a or 0) / fga, 3) if fga else None),
-        "ftr": (round(fta / fga, 3) if fga else None),
-        "tov_pct": _pct(
-            _safe_div(float(r.tov or 0), fga + 0.44 * fta + float(r.tov or 0))
-        ),
+        "fg3ar": fg3ar_line(fg3a=r.fg3a, fga=fga),
+        "ftr": ftr_line(fga=fga, fta=fta),
+        "tov_pct": tov_pct_line(fga=fga, fta=fta, tov=r.tov),
         "astd_pct": _astd_pct(r),
         "gmsc": scaled(gmsc_total),
     }
 
 
 def _astd_pct(r: Any) -> Optional[float]:
-    """Assisted share of made FGs from PBP counts; ``None`` outside the PBP era."""
-    ast_fgm = getattr(r, "ast_fgm", None)
-    unast_fgm = getattr(r, "unast_fgm", None)
-    made = float(ast_fgm or 0) + float(unast_fgm or 0)
-    if made <= 0:
+    """Assisted share of made FGs from PBP counts.
+
+    Availability is derived from the T8 capability model (#728) -- the registry's
+    ``astd_pct.requires`` (``ast_fgm``/``unast_fgm``) tested against this row's
+    provides (:func:`app.services.summer_league.capabilities.row_provides`) --
+    rather than this function's own hand-rolled "is PBP data present" check, so a
+    row from a competition that never had PBP normalized is structurally absent
+    instead of merely dividing by zero.
+    """
+    if not is_computable("astd_pct", row_provides(r)):
         return None
-    return round(100.0 * float(ast_fgm or 0) / made, 1)
+    return astd_pct_line(
+        ast_fgm=getattr(r, "ast_fgm", None),
+        unast_fgm=getattr(r, "unast_fgm", None),
+    )
 
 
 def _scaled_sort_expr(num: str, gp: str, sec: str, pace_sec: str, mode: str) -> str:
     """Scale a counting-stat numerator into the displayed per-mode rate.
 
-    Mirrors the arithmetic in :func:`_compute_player_values` so ORDER BY ranks on
+    Thin wrapper over :func:`app.services.stats.scaling.scale_sql` — the single
+    scaling definition shared with the Python display path
+    (:func:`_compute_player_values`, via ``scale_python``) — so ORDER BY ranks on
     exactly what the cell shows.  ``num``/``gp``/``sec``/``pace_sec`` are SQL
     fragments (aggregates for career, raw labels for per_competition); ``sec`` is
     seconds played and ``pace_sec`` the pace-weighted seconds.
     """
-    if mode == "per_game":
-        # * 1.0 forces float division (counts/totals are integers in Postgres,
-        # and integer division would truncate the rate into non-monotonic ties).
-        return f"{num} * 1.0 / NULLIF({gp}, 0)"
-    if mode == "per_36":  # 36 min / (sec/60) = num * 36 * 60 / sec
-        return f"{num} * 2160.0 / NULLIF({sec}, 0)"
-    if mode == "per_100":  # 100 poss; poss = pace_sec / (60 * 48)
-        return f"{num} * 288000.0 / NULLIF({pace_sec}, 0)"
-    return num  # totals
-
-
-def _game_score_sql(box: Callable[[str], str]) -> str:
-    """Build the Hollinger Game Score expression in SQL.
-
-    ``box`` maps a column name to its SQL fragment so the same formula serves
-    both the career grain (``SUM(pts)`` …) and the per-competition / per-game
-    grains (raw labels ``pts`` …). Mirrors :func:`game_score` exactly so an
-    ORDER BY on GmSc ranks on the same value the cell shows (before per-mode
-    scaling, which the caller layers on via :func:`_scaled_sort_expr`).
-    """
-    return (
-        f"({box('pts')} + 0.4 * {box('fgm')} - 0.7 * {box('fga')} "
-        f"- 0.4 * ({box('fta')} - {box('ftm')}) + 0.7 * {box('oreb')} "
-        f"+ 0.3 * {box('dreb')} + {box('stl')} + 0.7 * {box('ast')} "
-        f"+ 0.7 * {box('blk')} - 0.4 * {box('pf')} - {box('tov')})"
-    )
+    return scale_sql(num, gp, sec, pace_sec, mode)
 
 
 # GmSc numerator fragments: raw column labels (per_competition / per_game) and
@@ -2584,8 +2632,18 @@ def _game_score_sql(box: Callable[[str], str]) -> str:
 # Each component is COALESCEd to 0 so a NULL box stat (e.g. unrecorded OREB on an
 # older log) does not poison the whole expression to NULL — matching the Python
 # display path, which coalesces None to 0 via :func:`game_score_line`.
-_GMSC_SQL_RAW = _game_score_sql(lambda c: f"COALESCE({c}, 0)")
-_GMSC_SQL_AGG = _game_score_sql(lambda c: f"COALESCE(SUM({c}), 0)")
+#
+# The formula itself lives in app.services.stats.registry.game_score_sql_text
+# (T9, #730) rather than here -- this used to be a local ``_game_score_sql``
+# helper holding the Game Score weights as a raw f-string, which the
+# stat-constant confinement checker exists to forbid outside
+# app/services/stats/. ``box`` still maps a column name to its SQL fragment so
+# one declaration emits both the career grain (``SUM(pts)`` …) and the
+# per-competition / per-game grains (raw labels ``pts`` …); the ORDER BY on
+# GmSc still ranks on the same value the cell shows (before per-mode scaling,
+# which the caller layers on via :func:`_scaled_sort_expr`).
+_GMSC_SQL_RAW = game_score_sql_text(lambda c: f"COALESCE({c}, 0)")
+_GMSC_SQL_AGG = game_score_sql_text(lambda c: f"COALESCE(SUM({c}), 0)")
 
 # Career-grain per_100 pace-weighted seconds: pace-covered possessions extrapolated
 # to all minutes via the minute-weighted observed pace (mirrors pace_sec_expr in
@@ -2611,11 +2669,11 @@ def _player_sort_expr(sort_col: str, mode: str) -> Any:
     """
     # Percentage stats — mode-independent NULLIF-guarded ratio expressions.
     _pct_exprs: dict[str, str] = {
-        "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
+        "efg_pct": efg_pct_sql_text(lambda c: f"SUM({c})"),
         "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
         "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
         "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
-        "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
+        "ts_pct": ts_pct_sql_text(lambda c: f"SUM({c})"),
     }
     if sort_col in _pct_exprs:
         return _pct_exprs[sort_col]
@@ -2679,16 +2737,16 @@ def _player_sort_expr_career(sort_col: str, mode: str) -> Any:
     scope sort last (NULL), matching the None display value.
     """
     _pct_exprs: dict[str, str] = {
-        "efg_pct": "(SUM(fgm) + 0.5 * SUM(fg3m)) / NULLIF(SUM(fga), 0)",
+        "efg_pct": efg_pct_sql_text(lambda c: f"SUM({c})"),
         "fg_pct": "SUM(fgm) * 1.0 / NULLIF(SUM(fga), 0)",
         "fg3_pct": "SUM(fg3m) * 1.0 / NULLIF(SUM(fg3a), 0)",
         "ft_pct": "SUM(ftm) * 1.0 / NULLIF(SUM(fta), 0)",
-        "ts_pct": "SUM(pts) / NULLIF(2.0 * (SUM(fga) + 0.44 * SUM(fta)), 0)",
+        "ts_pct": ts_pct_sql_text(lambda c: f"SUM({c})"),
         # Attempt rates recombine from summed box (same ratio the cell displays).
-        "fg3ar": "SUM(fg3a) * 1.0 / NULLIF(SUM(fga), 0)",
-        "ftr": "SUM(fta) * 1.0 / NULLIF(SUM(fga), 0)",
+        "fg3ar": fg3ar_sql_text(lambda c: f"SUM({c})"),
+        "ftr": ftr_sql_text(lambda c: f"SUM({c})"),
         # Assisted share of made FGs from summed PBP counts.
-        "astd_pct": "SUM(ast_fgm) * 1.0 / NULLIF(SUM(ast_fgm) + SUM(unast_fgm), 0)",
+        "astd_pct": astd_pct_sql_text(lambda c: f"SUM({c})"),
     }
     if sort_col in _pct_exprs:
         return _pct_exprs[sort_col]
@@ -3271,16 +3329,16 @@ async def _query_players_per_competition(
     # ``minutes`` is stored in minutes; sec = minutes * 60, pace_sec = pace *
     # minutes * 60 (pace is possessions/48); rows without pace sort last in per_100.
     _pc_pct_exprs: dict[str, str] = {
-        "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
+        "efg_pct": efg_pct_sql_text(lambda c: c),
         "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
         "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
         "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
-        "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
+        "ts_pct": ts_pct_sql_text(lambda c: c),
         # Attempt rates recombine from the row's box (matches the displayed ratio).
-        "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",
-        "ftr": "fta * 1.0 / NULLIF(fga, 0)",
+        "fg3ar": fg3ar_sql_text(lambda c: c),
+        "ftr": ftr_sql_text(lambda c: c),
         # Assisted share of made FGs from the row's PBP counts.
-        "astd_pct": "ast_fgm * 1.0 / NULLIF(ast_fgm + unast_fgm, 0)",
+        "astd_pct": astd_pct_sql_text(lambda c: c),
     }
     if q.sort in _pc_pct_exprs:
         sort_expr: str = _pc_pct_exprs[q.sort]
@@ -3509,14 +3567,14 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
 
     # Percentage sort expressions operate on raw per-game-log column labels.
     _pg_pct_exprs: dict[str, str] = {
-        "efg_pct": "(fgm + 0.5 * fg3m) / NULLIF(fga, 0)",
+        "efg_pct": efg_pct_sql_text(lambda c: c),
         "fg_pct": "fgm * 1.0 / NULLIF(fga, 0)",
         "fg3_pct": "fg3m * 1.0 / NULLIF(fg3a, 0)",
         "ft_pct": "ftm * 1.0 / NULLIF(fta, 0)",
-        "ts_pct": "pts / NULLIF(2.0 * (fga + 0.44 * fta), 0)",
-        "fg3ar": "fg3a * 1.0 / NULLIF(fga, 0)",
-        "ftr": "fta * 1.0 / NULLIF(fga, 0)",
-        "tov_pct": "tov * 100.0 / NULLIF(fga + 0.44 * fta + tov, 0)",
+        "ts_pct": ts_pct_sql_text(lambda c: c),
+        "fg3ar": fg3ar_sql_text(lambda c: c),
+        "ftr": ftr_sql_text(lambda c: c),
+        "tov_pct": tov_pct_sql_text(lambda c: c),
         "min": "sec",
         "gp": "1",  # every row is 1 game; stable but well-defined
         # Single game: GmSc is the raw box score (gp=1), matching the displayed cell.
@@ -3602,6 +3660,29 @@ class _SingleGameRow:
         self.dreb = row.dreb
         self.pf = row.pf
         self.plus_minus = row.plus_minus
+
+
+def _filter_team_rows(
+    rows: Sequence[ExplorerRow], filters: Sequence[MetricFilter]
+) -> list[ExplorerRow]:
+    """Apply team thresholds to the same values the table renders."""
+    filtered = list(rows)
+    for metric_filter in filters:
+        if metric_filter.col not in _TEAM_FILTERABLE_KEYS:
+            continue
+        next_rows: list[ExplorerRow] = []
+        for row in filtered:
+            value = row.values.get(metric_filter.col)
+            if value is None:
+                continue
+            if (
+                value >= metric_filter.value
+                if metric_filter.op == ">="
+                else value <= metric_filter.value
+            ):
+                next_rows.append(row)
+        filtered = next_rows
+    return filtered
 
 
 # --------------------------------------------------------------------------- #
@@ -3724,11 +3805,8 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         # so missing inputs degrade cleanly instead of producing 0 / NaN.
         ortg_val = _r1(rt.ortg) if rt else None
         drtg_val = _r1(rt.drtg) if rt else None
-        net_rtg_val = (
-            round(ortg_val - drtg_val, 1)
-            if (ortg_val is not None and drtg_val is not None)
-            else None
-        )
+        raw_net_rtg = net_rating(ortg_val, drtg_val)
+        net_rtg_val = round(raw_net_rtg, 1) if raw_net_rtg is not None else None
         rows.append(
             ExplorerRow(
                 label=f"{name} · {_venue_label(r.venue_slug)} {r.year}",
@@ -3747,6 +3825,10 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
                 },
             )
         )
+
+    # Apply thresholds after assembling rows so filtering and rendering share one
+    # formula path; previously valid team metric filters were silently ignored.
+    rows = _filter_team_rows(rows, q.metric_filters)
 
     # Teams row count is bounded (hundreds at most), so sort + slice in Python.
     # This avoids the complexity of a multi-CTE SQL approach while still removing

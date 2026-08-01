@@ -318,7 +318,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
 
         config = types.GenerateContentConfig(
             response_modalities=["IMAGE", "TEXT"],
-            image_config=types.ImageConfig(image_size=image_size),
+            image_config=types.ImageConfig(image_size=image_size),  # type: ignore[attr-defined,call-arg]
             system_instruction=[types.Part.from_text(text=system_prompt)],
         )
 
@@ -667,13 +667,13 @@ Be specific and objective. This will help an AI illustrator capture their likene
                 role="user",
                 parts=[types.Part.from_text(text=user_prompt)],
             ),
-            metadata={
+            metadata={  # type: ignore[call-arg]
                 "player_id": str(player.id) if player.id is not None else "",
                 "dg_request_id": dg_request_id or "",
             },
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],
-                image_config=types.ImageConfig(image_size=image_size),
+                image_config=types.ImageConfig(image_size=image_size),  # type: ignore[attr-defined,call-arg]
                 system_instruction=[types.Part.from_text(text=system_prompt)],
             ),
         )
