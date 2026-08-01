@@ -1,4 +1,17 @@
-"""Runtime guard against network I/O inside database critical sections."""
+"""Runtime guard against network I/O inside database critical sections.
+
+Environment behavior is deliberately asymmetric, not an oversight: only
+``settings.env == "prod"`` logs and continues (:func:`guard_network_io`).
+Every other environment -- including ``stage`` -- raises
+:class:`NetworkIOGuardViolation` exactly like ``dev``/``test``. Stage exists
+to catch this class of bug before it reaches production traffic, so a
+violation there should surface as loudly as it would locally; treating stage
+like prod (warn-only) would let a real regression ride through staging
+unnoticed and only warn once it is already live. A staging crash from this
+guard is therefore a signal working as designed, not a false positive to
+silence, and should never be reclassified as a "prod risk" without changing
+this comment along with it.
+"""
 
 from __future__ import annotations
 

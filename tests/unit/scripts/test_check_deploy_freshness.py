@@ -18,6 +18,7 @@ than decoration:
 
 from __future__ import annotations
 
+import subprocess
 from typing import Any
 
 import pytest
@@ -121,7 +122,12 @@ def test_measures_distance_from_the_branch(fake_git) -> None:
             ("rev-parse", "origin/main"): "newsha",
             ("cat-file", "-e", "oldsha^{commit}"): "",
             ("rev-list", "--count", "oldsha..newsha"): "37",
-            ("show", "-s", "--format=%cI", "oldsha"): "2026-07-19T22:39:00+00:00",
+            (
+                "rev-list",
+                "--reverse",
+                "oldsha..newsha",
+            ): "firstmissing\nmidsha\nnewsha",
+            ("show", "-s", "--format=%cI", "firstmissing"): "2026-07-19T22:39:00+00:00",
         }
     )
 
@@ -130,6 +136,66 @@ def test_measures_distance_from_the_branch(fake_git) -> None:
     assert report.is_current is False
     assert report.commits_behind == 37
     assert report.age_hours is not None and report.age_hours > 0
+
+
+def test_age_hours_measures_time_since_the_first_missing_commit(fake_git) -> None:
+    """Age is time-behind, not the deployed commit's own committer-age.
+
+    Scoring the deployed commit's own age instead cries wolf after a quiet week on
+    main: a deployment one commit behind after a week of silence would read that
+    commit as "old" even though nothing has actually been waiting on it. The oldest
+    *missing* commit's landing time is the thing that answers "how long has this
+    fix been sitting undeployed".
+    """
+    fake_git(
+        {
+            ("rev-parse", "origin/main"): "newsha",
+            ("cat-file", "-e", "oldsha^{commit}"): "",
+            ("rev-list", "--count", "oldsha..newsha"): "1",
+            ("rev-list", "--reverse", "oldsha..newsha"): "newsha",
+            # The deployed commit itself is ancient (a quiet week), but the single
+            # missing commit landed recently -- age_hours must track the latter.
+            ("show", "-s", "--format=%cI", "oldsha"): "2020-01-01T00:00:00+00:00",
+            ("show", "-s", "--format=%cI", "newsha"): "2026-07-19T22:39:00+00:00",
+        }
+    )
+
+    report = build_report("app", [_app_machine("oldsha")], target_ref="origin/main")
+
+    assert report.age_hours is not None
+    # If age_hours were measuring the deployed commit's own age it would be years,
+    # not the few days since 2026-07-19.
+    assert report.age_hours < 24 * 30
+
+
+def test_age_hours_selects_the_oldest_missing_commit_not_the_newest(fake_git) -> None:
+    """Multi-commit lag must be scored from the OLDEST missing commit.
+
+    Regression for the ``--max-count=1 --reverse`` bug: git applies the limit
+    before reversing, which silently selected the NEWEST missing commit. A
+    deployment stale for weeks would then report near-zero lag whenever any
+    recent commit existed, keeping the alarm green through exactly the
+    staleness it exists to catch. The fake below returns the range oldest-first
+    (true ``--reverse`` semantics) and only maps ``show`` for the oldest sha,
+    so selecting any other commit fails loudly.
+    """
+    fake_git(
+        {
+            ("rev-parse", "origin/main"): "newsha",
+            ("cat-file", "-e", "oldsha^{commit}"): "",
+            ("rev-list", "--count", "oldsha..newsha"): "3",
+            ("rev-list", "--reverse", "oldsha..newsha"): "ancient\nmiddle\nnewsha",
+            # Only the oldest missing commit has a committer date registered;
+            # asking for "middle" or "newsha" would KeyError the fake.
+            ("show", "-s", "--format=%cI", "ancient"): "2026-07-01T00:00:00+00:00",
+        }
+    )
+
+    report = build_report("app", [_app_machine("oldsha")], target_ref="origin/main")
+
+    assert report.age_hours is not None
+    # Weeks behind, not near-zero: the oldest missing commit landed 2026-07-01.
+    assert report.age_hours > 24 * 7
 
 
 def test_machines_running_different_commits_are_flagged(fake_git) -> None:
@@ -174,6 +240,61 @@ def test_missing_sha_label_reports_unknown_rather_than_raising(fake_git) -> None
     assert report.deployed_sha is None
     assert report.is_current is False
     assert any("GH_SHA" in note for note in report.notes)
+
+
+def test_a_fully_unlabelled_fleet_fails_the_gating_check(fake_git) -> None:
+    """UNKNOWN must fail, not degrade to permanent success.
+
+    A manual `flyctl deploy` from a checkout (the documented Jul 6 incident deploy
+    path) never stamps GH_SHA, so a fully unlabelled fleet used to report UNKNOWN and
+    return "not stale" here -- exiting 0 indefinitely on exactly the deploy path most
+    likely to cause drift.
+    """
+    fake_git({("rev-parse", "origin/main"): "abc123"})
+
+    report = build_report("app", [_app_machine(None)], target_ref="origin/main")
+
+    assert report.deployed_sha is None
+    assert is_stale(report, max_age_hours=99999) is True
+
+
+def test_report_only_is_the_escape_hatch_for_a_deliberately_unlabelled_fleet(
+    fake_git, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """--report-only exits 0 even when the fleet is fully unlabelled.
+
+    The failure mode this fixes is a fleet unlabelled by accident; a fleet that is
+    unlabelled on purpose (or during a migration) needs a way to keep observing
+    without gating a CI run red every day.
+    """
+    fake_git({("rev-parse", "origin/main"): "abc123"})
+    monkeypatch.setattr(
+        freshness_mod,
+        "_run_flyctl_machine_list",
+        lambda _app: [_app_machine(None)],
+    )
+
+    exit_code = main(["--app", "draft-app-prod", "--report-only"])
+
+    assert exit_code == 0
+    assert "UNKNOWN" in capsys.readouterr().out
+
+
+def test_a_fully_unlabelled_fleet_fails_main_with_a_targeted_message(
+    fake_git, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """The CLI's error message names the unlabelled-fleet cause, not just "stale"."""
+    fake_git({("rev-parse", "origin/main"): "abc123"})
+    monkeypatch.setattr(
+        freshness_mod,
+        "_run_flyctl_machine_list",
+        lambda _app: [_app_machine(None)],
+    )
+
+    exit_code = main(["--app", "draft-app-prod"])
+
+    assert exit_code == 1
+    assert "GH_SHA" in capsys.readouterr().err
 
 
 def test_commit_absent_locally_degrades_to_a_note(fake_git) -> None:
@@ -222,7 +343,12 @@ def test_recent_lag_under_the_threshold_does_not_fail(fake_git) -> None:
             ("rev-parse", "origin/main"): "newsha",
             ("cat-file", "-e", "oldsha^{commit}"): "",
             ("rev-list", "--count", "oldsha..newsha"): "2",
-            ("show", "-s", "--format=%cI", "oldsha"): recent,
+            (
+                "rev-list",
+                "--reverse",
+                "oldsha..newsha",
+            ): "firstmissing\nmidsha\nnewsha",
+            ("show", "-s", "--format=%cI", "firstmissing"): recent,
         }
     )
 
@@ -248,3 +374,125 @@ def test_unreachable_flyctl_is_not_reported_as_stale(
 
     assert main(["--app", "draft-app-prod", "--report-only"]) == 0
     assert "flyctl" in capsys.readouterr().err
+
+
+def _stale_fleet_git() -> dict[tuple[str, ...], str]:
+    """Git responses describing a fleet one old commit behind the target ref."""
+    return {
+        ("rev-parse", "origin/main"): "newsha",
+        ("cat-file", "-e", "oldsha^{commit}"): "",
+        ("rev-list", "--count", "oldsha..newsha"): "1",
+        ("rev-list", "--reverse", "oldsha..newsha"): "newsha",
+        ("show", "-s", "--format=%cI", "oldsha"): "2020-01-01T00:00:00+00:00",
+        ("show", "-s", "--format=%cI", "newsha"): "2020-01-02T00:00:00+00:00",
+    }
+
+
+def test_main_fails_with_the_stale_code_message_when_over_the_age_threshold(
+    fake_git, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """The checker's primary alarm: BEHIND and too old exits 1 with the #669 message.
+
+    This is the branch the whole script exists for, and it is only reachable
+    through ``main()``'s real argv parsing -- calling ``is_stale`` directly with
+    a Python float leaves ``--max-age-hours`` untested, so a wrong ``type=`` or
+    a value never threaded into ``is_stale`` would silence the alarm with a
+    fully green suite.
+    """
+    fake_git(_stale_fleet_git())
+    monkeypatch.setattr(
+        freshness_mod,
+        "_run_flyctl_machine_list",
+        lambda _app: [_app_machine("oldsha")],
+    )
+
+    exit_code = main(["--app", "draft-app-prod", "--max-age-hours", "1"])
+
+    assert exit_code == 1
+    assert "running stale code" in capsys.readouterr().err
+
+
+def test_main_passes_when_the_age_threshold_is_raised_above_the_lag(
+    fake_git, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """The same fleet under a permissive threshold exits 0.
+
+    Paired with the test above, this proves ``--max-age-hours`` is genuinely
+    read from argv and drives the decision, rather than the exit code being
+    fixed by the fleet's shape alone.
+    """
+    fake_git(_stale_fleet_git())
+    monkeypatch.setattr(
+        freshness_mod,
+        "_run_flyctl_machine_list",
+        lambda _app: [_app_machine("oldsha")],
+    )
+
+    exit_code = main(["--app", "draft-app-prod", "--max-age-hours", "999999"])
+
+    assert exit_code == 0
+    assert "running stale code" not in capsys.readouterr().err
+
+
+def test_main_compares_against_the_ref_named_by_the_against_flag(
+    fake_git, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--against`` must select the ref the deployment is compared to.
+
+    The ``fake_git`` stub raises ``GitError`` on any unexpected git call, so a
+    ``--against`` value that never reached ``build_report`` would resolve
+    ``origin/main`` instead, produce a "could not resolve" note, and fail the
+    exit-0 assertion below.
+    """
+    fake_git({("rev-parse", "refs/heads/release"): "abc123"})
+    monkeypatch.setattr(
+        freshness_mod,
+        "_run_flyctl_machine_list",
+        lambda _app: [_app_machine("abc123")],
+    )
+
+    exit_code = main(["--app", "draft-app-prod", "--against", "refs/heads/release"])
+
+    assert exit_code == 0
+
+
+def test_an_unresolvable_target_ref_degrades_to_a_note(fake_git) -> None:
+    """A ref that git cannot resolve must be reported, not raised.
+
+    ``build_report`` catches ``GitError`` from the ``rev-parse`` so a typo'd or
+    not-yet-fetched ref produces an observable note instead of killing the
+    monitor -- the same degrade-don't-die posture as the unknown-age path.
+    """
+    fake_git({})
+
+    report = build_report(
+        "app", [_app_machine("oldsha")], target_ref="origin/does-not-exist"
+    )
+
+    assert report.target_sha is None
+    assert any("could not resolve" in note for note in report.notes)
+
+
+def test_git_failures_are_translated_into_giterror_with_the_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real subprocess wrapper must surface git's own stderr in the error.
+
+    Every other test stubs ``_git`` itself, so without this the module's only
+    real process boundary -- and the message an operator would actually read
+    when the check breaks -- is never exercised.
+    """
+
+    def _failing_run(*_args: object, **_kwargs: object):
+        raise subprocess.CalledProcessError(
+            returncode=128,
+            cmd=["git", "rev-parse", "nope"],
+            stderr="fatal: bad revision",
+        )
+
+    monkeypatch.setattr(freshness_mod.subprocess, "run", _failing_run)
+
+    with pytest.raises(GitError) as excinfo:
+        freshness_mod._git("rev-parse", "nope")
+
+    assert "fatal: bad revision" in str(excinfo.value)

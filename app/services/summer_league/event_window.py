@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import os
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,10 +26,59 @@ SCHEDULE_ELIGIBLE_PHASES = frozenset(
 )
 
 
-def has_explicit_year_override() -> bool:
-    """Return whether the operator explicitly selected a roster year."""
+_FALSY_ENV_VALUES = frozenset({"0", "false", "no", "off"})
+
+
+def default_roster_year() -> int:
+    """Return the current Eastern calendar year as the roster-poll default.
+
+    Mirrors the today's-year fallback ``resolve_target_competitions`` already
+    uses (``app/services/summer_league/scoreboard_ingest.py``) so the cron
+    follows the calendar without a code change each season -- no more
+    hard-coded season year to bump every summer.
+    """
+    return to_eastern_date(datetime.now(timezone.utc)).year
+
+
+def resolve_roster_year() -> int:
+    """Resolve the Summer League year, defaulting to the current season.
+
+    Raises:
+        ValueError: If ``SL_ROSTER_YEAR`` is set but is not a plausible
+            four-digit season year. Failing here (rather than deep inside a
+            per-venue fetch) makes a misconfigured schedule fail loudly with
+            a non-zero exit code instead of silently fetching nothing for
+            every venue.
+    """
     raw = os.getenv("SL_ROSTER_YEAR")
-    return bool(raw and raw.strip())
+    if not raw or not raw.strip():
+        return default_roster_year()
+    stripped = raw.strip()
+    try:
+        year = int(stripped)
+    except ValueError as exc:
+        raise ValueError(
+            f"SL_ROSTER_YEAR must be a four-digit year, got {stripped!r}"
+        ) from exc
+    if not 1900 <= year <= 2100:
+        raise ValueError(
+            f"SL_ROSTER_YEAR must be a four-digit year in [1900, 2100], got {year}"
+        )
+    return year
+
+
+def has_force_override() -> bool:
+    """Return whether the operator explicitly forced the window bypass.
+
+    ``SL_ROSTER_FORCE=1`` is the explicit, standalone escape hatch for
+    operator-directed backfills. It is distinct from ``SL_ROSTER_YEAR``,
+    which only scopes *which* year's competitions the window check
+    considers -- setting a year no longer implies bypassing the gate.
+    """
+    raw = os.getenv("SL_ROSTER_FORCE")
+    if not raw or not raw.strip():
+        return False
+    return raw.strip().lower() not in _FALSY_ENV_VALUES
 
 
 def synthetic_schedule_dates(
@@ -60,12 +109,17 @@ async def is_summer_league_window_open(
     competition date windows keep the pre-game polling window available before
     any ``summer_league_games`` rows exist.
 
+    ``SL_ROSTER_YEAR`` (surfaced here via the ``year`` argument) only scopes
+    *which* year's competitions are considered -- it does not bypass the
+    gate. ``SL_ROSTER_FORCE=1`` is the explicit, separate bypass for
+    operator-directed backfills.
+
     Args:
         db: Async database session.
         now: Timestamp used to evaluate the lifecycle phase.
         year: Optional roster year to scope the resolved competitions.
     """
-    if has_explicit_year_override():
+    if has_force_override():
         return True
     competitions = await resolve_target_competitions(db, today=to_eastern_date(now))
     if year is not None:

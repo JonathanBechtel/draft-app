@@ -34,7 +34,16 @@ Usage:
     python -m app.cli.summer_league_roster_runner
 
 Environment overrides:
-    SL_ROSTER_YEAR - four-digit Summer League year (default: 2026)
+    SL_ROSTER_YEAR - four-digit Summer League year to scope this run to
+        (default: the current Eastern calendar year). Setting this only
+        narrows which year's competitions the lifecycle window check
+        considers -- it does NOT bypass the window gate. For example,
+        setting it to a year whose event has already ended still leaves
+        the run dormant.
+    SL_ROSTER_FORCE - set to "1" to bypass the lifecycle window gate
+        entirely and run regardless of phase. This is the explicit,
+        operator-directed backfill escape hatch; combine with
+        SL_ROSTER_YEAR to target a specific season's data.
     SL_ROSTER_LEAGUE_IDS - comma-separated NBA.com LeagueIDs
         (default: "13,16,15")
 
@@ -64,7 +73,10 @@ from app.services.summer_league.endpoints import (
     SUPPORTED_SUMMER_LEAGUES,
     normalize_league_id,
 )
-from app.services.summer_league.event_window import is_summer_league_window_open
+from app.services.summer_league.event_window import (
+    is_summer_league_window_open,
+    resolve_roster_year,
+)
 from app.services.player_bio.bbref_parse import PlayerBio
 from app.services.player_bio.bbref_scrape import scrape_letters
 from app.services.player_bio.ingest import ingest as ingest_player_bios_csv
@@ -93,7 +105,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("summer_league_roster_runner")
 
-DEFAULT_YEAR = 2026
 DEFAULT_LEAGUE_IDS = ("13", "16", "15")
 RAW_ROOT = Path("data/raw/nba_stats/summer_league")
 
@@ -108,33 +119,6 @@ BIO_SCRAPE_THROTTLE_SECONDS = 3.0
 BIO_SCRAPE_TIMEOUT_SECONDS = 30.0
 
 _BIO_CSV_FIELDNAMES = [f.name for f in dataclass_fields(PlayerBio)]
-
-
-def _resolve_year() -> int:
-    """Resolve the Summer League year, defaulting to the current season.
-
-    Raises:
-        ValueError: If ``SL_ROSTER_YEAR`` is set but is not a plausible
-            four-digit season year. Failing here (rather than deep inside a
-            per-venue fetch) makes a misconfigured schedule fail loudly with
-            a non-zero exit code instead of silently fetching nothing for
-            every venue.
-    """
-    raw = os.getenv("SL_ROSTER_YEAR")
-    if not raw or not raw.strip():
-        return DEFAULT_YEAR
-    stripped = raw.strip()
-    try:
-        year = int(stripped)
-    except ValueError as exc:
-        raise ValueError(
-            f"SL_ROSTER_YEAR must be a four-digit year, got {stripped!r}"
-        ) from exc
-    if not 1900 <= year <= 2100:
-        raise ValueError(
-            f"SL_ROSTER_YEAR must be a four-digit year in [1900, 2100], got {year}"
-        )
-    return year
 
 
 def _resolve_league_ids() -> list[str]:
@@ -431,7 +415,7 @@ async def main() -> int:
 
     try:
         try:
-            year = _resolve_year()
+            year = resolve_roster_year()
             league_ids = _resolve_league_ids()
         except ValueError as exc:
             logger.error("Invalid Summer League roster configuration: %s", exc)

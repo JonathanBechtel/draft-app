@@ -34,6 +34,29 @@ Two failure modes, deliberately distinguished
 * **Divergent machines** -- app machines running *different* commits as each other. Always
   wrong, and invisible to a check that only looks at one machine.
 
+A third case merits its own note: a **fully unlabelled fleet** (no app machine carries
+``GH_SHA`` at all) used to report UNKNOWN and exit 0 forever -- the alarm degrading to
+permanent success on exactly the deploy path most likely to cause drift. A manual
+``flyctl deploy`` from a checkout (documented practice; the Jul 6 incident deploy used it)
+never stamps the label. That case now fails this check like any other unmeasurable
+deployment state; pass ``--report-only`` if a fleet is deliberately unlabelled and this
+should only be observed, not gated.
+
+``age_hours`` measures **time-behind**, not the deployed commit's own age: it is the time
+since the oldest commit *missing* from the deployment landed on the target branch. Scoring
+the deployed commit's own committer-age instead would cry wolf after any quiet week on
+``main`` -- a deployment that is one commit behind after a week of silence would report
+that commit as "old" even though nothing has been waiting on it.
+
+A Fly API outage is not the same as staleness (the FlyctlError branch in ``main`` always
+returns before staleness is even evaluated), but ``deploy-freshness.yml``'s daily run does
+not pass ``--report-only``, so an outage still turns that scheduled run red. This is
+deliberate, not an oversight: the workflow is described as an *observation*, not a deploy
+gate ("a red run here means someone should look"), and "flyctl/Fly is unreachable from CI"
+is itself worth a look -- a token that expired or an API outage is an operational fact,
+not noise to suppress. If that stops being desired, add ``--report-only`` there explicitly
+rather than relying on this being unstated.
+
 Run::
 
     python scripts/check_deploy_freshness.py --app draft-app-prod
@@ -83,7 +106,9 @@ class FreshnessReport:
         deployed_sha: Commit the running machines were built from, if labelled.
         target_sha: Commit the target ref currently points at.
         commits_behind: How many commits the deployment is missing, if measurable.
-        age_hours: Age of the deployed commit in hours, if measurable.
+        age_hours: Hours since the oldest commit the deployment is missing landed on
+            the target branch -- i.e. how long production has been behind, not how
+            old the deployed commit itself is. None when current or unmeasurable.
         divergent_shas: Distinct SHAs across app machines when they disagree.
         notes: Why a field is None, when it is.
     """
@@ -202,11 +227,27 @@ def build_report(
             # Fails when the commit is not present locally (shallow clone, unfetched).
             _git("cat-file", "-e", f"{deployed}^{{commit}}")
             commits_behind = int(_git("rev-list", "--count", f"{deployed}..{target}"))
-            committed_at = datetime.fromisoformat(
-                _git("show", "-s", "--format=%cI", deployed)
-            )
-            delta = datetime.now(timezone.utc) - committed_at.astimezone(timezone.utc)
-            age_hours = round(delta.total_seconds() / 3600, 1)
+            if commits_behind:
+                # The *oldest* missing commit, not the deployed commit itself: this is
+                # how long production has been without whatever that commit shipped,
+                # which is the question #669's staleness alarm needs answered. Scoring
+                # the deployed commit's own age instead cries wolf after a quiet week --
+                # one commit of lag right after a week of silence would read as "old"
+                # even though nothing has actually been waiting on it.
+                # ``--max-count`` applies BEFORE ``--reverse``, so combining the
+                # two selects the NEWEST missing commit — which would report
+                # near-zero lag whenever anything recent landed. List the full
+                # range reversed and take the first line to get the oldest.
+                first_missing = _git(
+                    "rev-list", "--reverse", f"{deployed}..{target}"
+                ).splitlines()[0]
+                committed_at = datetime.fromisoformat(
+                    _git("show", "-s", "--format=%cI", first_missing)
+                )
+                delta = datetime.now(timezone.utc) - committed_at.astimezone(
+                    timezone.utc
+                )
+                age_hours = round(delta.total_seconds() / 3600, 1)
         except (GitError, ValueError) as exc:
             notes.append(
                 f"deployed commit {deployed[:8]} not measurable locally: {exc}"
@@ -251,6 +292,13 @@ def is_stale(report: FreshnessReport, *, max_age_hours: float) -> bool:
     Divergent machines always fail. Being behind fails only past the age threshold, so
     ordinary same-day lag between a merge and a deploy is not a standing alarm -- an
     alarm that cries wolf daily is one nobody reads, which is how #669 stayed invisible.
+
+    A fully unlabelled fleet (``deployed_sha`` is ``None``) also fails. It used to
+    report UNKNOWN and return here as "not measurable, therefore not stale" -- exiting 0
+    indefinitely on exactly the deploy path (a manual ``flyctl deploy`` from a checkout)
+    most likely to cause drift. "Cannot tell what is running" is not a safe default;
+    ``--report-only`` at the CLI is the deliberate escape hatch for a fleet that is
+    unlabelled on purpose.
     """
     if report.divergent_shas:
         return True
@@ -261,6 +309,8 @@ def is_stale(report: FreshnessReport, *, max_age_hours: float) -> bool:
     # production been behind", which is only a question when it is behind.
     if report.is_current:
         return False
+    if report.deployed_sha is None:
+        return True
     if report.age_hours is None:
         return False
     return report.age_hours > max_age_hours
@@ -304,6 +354,25 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.report_only or not is_stale(report, max_age_hours=args.max_age_hours):
         return 0
+
+    if report.deployed_sha is None:
+        sys.stderr.write(
+            "\n".join(
+                [
+                    "",
+                    f"ERROR: {args.app} has no app machine carrying a {_SHA_LABEL} label.",
+                    "",
+                    "This is what a manual `flyctl deploy` from a checkout produces (the",
+                    "documented Jul 6 incident deploy path) -- the fleet becomes",
+                    "unidentifiable, and this check used to report UNKNOWN and exit 0",
+                    "forever on exactly that path. Redeploy through the GH Actions workflow",
+                    "to restore labelling, or pass --report-only if this fleet is",
+                    "deliberately unlabelled.",
+                    "",
+                ]
+            )
+        )
+        return 1
 
     sys.stderr.write(
         "\n".join(
