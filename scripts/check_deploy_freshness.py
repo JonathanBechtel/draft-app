@@ -234,9 +234,13 @@ def build_report(
                 # the deployed commit's own age instead cries wolf after a quiet week --
                 # one commit of lag right after a week of silence would read as "old"
                 # even though nothing has actually been waiting on it.
+                # ``--max-count`` applies BEFORE ``--reverse``, so combining the
+                # two selects the NEWEST missing commit — which would report
+                # near-zero lag whenever anything recent landed. List the full
+                # range reversed and take the first line to get the oldest.
                 first_missing = _git(
-                    "rev-list", "--reverse", "--max-count=1", f"{deployed}..{target}"
-                )
+                    "rev-list", "--reverse", f"{deployed}..{target}"
+                ).splitlines()[0]
                 committed_at = datetime.fromisoformat(
                     _git("show", "-s", "--format=%cI", first_missing)
                 )

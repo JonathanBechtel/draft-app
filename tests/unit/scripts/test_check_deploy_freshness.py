@@ -125,9 +125,8 @@ def test_measures_distance_from_the_branch(fake_git) -> None:
             (
                 "rev-list",
                 "--reverse",
-                "--max-count=1",
                 "oldsha..newsha",
-            ): "firstmissing",
+            ): "firstmissing\nmidsha\nnewsha",
             ("show", "-s", "--format=%cI", "firstmissing"): "2026-07-19T22:39:00+00:00",
         }
     )
@@ -153,7 +152,7 @@ def test_age_hours_measures_time_since_the_first_missing_commit(fake_git) -> Non
             ("rev-parse", "origin/main"): "newsha",
             ("cat-file", "-e", "oldsha^{commit}"): "",
             ("rev-list", "--count", "oldsha..newsha"): "1",
-            ("rev-list", "--reverse", "--max-count=1", "oldsha..newsha"): "newsha",
+            ("rev-list", "--reverse", "oldsha..newsha"): "newsha",
             # The deployed commit itself is ancient (a quiet week), but the single
             # missing commit landed recently -- age_hours must track the latter.
             ("show", "-s", "--format=%cI", "oldsha"): "2020-01-01T00:00:00+00:00",
@@ -167,6 +166,36 @@ def test_age_hours_measures_time_since_the_first_missing_commit(fake_git) -> Non
     # If age_hours were measuring the deployed commit's own age it would be years,
     # not the few days since 2026-07-19.
     assert report.age_hours < 24 * 30
+
+
+def test_age_hours_selects_the_oldest_missing_commit_not_the_newest(fake_git) -> None:
+    """Multi-commit lag must be scored from the OLDEST missing commit.
+
+    Regression for the ``--max-count=1 --reverse`` bug: git applies the limit
+    before reversing, which silently selected the NEWEST missing commit. A
+    deployment stale for weeks would then report near-zero lag whenever any
+    recent commit existed, keeping the alarm green through exactly the
+    staleness it exists to catch. The fake below returns the range oldest-first
+    (true ``--reverse`` semantics) and only maps ``show`` for the oldest sha,
+    so selecting any other commit fails loudly.
+    """
+    fake_git(
+        {
+            ("rev-parse", "origin/main"): "newsha",
+            ("cat-file", "-e", "oldsha^{commit}"): "",
+            ("rev-list", "--count", "oldsha..newsha"): "3",
+            ("rev-list", "--reverse", "oldsha..newsha"): "ancient\nmiddle\nnewsha",
+            # Only the oldest missing commit has a committer date registered;
+            # asking for "middle" or "newsha" would KeyError the fake.
+            ("show", "-s", "--format=%cI", "ancient"): "2026-07-01T00:00:00+00:00",
+        }
+    )
+
+    report = build_report("app", [_app_machine("oldsha")], target_ref="origin/main")
+
+    assert report.age_hours is not None
+    # Weeks behind, not near-zero: the oldest missing commit landed 2026-07-01.
+    assert report.age_hours > 24 * 7
 
 
 def test_machines_running_different_commits_are_flagged(fake_git) -> None:
@@ -317,9 +346,8 @@ def test_recent_lag_under_the_threshold_does_not_fail(fake_git) -> None:
             (
                 "rev-list",
                 "--reverse",
-                "--max-count=1",
                 "oldsha..newsha",
-            ): "firstmissing",
+            ): "firstmissing\nmidsha\nnewsha",
             ("show", "-s", "--format=%cI", "firstmissing"): recent,
         }
     )
@@ -354,7 +382,7 @@ def _stale_fleet_git() -> dict[tuple[str, ...], str]:
         ("rev-parse", "origin/main"): "newsha",
         ("cat-file", "-e", "oldsha^{commit}"): "",
         ("rev-list", "--count", "oldsha..newsha"): "1",
-        ("rev-list", "--reverse", "--max-count=1", "oldsha..newsha"): "newsha",
+        ("rev-list", "--reverse", "oldsha..newsha"): "newsha",
         ("show", "-s", "--format=%cI", "oldsha"): "2020-01-01T00:00:00+00:00",
         ("show", "-s", "--format=%cI", "newsha"): "2020-01-02T00:00:00+00:00",
     }
