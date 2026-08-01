@@ -38,9 +38,15 @@ from typing import Awaitable, Callable, TypeVar
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from app.services.summer_league.desk_tick.backbone import run_backbone_tick
-from app.services.summer_league.desk_tick.fast import run_fast_tick
-from app.services.summer_league.desk_tick.projection import run_projection_tick
+from app.services.summer_league.desk_tick.backbone import (
+    BackboneTickResult,
+    run_backbone_tick,
+)
+from app.services.summer_league.desk_tick.fast import FastTickResult, run_fast_tick
+from app.services.summer_league.desk_tick.projection import (
+    ProjectionTickResult,
+    run_projection_tick,
+)
 from app.services.summer_league.desk_tick.shared import (
     NO_WRITER_LOCK,
     TickContext,
@@ -69,7 +75,7 @@ async def _steady_state_query_count(
     db: AsyncSession,
     engine: AsyncEngine,
     run_once: Callable[[], Awaitable[_T]],
-) -> int:
+) -> tuple[int, _T]:
     """Run ``run_once`` untracked, then again under capture, committing each time.
 
     Mirrors ``test_route_query_budgets.py``'s warm-up render: the first call
@@ -77,13 +83,18 @@ async def _steady_state_query_count(
     (every upsert target already exists) rather than whichever cold-start
     shape happened to run first -- deterministic regardless of worker/test
     ordering under xdist.
+
+    Returns:
+        A ``(query_count, measured_result)`` tuple. The result comes back so
+        callers can assert the tick actually did its work -- see the liveness
+        note on each test below.
     """
     await run_once()
     await db.commit()
     with count_queries(engine) as captured:
-        await run_once()
+        result = await run_once()
     await db.commit()
-    return len(captured)
+    return len(captured), result
 
 
 async def test_fast_tick_within_query_budget(
@@ -98,6 +109,11 @@ async def test_fast_tick_within_query_budget(
     behind the backbone (#699 spec §2). Fix an accidental per-row query
     before raising the budget; raise it deliberately, in the same diff, only
     for a genuinely necessary new query.
+
+    The liveness assertions below mirror ``test_route_query_budgets.py``'s
+    ``status_code == 200`` check: a dormant tick early-returns in ~2 queries,
+    which would satisfy the budget trivially and silently turn this guard
+    into a no-op if the seeded window ever drifts out of the live phase.
     """
     await _seed_live_window(db_session)
 
@@ -106,7 +122,7 @@ async def test_fast_tick_within_query_budget(
     frame = real_live_window_frames(count=1)[0]
     session.use(frame)
 
-    async def _run() -> object:
+    async def _run() -> FastTickResult:
         return await run_fast_tick(
             db_session,
             TickContext(
@@ -117,7 +133,12 @@ async def test_fast_tick_within_query_budget(
             ),
         )
 
-    count = await _steady_state_query_count(db_session, async_engine, _run)
+    count, result = await _steady_state_query_count(db_session, async_engine, _run)
+    assert result.dormant is False, (
+        "fast tick went dormant, so this budget measured an early return, "
+        "not the live-poller path it exists to guard."
+    )
+    assert result.scoreboard_report is not None
     assert count <= DESK_FAST_TICK_QUERY_BUDGET, (
         f"run_fast_tick issued {count} queries, over its budget of "
         f"{DESK_FAST_TICK_QUERY_BUDGET} (tests/integration/perf/budgets.py)."
@@ -138,13 +159,17 @@ async def test_projection_tick_within_query_budget(
     """
     await _seed_live_window(db_session)
 
-    async def _run() -> object:
+    async def _run() -> ProjectionTickResult:
         return await run_projection_tick(
             db_session,
             TickContext(now=CAPTURE_REFERENCE_NOW, lock=NO_WRITER_LOCK),
         )
 
-    count = await _steady_state_query_count(db_session, async_engine, _run)
+    count, result = await _steady_state_query_count(db_session, async_engine, _run)
+    assert result.dormant is False, (
+        "projection tick went dormant, so this budget measured an early "
+        "return, not the rebuild path it exists to guard."
+    )
     assert count <= DESK_PROJECTION_TICK_QUERY_BUDGET, (
         f"run_projection_tick issued {count} queries, over its budget of "
         f"{DESK_PROJECTION_TICK_QUERY_BUDGET} (tests/integration/perf/budgets.py)."
@@ -172,7 +197,7 @@ async def test_backbone_tick_within_query_budget(
     """
     await _seed_live_window(db_session)
 
-    async def _run() -> object:
+    async def _run() -> BackboneTickResult:
         return await run_backbone_tick(
             db_session,
             TickContext(
@@ -182,7 +207,11 @@ async def test_backbone_tick_within_query_budget(
             ),
         )
 
-    count = await _steady_state_query_count(db_session, async_engine, _run)
+    count, result = await _steady_state_query_count(db_session, async_engine, _run)
+    assert result.dormant is False, (
+        "backbone tick went dormant, so this budget measured an early "
+        "return, not the normalize path it exists to guard."
+    )
     assert count <= DESK_BACKBONE_TICK_QUERY_BUDGET, (
         f"run_backbone_tick issued {count} queries, over its budget of "
         f"{DESK_BACKBONE_TICK_QUERY_BUDGET} (tests/integration/perf/budgets.py)."
