@@ -12,9 +12,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    # Docs-only PRs (every changed file under docs/ or ending in .md) skip the
+    # heavy test jobs. Gating happens at the JOB level deliberately: a job
+    # skipped by an `if:` reports "Skipped", which SATISFIES required checks —
+    # workflow-level paths-ignore would leave them stuck "Expected" forever.
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect non-docs changes
+        id: filter
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          changed="$(git diff --name-only "$base...$head")"
+          printf 'Changed files:\n%s\n' "$changed"
+          code=false
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              docs/*) ;;
+              *.md) ;;
+              *) code=true; break ;;
+            esac
+          done <<< "$changed"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   tests-fork:
     # Safe path for PRs from forks: no secrets, ephemeral Postgres service
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true }}
+    needs: changes
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -153,7 +186,8 @@ jobs:
 
   tests-secrets:
     # Same-repo PRs use environment secrets from draft-app-dev.
-    if: ${{ github.event.pull_request.head.repo.fork == false }}
+    needs: changes
+    if: ${{ github.event.pull_request.head.repo.fork == false && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     environment: draft-app-dev
     services:
