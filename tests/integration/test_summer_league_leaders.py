@@ -22,6 +22,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
+    SummerLeagueTeamGameLog,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league_leaders_service import get_leaders
@@ -45,8 +46,8 @@ async def _seed_player(
 ) -> None:
     """Seed ``n_games`` identical played logs (``seconds`` each) for one player.
 
-    ``pace`` is the NBA on-court pace stamped on each log; pass ``None`` to model
-    pace-gap games (pre-2017 pools that carry no possession estimate).
+    ``pace`` is retained as source metadata; pass ``None`` to model a
+    pre-2017 game with no same-game engine box coverage.
     """
     _N["i"] += 1
     sp = SummerLeagueSourcePlayer(
@@ -102,6 +103,26 @@ async def _seed_player(
                 ast_pct=0.2,
             )
         )
+        if pace is not None:
+            # The canonical per-100 denominator comes from this same-game box,
+            # not the player-log ``pace`` field. With identical home/away team
+            # ids this deliberately yields 60 team possessions over 180 team
+            # minutes, or 50 player possessions over 30 player minutes.
+            db.add(
+                SummerLeagueTeamGameLog(
+                    competition_id=comp.id,
+                    game_id=game.id,
+                    team_entry_id=team.id,
+                    minutes=180,
+                    fgm=50,
+                    fga=50,
+                    ftm=0,
+                    fta=0,
+                    oreb=0,
+                    dreb=0,
+                    tov=10,
+                )
+            )
     await db.flush()
 
 
@@ -236,9 +257,8 @@ async def test_per_100_extrapolates_over_pace_gap(
     db_session.add_all([straddler, ancient])
     await db_session.flush()
 
-    # 30 pts in 30 min at pace 100 → 62.5 poss/game → a realistic ~48 per-100.
-    # The straddler plays 2 pace-covered modern games + 6 pace-gap legacy games;
-    # the pre-fix denominator only saw the 2 covered games → ~4x inflation.
+    # The straddler plays 2 engine-covered modern games + 6 engine-gap legacy
+    # games; the old NBA-pace denominator only saw the 2 covered games.
     await _seed_player(
         db_session, comp=modern, team=m_team, player=straddler, n_games=2, pts=30
     )
@@ -268,8 +288,8 @@ async def test_per_100_extrapolates_over_pace_gap(
     )
     rows = {r.name: r for r in res.rows}
 
-    # Extrapolated over all minutes: ~48, not the ~192 the pace-gap bug produced.
-    assert rows["Strad Dler"].values["pts"] == pytest.approx(48.0, abs=0.5)
+    # Extrapolated over all minutes: 60, not the ~240 the pace-gap bug produced.
+    assert rows["Strad Dler"].values["pts"] == pytest.approx(60.0, abs=0.5)
     # No possessions to normalize by → blank, never an inflated number.
     assert rows["Anc Ient"].values["pts"] is None
 

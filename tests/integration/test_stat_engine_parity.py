@@ -28,10 +28,7 @@ Metrics covered span all three rollup classes named in the ticket
 * pool-recalibrated (rate composite) -- PER
 * additive-share -- Win Shares (WS)
 
-plus the per-36 / per-100 scaled forms (checked where both Explorer and the
-leaderboard actually implement scaling -- see the module-level note above
-``test_per_36_scaling_matches_across_explorer_and_leaderboard`` for a
-surface gap this test surfaces along the way).
+plus the per-36 / per-100 scaled forms on the Explorer and counting leaderboard.
 
 **Every expected value below is a literal**, not something this test derives
 by calling the formula under test. TS%/eFG%/TOV%/3PAr/FTr/Game Score are
@@ -434,14 +431,10 @@ async def test_per_36_and_totals_scaling_matches_across_explorer_and_leaderboard
     surface gap, not a bug in this test: there is currently no leaderboard
     view of Game Score per-36. Flagged for T4/T6 rather than worked around.)
 
-    Also note (separate, pre-existing FINDING for T4/T6): the leaderboard's
-    per_100 counting mode divides by ``SummerLeaguePlayerGameLog.pace`` (an
-    NBA-supplied per-game field, unpopulated by this fixture and not written
-    by the engine), while the Explorer/stored/engine per_100 all use
-    ``SummerLeaguePlayerSeason.pace`` (the engine's own pool-possession
-    estimate). Those are two different data sources for "per_100", not just
-    two implementations of one formula -- per_100 leaderboard parity is
-    intentionally left out of this harness pending that reconciliation.
+    Per-100 is included here because the leaderboard now computes its
+    denominator from the same-grain engine possession estimate as the other
+    surfaces. The fixture deliberately leaves the NBA game-log ``pace`` field
+    unset, so this assertion protects the source reconciliation itself.
     """
     comp_id, slug = await _seed_fixture(db_session)
     await db_session.commit()
@@ -484,6 +477,23 @@ async def test_per_36_and_totals_scaling_matches_across_explorer_and_leaderboard
     assert explorer_row_36.values["gmsc"] == EXPECTED_GMSC_PER_36
     assert explorer_row_36.values["pts"] == EXPECTED_PTS_PER_36
 
+    explorer_per100 = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            year_min=_YEAR,
+            year_max=_YEAR,
+            venue=_VENUE,
+            mode="per_100",
+            player_slug=slug,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    explorer_row_100 = explorer_per100.rows[0]
+    assert explorer_row_100.values["pts"] == EXPECTED_PTS_PER100
+
     leaders_totals = await get_leaders(
         db_session,
         mode="totals",
@@ -505,3 +515,15 @@ async def test_per_36_and_totals_scaling_matches_across_explorer_and_leaderboard
     )
     leader_row_36 = next(r for r in leaders_per36.rows if r.slug == slug)
     assert leader_row_36.values["pts"] == EXPECTED_PTS_PER_36
+
+    leaders_per100 = await get_leaders(
+        db_session,
+        mode="per_100",
+        year=_YEAR,
+        venue=_VENUE,
+        sort="pts",
+        min_games=1,
+        min_minutes=1,
+    )
+    leader_row_100 = next(r for r in leaders_per100.rows if r.slug == slug)
+    assert leader_row_100.values["pts"] == EXPECTED_PTS_PER100
