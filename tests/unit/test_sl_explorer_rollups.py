@@ -340,7 +340,7 @@ def test_all_services_share_possession_base() -> None:
     from app.services.stats import scaling
 
     assert MINUTES_PER_GAME == 48.0
-    assert led._MINUTES_PER_GAME is MINUTES_PER_GAME
+    assert led.MINUTES_PER_GAME is MINUTES_PER_GAME
     assert sts._MINUTES_PER_GAME is MINUTES_PER_GAME
     assert scaling._PER_100_NUMERATOR == 100.0 * 60.0 * MINUTES_PER_GAME
 

@@ -11,6 +11,8 @@ package docstring (``app/services/stats/__init__.py``) for the import contract
 this depends on.
 """
 
+# discipline: file-size single pure-formula engine Phase 2 consolidated (T2 #722); splitting re-scatters the formulas the stat-constant checker confines here
+
 from __future__ import annotations
 
 from collections.abc import Mapping

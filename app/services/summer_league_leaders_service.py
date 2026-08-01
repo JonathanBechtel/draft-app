@@ -55,8 +55,6 @@ GATE_LADDER: tuple[tuple[int, int], ...] = (
 # board smaller than this reads as broken/unsatisfying rather than exclusive.
 TARGET_BOARD_ROWS = 10
 
-_MINUTES_PER_GAME = MINUTES_PER_GAME
-
 MODES = ("totals", "per_game", "per_36", "per_100", "advanced")
 MODE_LABELS = {
     "totals": "Totals",
@@ -586,7 +584,7 @@ def _compute_row(r: Any, mode: str) -> LeaderRow:
     gp = int(r.gp)
     sec = float(r.sec or 0)
     minutes = sec / 60.0
-    poss = (r.pace_sec or 0) / (60.0 * _MINUTES_PER_GAME)
+    poss = (r.pace_sec or 0) / (60.0 * MINUTES_PER_GAME)
 
     if mode == "per_game":
         factor = _safe_div(1.0, gp)

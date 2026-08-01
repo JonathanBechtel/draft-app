@@ -54,6 +54,8 @@ and for why a later agent's confinement-rule allowlist (T9 / #730) should treat
 exemption rather than an undeclared duplicate.
 """
 
+# discipline: file-size declarative one-entry-per-metric catalog (T7 #724); per-metric adjacency of Python and SQL forms is the design, splitting recreates the drift T6 removed
+
 from __future__ import annotations
 
 from dataclasses import dataclass

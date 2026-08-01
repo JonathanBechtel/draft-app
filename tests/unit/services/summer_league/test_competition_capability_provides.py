@@ -1,6 +1,6 @@
-"""Unit tests for the T8 capability declaration exposed by normalization.py (#728).
+"""Unit tests for the T8 competition-shaped capability declaration (#728).
 
-``competition_capability_provides`` turns the availability flags normalization.py already
+``competition_capability_provides`` turns the availability flags normalization.py
 owns and sets (``pbp_available``, ``shotchart_available``) into the canonical ``provides`` set
 the shared capability model resolves ``requires`` against -- a thin, competition-shaped wrapper
 over ``app.services.summer_league.capabilities.pool_provides``.
@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueDataQuality
 from app.services.stats.capabilities import is_computable
-from app.services.summer_league.capabilities import BOX_PROVIDES
-from app.services.summer_league.normalization import competition_capability_provides
+from app.services.summer_league.capabilities import (
+    BOX_PROVIDES,
+    competition_capability_provides,
+)
 
 
 def _competition(**kw: object) -> SummerLeagueCompetition:
