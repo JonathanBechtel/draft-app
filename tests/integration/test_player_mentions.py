@@ -188,7 +188,7 @@ async def test_dedup_within_batch(
 async def test_resolve_relaxed_suffix_variant(
     db_session: AsyncSession,
 ) -> None:
-    """Suffix-only name differences should resolve to an existing player."""
+    """Suffix-only name differences should remain unresolved for review."""
     player = PlayerMaster(
         first_name="Darius",
         last_name="Acuff",
@@ -203,9 +203,7 @@ async def test_resolve_relaxed_suffix_variant(
     results = await resolve_player_names(
         db_session, ["Darius Acuff"], create_stubs=True
     )
-    assert len(results) == 1
-    assert results[0].player_id == player.id
-    assert results[0].matched_via == "display_name"
+    assert results == []
 
     count_stmt = select(func.count()).select_from(PlayerMaster)
     total_players = (await db_session.execute(count_stmt)).scalar_one()
