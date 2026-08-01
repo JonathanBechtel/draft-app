@@ -54,6 +54,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeaguePlayerSeason,
 )
 from app.services.summer_league.audit import audit_summer_league_raw
+from app.services.summer_league import metrics
 from app.services.summer_league.metrics import game_score_line, rebuild
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.cli.sl_desk_tick import run_desk_tick
@@ -127,7 +128,7 @@ async def _players(db: AsyncSession, n: int) -> list[tuple[PlayerMaster, Any]]:
     return out
 
 
-async def _seed_pool(
+async def _seed_pool(  # noqa: PLR0913 - fixture parameters describe the seeded pool
     db: AsyncSession,
     *,
     year: int,
@@ -456,6 +457,66 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
     assert {s.player_id: s.gp for s in a_seasons_twice} == {
         s.player_id: 5 for s in a_seasons_twice
     }
+
+
+def _scoped_projection(result: metrics.ComputeResult, competition_id: int) -> tuple:
+    """Return the comparable projection portion for one competition."""
+    seasons = sorted(
+        (
+            season.player_id,
+            season,
+        )
+        for season in result.seasons
+        if season.competition_id == competition_id
+    )
+    return result.contexts[competition_id], seasons
+
+
+async def test_scoped_compute_reuses_fit_and_matches_full_recompute(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A scoped projection equals a full recompute without refitting the pool."""
+    comp_a = await _seed_pool(
+        db_session,
+        year=2025,
+        venue="las_vegas",
+        league_id="15",
+        players_per_team=6,
+        n_games=4,
+    )
+    await _seed_pool(
+        db_session,
+        year=2025,
+        venue="orlando",
+        league_id="14",
+        players_per_team=6,
+        n_games=4,
+    )
+    await db_session.commit()
+
+    # Publish the full fit first, just as the first offline rebuild or a prior
+    # event tick would. The next scoped call may now avoid loading competition B.
+    await metrics.rebuild(db_session)
+    await db_session.commit()
+    full = await metrics.compute(db_session)
+
+    def fail_fit(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("scoped compute unexpectedly refit the full pool")
+
+    monkeypatch.setattr(metrics, "fit_pythagorean", fail_fit)
+    monkeypatch.setattr(metrics, "fit_sl_bpm", fail_fit)
+    scoped = await metrics.compute(db_session, competition_ids=[comp_a])
+
+    assert _scoped_projection(full, comp_a) == _scoped_projection(scoped, comp_a)
+
+    # This is an executable fail-case for the parity assertion: a changed
+    # metric cannot hide behind a self-consistent scoped result.
+    scoped.seasons[0].metrics["ts_pct"] = (
+        scoped.seasons[0].metrics["ts_pct"] or 0.0
+    ) + 1.0
+    with pytest.raises(AssertionError):
+        assert _scoped_projection(full, comp_a) == _scoped_projection(scoped, comp_a)
 
 
 async def test_scoped_rebuild_empty_scope_is_a_noop(db_session: AsyncSession) -> None:
@@ -840,7 +901,7 @@ async def _seed_baseline(db: AsyncSession, *, baseline_version: str) -> None:
     await db.flush()
 
 
-async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(
+async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  # noqa: PLR0915 - end-to-end tick assertions
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
     """A tick refreshes only the competition normalize just touched this hour.
