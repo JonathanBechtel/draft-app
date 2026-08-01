@@ -121,7 +121,13 @@ def test_measures_distance_from_the_branch(fake_git) -> None:
             ("rev-parse", "origin/main"): "newsha",
             ("cat-file", "-e", "oldsha^{commit}"): "",
             ("rev-list", "--count", "oldsha..newsha"): "37",
-            ("show", "-s", "--format=%cI", "oldsha"): "2026-07-19T22:39:00+00:00",
+            (
+                "rev-list",
+                "--reverse",
+                "--max-count=1",
+                "oldsha..newsha",
+            ): "firstmissing",
+            ("show", "-s", "--format=%cI", "firstmissing"): "2026-07-19T22:39:00+00:00",
         }
     )
 
@@ -130,6 +136,36 @@ def test_measures_distance_from_the_branch(fake_git) -> None:
     assert report.is_current is False
     assert report.commits_behind == 37
     assert report.age_hours is not None and report.age_hours > 0
+
+
+def test_age_hours_measures_time_since_the_first_missing_commit(fake_git) -> None:
+    """Age is time-behind, not the deployed commit's own committer-age.
+
+    Scoring the deployed commit's own age instead cries wolf after a quiet week on
+    main: a deployment one commit behind after a week of silence would read that
+    commit as "old" even though nothing has actually been waiting on it. The oldest
+    *missing* commit's landing time is the thing that answers "how long has this
+    fix been sitting undeployed".
+    """
+    fake_git(
+        {
+            ("rev-parse", "origin/main"): "newsha",
+            ("cat-file", "-e", "oldsha^{commit}"): "",
+            ("rev-list", "--count", "oldsha..newsha"): "1",
+            ("rev-list", "--reverse", "--max-count=1", "oldsha..newsha"): "newsha",
+            # The deployed commit itself is ancient (a quiet week), but the single
+            # missing commit landed recently -- age_hours must track the latter.
+            ("show", "-s", "--format=%cI", "oldsha"): "2020-01-01T00:00:00+00:00",
+            ("show", "-s", "--format=%cI", "newsha"): "2026-07-19T22:39:00+00:00",
+        }
+    )
+
+    report = build_report("app", [_app_machine("oldsha")], target_ref="origin/main")
+
+    assert report.age_hours is not None
+    # If age_hours were measuring the deployed commit's own age it would be years,
+    # not the few days since 2026-07-19.
+    assert report.age_hours < 24 * 30
 
 
 def test_machines_running_different_commits_are_flagged(fake_git) -> None:
@@ -174,6 +210,61 @@ def test_missing_sha_label_reports_unknown_rather_than_raising(fake_git) -> None
     assert report.deployed_sha is None
     assert report.is_current is False
     assert any("GH_SHA" in note for note in report.notes)
+
+
+def test_a_fully_unlabelled_fleet_fails_the_gating_check(fake_git) -> None:
+    """UNKNOWN must fail, not degrade to permanent success.
+
+    A manual `flyctl deploy` from a checkout (the documented Jul 6 incident deploy
+    path) never stamps GH_SHA, so a fully unlabelled fleet used to report UNKNOWN and
+    return "not stale" here -- exiting 0 indefinitely on exactly the deploy path most
+    likely to cause drift.
+    """
+    fake_git({("rev-parse", "origin/main"): "abc123"})
+
+    report = build_report("app", [_app_machine(None)], target_ref="origin/main")
+
+    assert report.deployed_sha is None
+    assert is_stale(report, max_age_hours=99999) is True
+
+
+def test_report_only_is_the_escape_hatch_for_a_deliberately_unlabelled_fleet(
+    fake_git, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """--report-only exits 0 even when the fleet is fully unlabelled.
+
+    The failure mode this fixes is a fleet unlabelled by accident; a fleet that is
+    unlabelled on purpose (or during a migration) needs a way to keep observing
+    without gating a CI run red every day.
+    """
+    fake_git({("rev-parse", "origin/main"): "abc123"})
+    monkeypatch.setattr(
+        freshness_mod,
+        "_run_flyctl_machine_list",
+        lambda _app: [_app_machine(None)],
+    )
+
+    exit_code = main(["--app", "draft-app-prod", "--report-only"])
+
+    assert exit_code == 0
+    assert "UNKNOWN" in capsys.readouterr().out
+
+
+def test_a_fully_unlabelled_fleet_fails_main_with_a_targeted_message(
+    fake_git, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """The CLI's error message names the unlabelled-fleet cause, not just "stale"."""
+    fake_git({("rev-parse", "origin/main"): "abc123"})
+    monkeypatch.setattr(
+        freshness_mod,
+        "_run_flyctl_machine_list",
+        lambda _app: [_app_machine(None)],
+    )
+
+    exit_code = main(["--app", "draft-app-prod"])
+
+    assert exit_code == 1
+    assert "GH_SHA" in capsys.readouterr().err
 
 
 def test_commit_absent_locally_degrades_to_a_note(fake_git) -> None:
@@ -222,7 +313,13 @@ def test_recent_lag_under_the_threshold_does_not_fail(fake_git) -> None:
             ("rev-parse", "origin/main"): "newsha",
             ("cat-file", "-e", "oldsha^{commit}"): "",
             ("rev-list", "--count", "oldsha..newsha"): "2",
-            ("show", "-s", "--format=%cI", "oldsha"): recent,
+            (
+                "rev-list",
+                "--reverse",
+                "--max-count=1",
+                "oldsha..newsha",
+            ): "firstmissing",
+            ("show", "-s", "--format=%cI", "firstmissing"): recent,
         }
     )
 
