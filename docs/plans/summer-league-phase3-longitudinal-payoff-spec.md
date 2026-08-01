@@ -84,7 +84,26 @@ File-overlap notes for `/create-project`: T1 and T2 touch adjacent schema module
 4. `registry_version` has one source of truth; a formula-registry version bump is visible in the next published rows.
 5. Page query budgets hold (or are consciously bumped) and every new query is index-scanned on a prod-like branch.
 
-## 8. Risks
+## 8. Product QA (browser-verifiable behaviors)
+
+A standalone QA checklist is deliberately skipped for this phase — only one ticket carries a customer-facing surface. These behaviors are the Playwright-verifiable contract; `/create-project` maps items 1–3 into T3's e2e lines, 4–11 into T6's e2e/visual recipes, and all of them into the T7 gate. All flows are anonymous (no login recipe needed).
+
+**T3 — Explorer read-switch (correct outcome: nothing visibly changes except freshness):**
+1. The default full-competition Explorer view renders the same values after the switch (spot-check a stable historical competition against pre-switch capture).
+2. An `as_of` freshness label is visible on the default grain.
+3. A sub-season grain (per-game / last-N / date filter) still returns rows and plainly exercises the live-engine path (values change with the filter).
+
+**T6 — Trend surface (desktop + mobile widths, both themes):**
+4. A historical-event participant's SL player-page section shows the trend chart with cumulative through-day GmSc / TS% / BPM lines.
+5. The cohort band renders and stays legible at mobile width and in dark theme.
+6. A one-game player renders a sensible single-point state, not a broken chart.
+7. A player with no SL games shows no trend module at all (no empty shell).
+8. The event/competition page renders the scope-level trend module.
+9. The freshness label reflects `as_of` (source currency), not the event day.
+10. The share-card export produces a clean PNG of the trend (infographic-qa standards: containment, legibility at thumbnail size).
+11. At mobile width the chart is contained (no horizontal page scroll) and interactive elements respond to tap.
+
+## 9. Risks
 
 - **#732 timing** gates T5/T6; if it slips, ship T1–T4 and hold the backfill — the surface must not ship on numbers that are about to move.
 - **Backfill volume** is estimated, not measured; T5's first deliverable is the measured count on dev before any prod write.
