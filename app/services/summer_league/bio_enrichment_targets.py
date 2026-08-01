@@ -85,6 +85,13 @@ async def select_bio_enrichment_targets(  # noqa: PLR0913
         successful_snapshot_res = await db.execute(
             select(PlayerBioSnapshot.player_id).where(  # type: ignore[call-overload]
                 PlayerBioSnapshot.player_id.in_(cohort.player_ids),  # type: ignore[attr-defined]
+                # Scoped to the BBR source explicitly, not left to "any row in
+                # this table means enriched". The BBR ingest is the sole
+                # writer today so this is currently a no-op filter, but
+                # without it a second snapshot writer (a different bio
+                # source) would silently count as a successful BBR retry and
+                # stop this cohort player from ever being retried.
+                PlayerBioSnapshot.source == SYSTEM_BBR,
             )
         )
         successfully_enriched = {
