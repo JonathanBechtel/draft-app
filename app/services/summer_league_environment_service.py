@@ -79,6 +79,8 @@ from app.schemas.summer_league import (
     SummerLeagueRawRunStatus,
 )
 from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
+
+# discipline: file-size formula audit keeps this legacy aggregation module reviewable.
 from app.services.stats.formulas import pace_per_48, points_per_100
 from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import (
@@ -1082,8 +1084,7 @@ async def _load_team_boxes(
             acc.team_entry_ids.add(team_id)
             poss = box.poss(opp)
             acc.total_possessions += poss
-            team_ortg = points_per_100(box.pts, poss)
-            if team_ortg is not None:
+            if (team_ortg := points_per_100(box.pts, poss)) is not None:
                 acc.team_ortgs.append(team_ortg)
             acc.team_points.append(float(box.pts))
             acc.provenance["box"].observe(updated_at)

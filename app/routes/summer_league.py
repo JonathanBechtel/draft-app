@@ -342,7 +342,6 @@ async def summer_league_explorer(
         | {"coverage": ",".join(request.query_params.getlist("coverage"))}
     )
 
-    # CSV export returns the full result set, not just the current page.
     is_csv = request.query_params.get("format") == "csv"
     if is_csv:
         query.paginate = False
@@ -358,13 +357,11 @@ async def summer_league_explorer(
         else "stats/summer-league/explorer.html"
     )
     if query.subject == "competitions":
-        scope_kind = (
+        filterable_columns = competition_filterable_columns(
             SCOPE_KIND_COMPETITION
             if query.profile_scope == "competition"
             else SCOPE_KIND_SEASON
         )
-        # Registry-certified metric thresholds only (contract §6).
-        filterable_columns = competition_filterable_columns(scope_kind)
     elif query.subject == "players" and query.grain == "per_game":
         filterable_columns = PER_GAME_FILTERABLE_COLUMNS
     elif query.subject == "teams":
