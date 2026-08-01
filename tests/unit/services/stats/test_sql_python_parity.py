@@ -48,6 +48,7 @@ from app.services.stats.formulas import (
 )
 from app.services.stats.inputs import StatInputs
 from app.services.stats.registry import (
+    efg_pct_num_expr,
     efg_pct_sql_text,
     fg3ar_sql_text,
     ftr_sql_text,
@@ -370,6 +371,54 @@ def test_ftr_sql_text_matches_python_ftr_ratio() -> None:
     want = ftr_ratio(fga=_SHOOT_BOX["fga"], fta=_SHOOT_BOX["fta"])
     assert want is not None
     assert got == pytest.approx(want)
+
+
+# --- efg_pct_num_expr (#731 QA-gate follow-up) -------------------------------
+#
+# The SQLAlchemy *expression* form the QA gate added when it found the
+# Explorer's three eFG% filter sites hand-writing the half-credit weight
+# (fixed in 96cb3c8). Its docstring claims it matches ``efg_pct_ratio`` and
+# ``efg_pct_sql_text`` exactly; these tests are what enforce that claim.
+# Without them, editing the 0.5 inside ``efg_pct_num_expr`` alone leaves the
+# whole suite green and both guards silent (R1c only scans outside
+# app/services/stats/) -- the same filter-vs-display failure mode the gate
+# caught, one layer inward.
+
+
+def test_efg_pct_num_expr_matches_python_efg_pct_ratio() -> None:
+    """efg_pct_num_expr, fed plain floats, agrees with efg_pct_ratio.
+
+    The numerator is completed to a full eFG% the same way the Explorer's
+    filter sites do: ``100.0 * numerator / fga``.
+    """
+    num = efg_pct_num_expr(_float_box(_SHOOT_BOX))
+    got = 100.0 * num / _SHOOT_BOX["fga"]
+    want = efg_pct_ratio(
+        fgm=_SHOOT_BOX["fgm"], fga=_SHOOT_BOX["fga"], fg3m=_SHOOT_BOX["fg3m"]
+    )
+    assert want is not None
+    assert got == pytest.approx(want)
+
+
+def test_efg_pct_num_expr_matches_efg_pct_sql_text() -> None:
+    """The expression form and the text form restate the half-credit weight
+    independently inside the registry; this pins the two against each other so
+    neither can drift alone."""
+    expr_value = efg_pct_num_expr(_float_box(_SHOOT_BOX)) / _SHOOT_BOX["fga"]
+    text_value = _eval_sql_arithmetic(
+        efg_pct_sql_text(lambda name: str(_SHOOT_BOX[name]))
+    )
+    assert expr_value == pytest.approx(text_value)
+
+
+def test_efg_pct_num_expr_emits_one_formula_across_both_grains() -> None:
+    """One declaration, two grains: the only difference is how ``box`` wraps
+    each field name, never a second copy of the ``FGM + 0.5 * FG3M`` shape."""
+    row_fields: list[str] = []
+    agg_fields: list[str] = []
+    efg_pct_num_expr(_recording_float_box(row_fields))
+    efg_pct_num_expr(_recording_float_box(agg_fields))
+    assert row_fields == agg_fields == ["fgm", "fg3m"]
 
 
 def test_efg_fg3ar_ftr_sql_text_emit_one_formula_across_both_grains() -> None:

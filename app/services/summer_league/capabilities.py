@@ -13,8 +13,8 @@ call site.
 **Two shapes of "provides", for two shapes of caller.**
 
 * :func:`pool_provides` builds a ``provides`` set from a competition's own availability flags --
-  used where the caller already knows (or has fetched) those flags, e.g.
-  :func:`app.services.summer_league.normalization.competition_capability_provides`.
+  used where the caller already knows (or has fetched) those flags, e.g. via its
+  competition-shaped wrapper :func:`competition_capability_provides`.
 * :func:`row_provides` / :func:`rows_provide` infer a ``provides`` set directly from a fetched
   row's populated fields, for call sites (the Explorer's player-value and rollup helpers) that
   only have query result rows in hand, not a competition object -- a PBP-derived field is
@@ -35,6 +35,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from app.schemas.summer_league import SummerLeagueCompetition
 from app.services.stats.inputs import BOX_INT_FIELDS
 
 # Every box line the Summer League pipeline persists carries these -- the raw counting-stat
@@ -98,6 +99,32 @@ def pool_provides(
     if adv_eligible:
         provides |= POOL_CONTEXT_PROVIDES
     return frozenset(provides)
+
+
+def competition_capability_provides(
+    competition: SummerLeagueCompetition, *, adv_eligible: bool = False
+) -> frozenset[str]:
+    """The T8 capability declaration for one competition (#728).
+
+    Turns the availability flags :mod:`app.services.summer_league.normalization`
+    owns and sets -- ``competition.pbp_available`` (``normalize_pbp_events``) and
+    ``competition.shotchart_available`` (``normalize_shot_events``) -- into the
+    canonical ``provides`` set :mod:`app.services.stats.capabilities` derives
+    computability from, instead of leaving each caller to re-check the flags
+    individually as ad-hoc gates. ``adv_eligible`` lives on
+    ``SummerLeagueMetricContext``/``SummerLeaguePlayerSeason`` (owned by
+    :mod:`app.services.summer_league.metrics`), so a caller that has already
+    resolved it for this competition's pool passes it through; callers that have
+    not get the conservative default of ``False``.
+
+    See :func:`pool_provides` for the actual flag-to-token mapping -- this is a
+    thin, competition-shaped wrapper over it.
+    """
+    return pool_provides(
+        pbp_available=bool(competition.pbp_available),
+        shotchart_available=bool(competition.shotchart_available),
+        adv_eligible=adv_eligible,
+    )
 
 
 def _row_has_pbp_fields(r: Any) -> bool:

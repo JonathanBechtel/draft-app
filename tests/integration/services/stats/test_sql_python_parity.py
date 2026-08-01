@@ -41,8 +41,9 @@ from app.schemas.summer_league import (
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
 )
-from app.services.stats.formulas import ts_pct_ratio, tov_pct_ratio
+from app.services.stats.formulas import efg_pct_ratio, ts_pct_ratio, tov_pct_ratio
 from app.services.stats.registry import (
+    efg_pct_num_expr,
     ts_pct_denom_expr,
     ts_pct_sql_text,
     tov_pct_denom_expr,
@@ -275,3 +276,63 @@ async def test_aggregate_grain_sqlalchemy_expr_form_matches_python_ratio_on_summ
     want_ts = ts_pct_ratio(pts=summed_pts, fga=summed_fga, fta=summed_fta)
     assert want_ts is not None
     assert float(row.ts_pct) == pytest.approx(want_ts)
+
+
+@pytest.mark.asyncio
+async def test_row_grain_efg_num_expr_matches_python_efg_pct_ratio(
+    db_session: AsyncSession,
+) -> None:
+    """Row-grain ``efg_pct_num_expr`` (bare ORM columns) matches efg_pct_ratio.
+
+    ``efg_pct_num_expr`` was added by the Phase 2 QA gate (#731) after its
+    demonstration that the Explorer's hand-written eFG% filter expressions
+    could drift silently from the displayed value. This exercises the exact
+    filter call-site shape (``100.0 * <num_expr> / func.nullif(fga, 0)``,
+    see ``_per_comp_metric_where``) against a real row, so an edit to the
+    expression form's half-credit weight fails here even though both guards
+    are structurally blind to it.
+    """
+    log_id, _ = await _seed_two_game_logs(db_session)
+    await db_session.commit()
+
+    pgl = SummerLeaguePlayerGameLog
+    efg_num = efg_pct_num_expr(lambda name: getattr(pgl, name))
+    stmt = select(
+        (100.0 * efg_num / func.nullif(pgl.fga, 0)).label("efg_pct")  # type: ignore[arg-type]
+    ).where(pgl.id == log_id)  # type: ignore[arg-type]
+    row = (await db_session.execute(stmt)).one()
+
+    want_efg = efg_pct_ratio(
+        fgm=_LINE_A["fgm"], fga=_LINE_A["fga"], fg3m=_LINE_A["fg3m"]
+    )
+    assert want_efg is not None
+    assert float(row.efg_pct) == pytest.approx(want_efg)
+
+
+@pytest.mark.asyncio
+async def test_aggregate_grain_efg_num_expr_matches_python_efg_pct_ratio_on_summed_box(
+    db_session: AsyncSession,
+) -> None:
+    """Aggregate-grain ``efg_pct_num_expr`` (``func.sum``-wrapped) matches the
+    Python ratio on the two rows' summed box totals -- the same declaration as
+    the row-grain test above, only the ``box`` callable changes (the career
+    filter's shape at ``_career_metric_having``)."""
+    await _seed_two_game_logs(db_session)
+    await db_session.commit()
+
+    pgl = SummerLeaguePlayerGameLog
+    efg_num = efg_pct_num_expr(lambda name: func.sum(getattr(pgl, name)))
+    stmt = select(
+        (100.0 * efg_num / func.nullif(func.sum(pgl.fga), 0)).label(  # type: ignore[arg-type]
+            "efg_pct"
+        )
+    ).where(pgl.nba_stats_person_id == "sp-sql-parity")  # type: ignore[arg-type]
+    row = (await db_session.execute(stmt)).one()
+
+    want_efg = efg_pct_ratio(
+        fgm=_LINE_A["fgm"] + _LINE_B["fgm"],
+        fga=_LINE_A["fga"] + _LINE_B["fga"],
+        fg3m=_LINE_A["fg3m"] + _LINE_B["fg3m"],
+    )
+    assert want_efg is not None
+    assert float(row.efg_pct) == pytest.approx(want_efg)
