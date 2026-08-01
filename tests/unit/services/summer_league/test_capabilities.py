@@ -15,6 +15,7 @@ from app.services.stats.capabilities import is_computable
 from app.services.summer_league.capabilities import (
     BOX_PROVIDES,
     PBP_PROVIDES,
+    TEAM_OPPONENT_BOX_PROVIDES,
     pool_provides,
     row_provides,
     rows_provide,
@@ -22,13 +23,14 @@ from app.services.summer_league.capabilities import (
 
 
 def test_pool_provides_box_only_by_default() -> None:
-    """No flags raised -> only the always-present box inputs are provided."""
+    """No flags raised -> box inputs and usable team/opponent totals are provided."""
     provides = pool_provides(
         pbp_available=False, shotchart_available=False, adv_eligible=False
     )
-    assert provides == BOX_PROVIDES
+    assert BOX_PROVIDES | TEAM_OPPONENT_BOX_PROVIDES <= provides
     assert not is_computable("astd_pct", provides)
     assert is_computable("ts_pct", provides)
+    assert is_computable("usg_pct", provides)
 
 
 def test_pool_provides_adds_pbp_tokens_when_available() -> None:
@@ -54,6 +56,7 @@ def test_pool_provides_ineligible_pool_cannot_compute_pool_recalibrated_composit
     )
     assert not is_computable("ws", provides)
     assert not is_computable("uper", provides)
+    assert is_computable("orb_pct", provides)
     # astd_pct only needs PBP, not adv_eligible -- still computable.
     assert is_computable("astd_pct", provides)
 

@@ -341,7 +341,8 @@ class TestStringPatternRule:
 
 
 class TestRegistryFormulaReappearanceRule:
-    """Rule 3 (R4, T10/#741): exact reappearance of a registry-declared metric's
+    """Rule 3 (R4, T10/#741): exact reappearance of a registry-declared metric's.
+
     SQL text, whether or not it carries a designated coefficient.
 
     The blocker #730 declined a generic ``SUM(<box field>)`` sweep over: once
@@ -376,23 +377,34 @@ class TestRegistryFormulaReappearanceRule:
         assert found[0].code == "R4"
         assert "ftr_sql_text" in found[0].message
 
-    def test_efg_pct_text_interpolated_via_box_calls_is_not_flagged(self):
-        """``box(...)`` calls are interpolations, not literal text: the joined
-        literal segments (``" + 0.5 * "``, ``") / NULLIF("``, ...) never contain a
-        whole registered formula string on their own. This is the *correct*
-        box-callable shape (matching efg_pct_sql_text itself), not a duplicate --
-        rule 3 only fires on a fixed-field-name literal like T10's ten sites had."""
+    def test_efg_pct_text_interpolated_via_box_calls_is_flagged(self):
+        """Formatted ``box(...)`` columns are retained for R4 comparison."""
         found = _violations(
             """
             def efg_sql(box):
                 return f"({box('fgm')} + 0.5 * {box('fg3m')}) / NULLIF({box('fga')}, 0)"
             """
         )
-        assert found == []
+        assert len(found) == 1
+        assert found[0].code == "R4"
+
+    def test_ftr_text_interpolated_via_box_calls_is_flagged(self):
+        """Coefficient-free f-string formulas are checked too."""
+        found = _violations(
+            """
+            def ftr_sql(box):
+                return f"{box('fta')} * 1.0 / NULLIF({box('fga')}, 0)"
+            """
+        )
+        assert len(found) == 1
+        assert found[0].code == "R4"
 
     def test_fg_pct_text_is_never_flagged(self):
-        """fg_pct is permanently out of scope (#726) -- no registered *_sql_text
-        function emits its text, so no allowlist entry is needed to keep it quiet."""
+        """fg_pct is permanently out of scope (#726).
+
+        No registered ``*_sql_text`` function emits its text, so no allowlist entry is
+        needed to keep it quiet.
+        """
         found = _violations(
             """
             _pct_exprs = {
@@ -403,8 +415,10 @@ class TestRegistryFormulaReappearanceRule:
         assert found == []
 
     def test_calling_the_registry_function_is_not_flagged(self):
-        """The correct call-site shape -- calling fg3ar_sql_text -- is code, not a
-        string literal duplicating its output, so rule 3 does not see it at all."""
+        """The correct call-site shape is code, not a duplicate string literal.
+
+        Calling ``fg3ar_sql_text`` means rule 3 does not see the emitted output at all.
+        """
         found = _violations(
             """
             from app.services.stats.registry import fg3ar_sql_text
@@ -437,15 +451,19 @@ class TestRegistryFormulaReappearanceRule:
         assert found == []
 
     def test_known_registry_formula_texts_cover_the_t10_metrics(self):
-        """Sanity-checks the registry-introspection helper actually discovers the
-        three T10 functions (plus the pre-existing ones), not just an empty list."""
+        """Sanity-check registry introspection discovers the three T10 functions.
+
+        The pre-existing functions must be discovered too, rather than returning an
+        empty list.
+        """
         names = {name for name, _grain, _text in checker._known_registry_formula_texts()}
         assert {"efg_pct_sql_text", "fg3ar_sql_text", "ftr_sql_text"} <= names
 
 
 class TestRegistryExpressionReappearanceRule:
-    """Rule 4 (R5, #745): registry SQLAlchemy arithmetic cannot be retyped outside
-    the engine package.
+    """Rule 4 (R5, #745): registry SQLAlchemy arithmetic cannot be retyped.
+
+    The arithmetic cannot be retyped outside the engine package.
 
     The test uses ``astd_pct`` because it has no designated numeric coefficient;
     that proves the new rule is comparing an introspected arithmetic shape rather

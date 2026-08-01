@@ -80,6 +80,20 @@ def test_grain_validity_values_are_known_grains() -> None:
         assert set(d.grain_validity) <= set(Grain), d.metric_key
 
 
+def test_recombinable_and_additive_metrics_are_valid_at_career_grain() -> None:
+    """Career Explorer rollups are represented in the registry's grain contract."""
+    rollupable = {
+        d.metric_key
+        for d in METRIC_DEFINITIONS
+        if d.rollup_class in {RollupClass.RECOMBINABLE, RollupClass.ADDITIVE_SHARE}
+        and d.metric_key != "environment_turnover_rate"
+    }
+    assert rollupable
+    assert all(
+        Grain.CAREER in get_metric(key).grain_validity for key in rollupable
+    )
+
+
 def test_allowed_reference_kinds_are_known_reference_kinds() -> None:
     """allowed_reference_kinds only ever names a real ReferenceKind member."""
     for d in METRIC_DEFINITIONS:
@@ -136,7 +150,7 @@ def test_vorp82_is_pool_recalibrated_not_recombinable() -> None:
 
 
 def test_pace_is_pool_recalibrated_per_732() -> None:
-    """pace must never be averaged across grains (parked follow-up #732)."""
+    """Pace must never be averaged across grains (parked follow-up #732)."""
     assert get_metric("pace").rollup_class is RollupClass.POOL_RECALIBRATED
 
 

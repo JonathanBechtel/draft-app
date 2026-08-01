@@ -587,13 +587,45 @@ def _float_literal_violations(
     )
 
 
+def _joined_str_formatted_value_text(node: ast.AST) -> str:
+    """Render a known f-string column expression as its SQL text equivalent.
+
+    The formula registry's text helpers receive a ``box`` callable, while the
+    usual call sites interpolate ``box("field")`` into an f-string. Keeping the
+    field name in the joined text lets R4 compare those call sites with the
+    registry output instead of silently discarding every formatted expression.
+    Unknown expressions remain visibly symbolic rather than becoming false
+    literal text.
+    """
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Call):
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id in {"box", "getattr"}
+            and len(node.args) >= 1
+            and isinstance(node.args[-1], ast.Constant)
+            and isinstance(node.args[-1].value, str)
+        ):
+            return node.args[-1].value
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "sum"
+            and len(node.args) == 1
+        ):
+            return f"SUM({_joined_str_formatted_value_text(node.args[0])})"
+    return "{" + ast.unparse(node) + "}"
+
+
 def _joined_str_literal_text(node: ast.JoinedStr) -> str:
-    """Concatenate the literal (non-interpolated) segments of an f-string."""
-    return "".join(
-        part.value
-        for part in node.values
-        if isinstance(part, ast.Constant) and isinstance(part.value, str)
-    )
+    """Concatenate literal and symbolic formatted segments of an f-string."""
+    parts: list[str] = []
+    for part in node.values:
+        if isinstance(part, ast.Constant) and isinstance(part.value, str):
+            parts.append(part.value)
+        elif isinstance(part, ast.FormattedValue):
+            parts.append(_joined_str_formatted_value_text(part.value))
+    return "".join(parts)
 
 
 def _joined_str_child_ids(tree: ast.AST) -> set[int]:
@@ -970,6 +1002,17 @@ def find_violations(path: Path, source: str) -> list[Violation]:
     float_locations = {
         (violation.path, violation.lineno) for violation in float_violations
     }
+    string_violations = _string_pattern_violations(rel, tree, parents, lines)
+    string_locations = {
+        (violation.path, violation.lineno) for violation in string_violations
+    }
+    formula_violations = [
+        violation
+        for violation in _registry_formula_reappearance_violations(
+            rel, tree, parents, lines
+        )
+        if (violation.path, violation.lineno) not in string_locations
+    ]
     expression_violations = [
         violation
         for violation in _registry_expression_reappearance_violations(
@@ -979,8 +1022,8 @@ def find_violations(path: Path, source: str) -> list[Violation]:
     ]
     return (
         float_violations
-        + _string_pattern_violations(rel, tree, parents, lines)
-        + _registry_formula_reappearance_violations(rel, tree, parents, lines)
+        + string_violations
+        + formula_violations
         + expression_violations
     )
 

@@ -25,8 +25,9 @@ call site.
   declaring box-only inputs really means.
 
 Every box line always provides the raw box/rate inputs -- the Summer League ingest pipeline
-never persists a season/game row without a box score. Only the *additional* tokens (PBP counts,
-team/opponent box + pool context) are conditional on the flags.
+never persists a season/game row without a box score. Pool-level team/opponent totals are also
+available to box-derived player rates before the stricter ``adv_eligible`` threshold; only PBP,
+shotchart, and pool-relative context tokens are conditional on the flags.
 """
 
 from __future__ import annotations
@@ -51,12 +52,13 @@ PBP_PROVIDES: frozenset[str] = frozenset({"ast_fgm", "unast_fgm"})
 # shotchart_available flag is set, with no new gating code at its call site.
 SHOTCHART_PROVIDES: frozenset[str] = frozenset({"shot_events"})
 
-# Team/opponent box totals and the pool-relative recalibration context (VOP, DRB%, pace, the
-# fitted BPM coefficients) -- available only once a pool clears the completeness threshold
-# app.services.summer_league.metrics.PoolContext.finalize's callers gate on. Mirrors the
-# registry's own "team_box" / "opponent_box" / "pool_context" requires tokens exactly.
-ADV_CONTEXT_PROVIDES: frozenset[str] = frozenset(
-    {"team_box", "opponent_box", "pool_context"}
+# Team/opponent totals are usable by box-derived player rates before a pool clears the
+# stricter league-level threshold. Only the pool-relative recalibration context (VOP, DRB%,
+# pace, and fitted BPM coefficients) is gated by ``adv_eligible``.
+TEAM_OPPONENT_BOX_PROVIDES: frozenset[str] = frozenset({"team_box", "opponent_box"})
+POOL_CONTEXT_PROVIDES: frozenset[str] = frozenset({"pool_context"})
+ADV_CONTEXT_PROVIDES: frozenset[str] = (
+    TEAM_OPPONENT_BOX_PROVIDES | POOL_CONTEXT_PROVIDES
 )
 
 
@@ -88,13 +90,13 @@ def pool_provides(
         :func:`app.services.stats.capabilities.is_computable` /
         :func:`~app.services.stats.capabilities.computable_metrics`.
     """
-    provides = set(BOX_PROVIDES)
+    provides = set(BOX_PROVIDES) | TEAM_OPPONENT_BOX_PROVIDES
     if pbp_available:
         provides |= PBP_PROVIDES
     if shotchart_available:
         provides |= SHOTCHART_PROVIDES
     if adv_eligible:
-        provides |= ADV_CONTEXT_PROVIDES
+        provides |= POOL_CONTEXT_PROVIDES
     return frozenset(provides)
 
 
