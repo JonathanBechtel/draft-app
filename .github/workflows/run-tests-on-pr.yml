@@ -47,7 +47,11 @@ jobs:
   tests-fork:
     # Safe path for PRs from forks: no secrets, ephemeral Postgres service
     needs: changes
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true && needs.changes.outputs.code == 'true' }}
+    # Fail CLOSED: only an explicit code=false verdict skips. If `changes`
+    # fails or its output is missing, `code != 'false'` holds and tests run.
+    # `!cancelled()` is required — without it a failed dependency would skip
+    # this job, and skipped required checks report success (fail-open).
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -187,7 +191,8 @@ jobs:
   tests-secrets:
     # Same-repo PRs use environment secrets from draft-app-dev.
     needs: changes
-    if: ${{ github.event.pull_request.head.repo.fork == false && needs.changes.outputs.code == 'true' }}
+    # Fail CLOSED — see tests-fork: explicit code=false is the only skip path.
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && github.event.pull_request.head.repo.fork == false }}
     runs-on: ubuntu-latest
     environment: draft-app-dev
     services:
