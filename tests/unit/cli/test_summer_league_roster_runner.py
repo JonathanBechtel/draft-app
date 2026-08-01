@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -214,9 +215,23 @@ def _patch_enrichment_steps(  # noqa: C901
 
 
 def test_resolve_year_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Absent env var yields the default Summer League year."""
+    """Absent env var yields the current Eastern-calendar-year default."""
     monkeypatch.delenv("SL_ROSTER_YEAR", raising=False)
-    assert runner._resolve_year() == runner.DEFAULT_YEAR
+    assert runner._resolve_year() == runner._default_year()
+
+
+def test_default_year_derives_from_current_date(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default year follows the calendar rather than a hard-coded value.
+
+    This is the exact defect the ticket closes: a hard-coded ``DEFAULT_YEAR``
+    required a code change every season.
+    """
+
+    def _fake_to_eastern_date(_value: object) -> date:
+        return date(2027, 6, 15)
+
+    monkeypatch.setattr(runner, "to_eastern_date", _fake_to_eastern_date)
+    assert runner._default_year() == 2027
 
 
 def test_resolve_year_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -228,7 +243,7 @@ def test_resolve_year_override(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_resolve_year_blank_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
     """A blank/whitespace SL_ROSTER_YEAR falls back to the default."""
     monkeypatch.setenv("SL_ROSTER_YEAR", "   ")
-    assert runner._resolve_year() == runner.DEFAULT_YEAR
+    assert runner._resolve_year() == runner._default_year()
 
 
 @pytest.mark.parametrize("value", ["26", "20260", "abc"])
