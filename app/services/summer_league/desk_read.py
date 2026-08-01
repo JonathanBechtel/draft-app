@@ -105,7 +105,7 @@ from app.services.event_desk.registry import (
 )
 from app.services.event_desk.state_machine import inner_state
 from app.services.event_desk.timeutils import to_eastern, to_eastern_date
-from app.services.stats.registry import RollupClass, rollup_class_matches
+from app.services.stats.registry import RollupClass, require_rollup_class
 from app.services.summer_league.cohort_baselines import (
     blend_event_aggregates,
     cohort_key_for,
@@ -1524,8 +1524,12 @@ _ADV_RATE_COMPOSITE_KEYS: tuple[str, ...] = (
 # minute-weighting them across pooled venue rows is the same cross-pool blend
 # approximation `summer_league_metrics_service._blend_leader_values` documents,
 # consistent with (not a re-derivation of) the registry's class.
-assert rollup_class_matches("ws82", RollupClass.POOL_RECALIBRATED)
-assert rollup_class_matches("bpm", RollupClass.POOL_RECALIBRATED)
+require_rollup_class(
+    "Class Tracker's pool-recalibrated composites",
+    RollupClass.POOL_RECALIBRATED,
+    "ws82",
+    "bpm",
+)
 # **Known, flagged conflict -- not resolved here (T8b / #729 scope discipline,
 # same conflict raised in `_blend_leader_values`).** ``usg_pct``/``ast_pct``/
 # ``trb_pct``/``tov_pct`` are declared ``RollupClass.RECOMBINABLE`` in the
@@ -1535,9 +1539,13 @@ assert rollup_class_matches("bpm", RollupClass.POOL_RECALIBRATED)
 # retain); ``tov_pct`` only needs ``tov``/``fga``/``fta`` -- already summed a
 # few lines below for the box-family FG%/3P%/FT% -- so it could be recombined
 # the same way and currently isn't.
-assert all(
-    rollup_class_matches(k, RollupClass.RECOMBINABLE)
-    for k in ("usg_pct", "ast_pct", "trb_pct", "tov_pct")
+require_rollup_class(
+    "Class Tracker's minute-weighted recombinables",
+    RollupClass.RECOMBINABLE,
+    "usg_pct",
+    "ast_pct",
+    "trb_pct",
+    "tov_pct",
 )
 
 

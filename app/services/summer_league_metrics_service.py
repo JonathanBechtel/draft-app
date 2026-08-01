@@ -42,7 +42,7 @@ from app.services.stats.formulas import (
     tov_pct_line,
     ts_pct_line,
 )
-from app.services.stats.registry import RollupClass, rollup_class_matches
+from app.services.stats.registry import RollupClass, require_rollup_class
 from app.services.summer_league.capabilities import row_provides, rows_provide
 
 # Minimum total minutes in a competition before its rate composites are
@@ -226,18 +226,18 @@ def _pooled_ts(seasons: list[PlayerMetricSeason]) -> Optional[float]:
 # and ``per``/``obpm``/``dbpm``, aren't registered separately -- T7 scoped the
 # registry to the metrics T4-T6 actually consolidated).
 _CAREER_SUMMED_KEYS: tuple[str, ...] = ("ws", "vorp")
-assert all(
-    rollup_class_matches(k, RollupClass.ADDITIVE_SHARE) for k in _CAREER_SUMMED_KEYS
-), "_career's summed keys must stay registry-declared additive_share"
+require_rollup_class(
+    "_career's summed keys", RollupClass.ADDITIVE_SHARE, *_CAREER_SUMMED_KEYS
+)
 
 # ``ftr``/``tov_pct``/``fg3ar`` are recomputed from this player's own summed box
 # volume (fga/fta/fg3a/tov -- all season-level columns), matching the registry's
 # ``recombinable`` contract exactly, unlike the minute-weighted approximations
 # below.
 _CAREER_RECOMBINED_KEYS: tuple[str, ...] = ("ftr", "tov_pct", "fg3ar")
-assert all(
-    rollup_class_matches(k, RollupClass.RECOMBINABLE) for k in _CAREER_RECOMBINED_KEYS
-), "_career's box-recombined keys must stay registry-declared recombinable"
+require_rollup_class(
+    "_career's box-recombined keys", RollupClass.RECOMBINABLE, *_CAREER_RECOMBINED_KEYS
+)
 
 # ``ws82_avg``/``vorp82_avg`` are declared ``pool_recalibrated`` in the registry
 # ("must be recomputed against the pool context ... never averaged") but this
@@ -247,8 +247,9 @@ assert all(
 # never a recalibrated headline") -- not a silent re-derivation of the taxonomy,
 # so it is flagged here rather than resolved (T8b / #729 scope discipline; see
 # the sibling conflict in :func:`_blend_leader_values`).
-assert rollup_class_matches("ws82", RollupClass.POOL_RECALIBRATED)
-assert rollup_class_matches("vorp82", RollupClass.POOL_RECALIBRATED)
+require_rollup_class(
+    "_career's ws82/vorp82 averages", RollupClass.POOL_RECALIBRATED, "ws82", "vorp82"
+)
 
 
 def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
@@ -720,8 +721,9 @@ async def _competition_has_rows(db: AsyncSession, year: int, venue_slug: str) ->
 _ADV_BLEND_SUM_COLS: tuple[str, ...] = ("ows", "dws", "ws", "vorp")
 # T8b (#729): the registry's only additive_share entries are ws/vorp (ows/dws are
 # their unregistered components) -- read, not re-derived.
-assert rollup_class_matches("ws", RollupClass.ADDITIVE_SHARE)
-assert rollup_class_matches("vorp", RollupClass.ADDITIVE_SHARE)
+require_rollup_class(
+    "_blend_leader_values' summed cols", RollupClass.ADDITIVE_SHARE, "ws", "vorp"
+)
 
 _ADV_BLEND_RATE_COLS: tuple[str, ...] = (
     "per",
@@ -742,9 +744,13 @@ _ADV_BLEND_RATE_COLS: tuple[str, ...] = (
 # ``ortg``/``drtg``/``bpm`` are registry pool_recalibrated composites; minute-
 # weighting them here is the same documented cross-pool blend approximation as
 # ws82/vorp82 above -- consistent with the registry's class, not a re-derivation.
-assert rollup_class_matches("ortg", RollupClass.POOL_RECALIBRATED)
-assert rollup_class_matches("drtg", RollupClass.POOL_RECALIBRATED)
-assert rollup_class_matches("bpm", RollupClass.POOL_RECALIBRATED)
+require_rollup_class(
+    "_blend_leader_values' pool-recalibrated composites",
+    RollupClass.POOL_RECALIBRATED,
+    "ortg",
+    "drtg",
+    "bpm",
+)
 # **Known, flagged conflict -- not resolved here (T8b / #729 scope discipline).**
 # ``usg_pct``/``orb_pct``/``drb_pct``/``trb_pct``/``ast_pct``/``stl_pct``/
 # ``blk_pct``/``tov_pct`` are all declared ``RollupClass.RECOMBINABLE`` in the
@@ -758,18 +764,17 @@ assert rollup_class_matches("bpm", RollupClass.POOL_RECALIBRATED)
 # deliberate prior decision (career TOV% pooling is minute-weighted), and this
 # ticket adopts the registry classification without resolving the conflict it
 # surfaces; see the PR/report for the raised discrepancy.
-assert all(
-    rollup_class_matches(k, RollupClass.RECOMBINABLE)
-    for k in (
-        "usg_pct",
-        "orb_pct",
-        "drb_pct",
-        "trb_pct",
-        "ast_pct",
-        "stl_pct",
-        "blk_pct",
-        "tov_pct",
-    )
+require_rollup_class(
+    "_blend_leader_values' minute-weighted recombinables",
+    RollupClass.RECOMBINABLE,
+    "usg_pct",
+    "orb_pct",
+    "drb_pct",
+    "trb_pct",
+    "ast_pct",
+    "stl_pct",
+    "blk_pct",
+    "tov_pct",
 )
 
 

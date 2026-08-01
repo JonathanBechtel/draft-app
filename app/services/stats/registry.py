@@ -54,7 +54,7 @@ and for why a later agent's confinement-rule allowlist (T9 / #730) should treat
 exemption rather than an undeclared duplicate.
 """
 
-# discipline: file-size Phase 2 metric catalog; decomposition is tracked outside #745
+# discipline: file-size declarative one-entry-per-metric catalog (T7 #724); per-metric adjacency of Python and SQL forms is the design, splitting recreates the drift T6 removed
 
 from __future__ import annotations
 
@@ -1172,6 +1172,33 @@ def rollup_class_matches(key: str, *expected: RollupClass) -> bool:
     """
     entry = METRICS_BY_KEY.get(key)
     return entry is not None and entry.rollup_class in expected
+
+
+def require_rollup_class(site: str, expected: RollupClass, *keys: str) -> None:
+    """Import-time adoption guard: raise unless every key is declared ``expected``.
+
+    The T8b (#729) adoption sites originally cross-checked their hand-written
+    key tuples with bare module-level ``assert rollup_class_matches(...)``
+    statements. ``python -O`` / ``PYTHONOPTIMIZE`` strips ``assert`` entirely,
+    which would dissolve the adoption without a trace, so those sites call this
+    instead: the same import-time failure on a reclassified or removed registry
+    entry, but one the interpreter cannot optimize away.
+
+    Args:
+        site: Short human-readable name of the calling site, used in the error.
+        expected: The rollup class every key must be declared under.
+        *keys: Registry metric keys to check.
+
+    Raises:
+        LookupError: If any key is missing from the registry or declared under
+            a different ``rollup_class``.
+    """
+    for key in keys:
+        if not rollup_class_matches(key, expected):
+            raise LookupError(
+                f"{site}: {key!r} must be declared {expected.value!r} in "
+                "app.services.stats.registry (entry missing or reclassified)"
+            )
 
 
 @dataclass(frozen=True)

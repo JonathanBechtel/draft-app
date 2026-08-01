@@ -40,7 +40,6 @@ from app.schemas.summer_league import (
     SummerLeagueTeamGameLog,
 )
 from app.services.player_mention_service import _normalized_name_key
-from app.services.summer_league.capabilities import pool_provides
 from app.services.summer_league.nba_stats_client import (
     NBAStatsResultSet,
     extract_result_sets,
@@ -696,32 +695,6 @@ async def normalize_player_game_logs(
         source_players_upserted=len(source_player_ids),
         player_game_logs_upserted=upserted_logs,
         player_game_logs_skipped=skipped_logs,
-    )
-
-
-def competition_capability_provides(
-    competition: SummerLeagueCompetition, *, adv_eligible: bool = False
-) -> frozenset[str]:
-    """The T8 capability declaration for one competition (#728).
-
-    Turns the availability flags this module owns and sets --
-    ``competition.pbp_available`` (:func:`normalize_pbp_events`) and
-    ``competition.shotchart_available`` (:func:`normalize_shot_events`) -- into the
-    canonical ``provides`` set :mod:`app.services.stats.capabilities` derives
-    computability from, instead of leaving each caller to re-check the flags
-    individually as ad-hoc gates. ``adv_eligible`` lives on
-    ``SummerLeagueMetricContext``/``SummerLeaguePlayerSeason`` (owned by
-    :mod:`app.services.summer_league.metrics`, not this module), so a caller that has
-    already resolved it for this competition's pool passes it through; callers that
-    have not get the conservative default of ``False``.
-
-    See :func:`app.services.summer_league.capabilities.pool_provides` for the actual
-    flag-to-token mapping -- this is a thin, competition-shaped wrapper over it.
-    """
-    return pool_provides(
-        pbp_available=bool(competition.pbp_available),
-        shotchart_available=bool(competition.shotchart_available),
-        adv_eligible=adv_eligible,
     )
 
 

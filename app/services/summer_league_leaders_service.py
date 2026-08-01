@@ -24,7 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.services.stats.formulas import efg_pct_line, ts_pct_line
-from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeaguePlayerGameLog,
@@ -57,8 +56,6 @@ GATE_LADDER: tuple[tuple[int, int], ...] = (
 # and the ladder keeps relaxing (stopping at the floor rung regardless). A
 # board smaller than this reads as broken/unsatisfying rather than exclusive.
 TARGET_BOARD_ROWS = 10
-
-_MINUTES_PER_GAME = MINUTES_PER_GAME
 
 MODES = ("totals", "per_game", "per_36", "per_100", "advanced")
 MODE_LABELS = {

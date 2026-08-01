@@ -34,6 +34,7 @@ from app.services.stats.registry import (
     METRICS_BY_KEY,
     RollupClass,
     get_metric,
+    require_rollup_class,
     rollup_class_matches,
 )
 from app.services.summer_league_explorer_service import rollup_recombinable
@@ -69,6 +70,27 @@ def test_rollup_class_matches_false_for_an_undeclared_key() -> None:
     """A key with no registry entry never matches -- not an error, just False."""
     assert rollup_class_matches("fg_pct", RollupClass.RECOMBINABLE) is False
     assert rollup_class_matches("not_a_real_metric", RollupClass.RECOMBINABLE) is False
+
+
+def test_require_rollup_class_passes_for_declared_keys_in_the_expected_class() -> None:
+    """The raise-based guard is silent when every key matches its declaration."""
+    require_rollup_class("test site", RollupClass.RECOMBINABLE, "ts_pct", "efg_pct")
+
+
+def test_require_rollup_class_raises_for_a_reclassified_or_undeclared_key() -> None:
+    """The guard raises LookupError naming the site and the offending key.
+
+    This is the ``python -O`` hardening: the adoption sites used bare
+    module-level ``assert`` statements, which ``-O`` strips -- dissolving the
+    registry cross-check without a trace. ``require_rollup_class`` raises
+    unconditionally, so the guard survives any interpreter mode.
+    """
+    with pytest.raises(LookupError, match=r"test site: 'ws82'"):
+        require_rollup_class("test site", RollupClass.RECOMBINABLE, "ts_pct", "ws82")
+    with pytest.raises(LookupError, match=r"'not_a_real_metric'"):
+        require_rollup_class(
+            "test site", RollupClass.RECOMBINABLE, "not_a_real_metric"
+        )
 
 
 def test_rollup_class_matches_accepts_multiple_expected_classes() -> None:
