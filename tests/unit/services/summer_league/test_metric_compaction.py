@@ -11,6 +11,7 @@ import pytest
 from app.cli import summer_league_metrics_compact
 from app.schemas.summer_league_metrics import SummerLeagueMetricContext
 from app.services.summer_league import metric_compaction
+from app.services.summer_league.write_lock import SummerLeagueWriterLockTimeout
 
 
 def test_closed_day_cutoff_normalizes_aware_clock_to_utc() -> None:
@@ -47,7 +48,9 @@ async def test_compaction_acquires_lock_and_compacts_both_projection_tables(
     """One run serializes and compacts contexts plus player-season rows."""
     lock = AsyncMock()
     delete_rows = AsyncMock(side_effect=[2, 5])
-    monkeypatch.setattr(metric_compaction, "acquire_summer_league_writer_lock", lock)
+    monkeypatch.setattr(
+        metric_compaction, "acquire_summer_league_writer_lock_bounded", lock
+    )
     monkeypatch.setattr(
         metric_compaction,
         "_delete_superseded_closed_day_rows",
@@ -63,6 +66,28 @@ async def test_compaction_acquires_lock_and_compacts_both_projection_tables(
     assert summary.season_rows_deleted == 5
     lock.assert_awaited_once()
     assert delete_rows.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_compaction_uses_the_configured_bounded_lock_wait(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compaction forwards its explicit wait bound to the shared lock helper."""
+    db = AsyncMock()
+    lock = AsyncMock()
+    delete_rows = AsyncMock(side_effect=[0, 0])
+    monkeypatch.setattr(
+        metric_compaction, "acquire_summer_league_writer_lock_bounded", lock
+    )
+    monkeypatch.setattr(
+        metric_compaction, "_delete_superseded_closed_day_rows", delete_rows
+    )
+    await metric_compaction.compact_metric_versions(
+        db,
+        now=datetime(2026, 7, 8, tzinfo=timezone.utc),
+        max_wait_seconds=2.5,
+    )
+    lock.assert_awaited_once_with(db, max_wait_seconds=2.5)
 
 
 @pytest.mark.asyncio
@@ -102,3 +127,38 @@ async def test_cli_runs_compaction_in_a_transaction_and_disposes_engine(
     compact.assert_awaited_once_with(database)
     dispose.assert_awaited_once()
     assert "2 contexts, 3 player-seasons" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_cli_reports_a_lock_contended_run_as_a_clean_skip(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A busy writer lock exits successfully and tells cron to retry tomorrow."""
+    database = AsyncMock()
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = database
+    transaction_context = AsyncMock()
+    database.begin = MagicMock(return_value=transaction_context)
+    compact = AsyncMock(
+        side_effect=SummerLeagueWriterLockTimeout("Timed out after 30.0s")
+    )
+    dispose = AsyncMock()
+    monkeypatch.setattr(
+        summer_league_metrics_compact, "SessionLocal", lambda: session_context
+    )
+    monkeypatch.setattr(
+        summer_league_metrics_compact, "compact_metric_versions", compact
+    )
+    monkeypatch.setattr(
+        summer_league_metrics_compact,
+        "engine",
+        SimpleNamespace(dispose=dispose),
+    )
+
+    await summer_league_metrics_compact.main()
+
+    output = capsys.readouterr().out
+    assert "Skipped Summer League metric-version compaction" in output
+    assert "will retry tomorrow" in output
+    dispose.assert_awaited_once()

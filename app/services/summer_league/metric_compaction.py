@@ -28,7 +28,11 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
-from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
+from app.services.summer_league.write_lock import (
+    acquire_summer_league_writer_lock_bounded,
+)
+
+DEFAULT_METRIC_COMPACTION_LOCK_MAX_WAIT_SECONDS = 30.0
 
 
 @dataclass(frozen=True)
@@ -100,6 +104,7 @@ async def compact_metric_versions(
     db: AsyncSession,
     *,
     now: datetime | None = None,
+    max_wait_seconds: float = DEFAULT_METRIC_COMPACTION_LOCK_MAX_WAIT_SECONDS,
 ) -> MetricCompactionSummary:
     """Compact closed-day metric versions while preserving published closes/candidates.
 
@@ -118,12 +123,15 @@ async def compact_metric_versions(
     Args:
         db: Active database session.
         now: Optional clock value, primarily for deterministic backfills/tests.
+        max_wait_seconds: Maximum time to wait for the shared writer lock.
 
     Returns:
         Counts of deleted context and player-season rows plus the cutoff.
     """
     cutoff = _closed_day_cutoff(now)
-    await acquire_summer_league_writer_lock(db)
+    await acquire_summer_league_writer_lock_bounded(
+        db, max_wait_seconds=max_wait_seconds
+    )
     context_rows_deleted = await _delete_superseded_closed_day_rows(
         db,
         model=SummerLeagueMetricContext,

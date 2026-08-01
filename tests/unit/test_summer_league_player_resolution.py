@@ -17,6 +17,7 @@ from app.schemas.summer_league import (
 from app.services.summer_league import player_resolution as service
 from app.services.summer_league.player_resolution import (
     SummerLeagueResolutionCandidate,
+    SummerLeagueResolutionPlan,
     SummerLeagueResolutionResult,
     SummerLeagueCandidateSearchError,
     build_resolution_report,
@@ -27,6 +28,7 @@ from app.services.summer_league.player_resolution import (
     _find_external_id_player,
     _has_serious_candidate,
     _load_source_players,
+    prepare_summer_league_player_resolutions,
     _serialize_search_candidates,
     _backfill_player_game_logs,
     ensure_pending_resolution_review,
@@ -139,6 +141,147 @@ def test_normalize_player_name_folds_diacritics_and_suffixes() -> None:
     assert normalize_player_name(" José   García Jr. ") == "jose garcia"
     assert normalize_player_name("P.J. Washington") == "pj washington"
     assert normalize_player_name("Jean-Luc O’Neal III") == "jean luc oneal"
+
+
+@pytest.mark.parametrize(
+    ("source_name", "candidate_name", "expected"),
+    [
+        ("Gary Payton II", "Gary Payton", True),
+        ("Gary Payton II", "Gary Payton II", False),
+        ("José García", "Jose Garcia", False),
+        ("Gary Payton Jr.", "Gary Payton Sr.", True),
+    ],
+)
+def test_suffix_variant_planning_distinguishes_namesakes(
+    source_name: str,
+    candidate_name: str,
+    expected: bool,
+) -> None:
+    """Suffix differences are ambiguous while punctuation and matching suffixes are safe."""
+    assert service._suffixes_differ(source_name, candidate_name) is expected
+
+
+def test_suffix_mismatch_variant_match_becomes_review_candidate() -> None:
+    """A unique suffix mismatch produces a review plan instead of an exact link."""
+    plan = service._plan_from_variant_matches(
+        source_player_id=5,
+        source_player_name="Gary Payton II",
+        matches=service.IdentityVariantMatches(
+            display_names={7: "Gary Payton"},
+            alias_names={},
+        ),
+    )
+
+    assert plan is not None
+    assert plan.kind == "VECTOR_CANDIDATE"
+    assert plan.player_id is None
+    assert plan.candidates[0].player_id == 7
+    assert plan.candidates[0].method == "NORMALIZED_SUFFIX_MISMATCH"
+
+
+def test_exact_alias_suffix_evidence_preserves_auto_resolution() -> None:
+    """An exact alias match remains trusted despite a canonical suffix difference."""
+    plan = service._plan_from_variant_matches(
+        source_player_id=5,
+        source_player_name="Walter Clayton",
+        matches=service.IdentityVariantMatches(
+            display_names={},
+            alias_names={7: "Walter Clayton Jr."},
+            alias_match_names={7: ("Walter Clayton",)},
+        ),
+    )
+
+    assert plan is not None
+    assert plan.kind == "ALIAS"
+    assert plan.player_id == 7
+
+
+def test_variant_collision_becomes_candidate_review_plan() -> None:
+    """Multiple normalized matches produce review candidates instead of a guess."""
+    plan = service._plan_from_variant_matches(
+        source_player_id=5,
+        source_player_name="Gary Payton",
+        matches=service.IdentityVariantMatches(
+            display_names={7: "Gary Payton", 8: "Gary Payton II"},
+            alias_names={},
+        ),
+    )
+
+    assert plan is not None
+    assert plan.kind == "VECTOR_CANDIDATE"
+    assert [candidate.player_id for candidate in plan.candidates] == [7, 8]
+    assert all(
+        candidate.method == "NORMALIZED_VARIANT_COLLISION"
+        for candidate in plan.candidates
+    )
+
+
+def test_variant_miss_has_no_resolution_plan() -> None:
+    """A normalized lookup miss keeps the source player unresolved."""
+    assert (
+        service._plan_from_variant_matches(
+            source_player_id=5,
+            source_player_name="No Match",
+            matches=service.IdentityVariantMatches(display_names={}, alias_names={}),
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_prepared_variant_lookup_reuses_batch_index() -> None:
+    """Prepared resolution reads the caller's identity index without querying again."""
+    index = service.IdentityVariantIndex()
+    index.add_display_name(7, "José García")
+
+    matches = await service._find_prepared_variant_matches(
+        _FakeDb(), "Jose Garcia", index
+    )
+
+    assert matches.player_ids == frozenset({7})
+
+
+@pytest.mark.asyncio
+async def test_prepare_batch_builds_one_identity_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch preparation passes one cached identity index to each source row."""
+    source_players = [_source(name="First Prospect"), _source(person_id="1640002")]
+    index = service.IdentityVariantIndex()
+    plan = SummerLeagueResolutionPlan(source_player_id=5, kind="EXACT", player_id=7)
+    seen_indexes: list[service.IdentityVariantIndex | None] = []
+
+    async def fake_load(
+        db: Any, *, year: int | None, league_id: str | None
+    ) -> list[SummerLeagueSourcePlayer]:
+        del db, year, league_id
+        return source_players
+
+    async def fake_build(db: Any) -> service.IdentityVariantIndex:
+        del db
+        return index
+
+    async def fake_prepare(
+        db: Any,
+        source_player: SummerLeagueSourcePlayer,
+        *,
+        before_candidate_search: Any = None,
+        identity_index: service.IdentityVariantIndex | None = None,
+    ) -> SummerLeagueResolutionPlan:
+        del db, source_player, before_candidate_search
+        seen_indexes.append(identity_index)
+        return plan
+
+    monkeypatch.setattr(service, "_load_source_players", fake_load)
+    monkeypatch.setattr(service, "build_variant_identity_index", fake_build)
+    monkeypatch.setattr(service, "prepare_source_player_resolution", fake_prepare)
+
+    pairs = await prepare_summer_league_player_resolutions(
+        _FakeDb(), year=2026, league_id="15"
+    )
+
+    assert pairs == [(source_players[0], plan), (source_players[1], plan)]
+    assert seen_indexes == [index, index]
 
 
 def test_candidate_payloads_round_scores_for_json_storage() -> None:
@@ -460,8 +603,10 @@ async def test_stub_creation_rechecks_variant_matches_at_write_time(
         create_stub=True,
     )
 
-    assert result.player_id == 77
-    assert result.status == SummerLeagueResolutionStatus.EXACT
+    assert result.player_id is None
+    assert result.status == SummerLeagueResolutionStatus.VECTOR_CANDIDATE
+    assert result.candidates[0].player_id == 77
+    assert result.candidates[0].method == "NORMALIZED_SUFFIX_MISMATCH"
     assert result.stub_created is False
 
 

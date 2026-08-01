@@ -4,7 +4,7 @@ These cover the regression that let a combine import create duplicate player
 records for prospects that already existed under a suffix/punctuation variant
 (e.g. "Darius Acuff Jr." vs "Darius Acuff"). The matcher must:
 
-- match exact and suffix-/punctuation-variant names to the existing player,
+- match exact and punctuation-variant names to the existing player,
 - flag genuinely same-name collisions as ambiguous (so callers skip rather than
   mint a duplicate),
 - report a clean miss for novel names (so callers may create).
@@ -37,7 +37,9 @@ def _lookup(
     return _lookup_from_rows(players, aliases or [])
 
 
-_NO_DB = cast(AsyncSession, None)  # find_existing_player never touches db when a lookup is passed
+_NO_DB = cast(
+    AsyncSession, None
+)  # find_existing_player never touches db when a lookup is passed
 
 
 class TestFindExistingPlayer:
@@ -52,14 +54,14 @@ class TestFindExistingPlayer:
         assert match is not None and match.player_id == 5384
 
     @pytest.mark.asyncio
-    async def test_suffix_less_variant_matches_via_relaxed(self) -> None:
-        """A suffix-less mention matches the canonical 'II'/'Jr.' record."""
+    async def test_suffix_less_variant_is_reviewable(self) -> None:
+        """A suffix-less mention must not guess at a namesake."""
         lookup = _lookup([(20, "Dereck Lively II")])
         match, ambiguous = await find_existing_player(
             _NO_DB, "Dereck Lively", lookup=lookup
         )
-        assert ambiguous is False
-        assert match is not None and match.player_id == 20
+        assert ambiguous is True
+        assert match is None
 
     @pytest.mark.asyncio
     async def test_punctuation_variant_matches(self) -> None:
@@ -113,6 +115,7 @@ class TestFindExistingPlayer:
         )
         assert ambiguous is False
         assert match is not None and match.player_id == 42
+
 
 class TestExternalIdConflict:
     """The id-conflict guard that keeps distinct identities from merging."""

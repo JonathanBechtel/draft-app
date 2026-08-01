@@ -212,6 +212,9 @@ async def run_fast_tick(
     lock = ctx.lock
     telemetry = ctx.telemetry
 
+    if ctx.session_configurator is not None:
+        await ctx.session_configurator(db)
+
     await lock.acquire(db)
     started_at = ctx.started_at
 
@@ -221,6 +224,8 @@ async def run_fast_tick(
         A no-op under :data:`NO_WRITER_LOCK` -- the fast class's defining
         property is that nothing here can queue behind the backbone.
         """
+        if ctx.session_configurator is not None:
+            await ctx.session_configurator(db)
         await lock.acquire(db, step="writer_lock_reacquire")
 
     before_upsert = reacquire_writer_lock if ctx.releases_transactions else None
