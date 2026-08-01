@@ -506,6 +506,7 @@ async def test_metric_publish_stamps_source_watermark_and_hides_candidates(
     )
     assert staged_contexts and staged_seasons
     assert all(row.is_current is False for row in [*staged_contexts, *staged_seasons])
+    await db_session.commit()
 
     async with db_session.begin():
         await publish_metric_version(
