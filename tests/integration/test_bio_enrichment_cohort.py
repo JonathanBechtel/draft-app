@@ -7,6 +7,7 @@ from datetime import date
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.schemas.player_bio_snapshots import PlayerBioSnapshot
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.player_status import PlayerStatus
 from app.schemas.summer_league import (
@@ -290,3 +291,65 @@ async def test_bio_targets_force_changes_and_retry_failed_enrichment(
 
     assert targets.slugs == {"changed01", "failed01"}
     assert "already01" not in targets.slugs
+
+
+@pytest.mark.asyncio
+async def test_bio_targets_retry_ignores_snapshot_from_a_non_bbr_source(
+    db_session: AsyncSession,
+) -> None:
+    """A ``PlayerBioSnapshot`` from a different source does not count as a BBR success.
+
+    #719 item 7: the "successfully enriched" check used to count any
+    ``PlayerBioSnapshot`` row for the player, regardless of ``source``. The
+    BBR ingest is the only writer today, so this was harmless in practice --
+    but a second bio-source writer would have silently looked like a
+    completed BBR enrichment and stopped this player from ever being
+    retried. This player has a non-BBR snapshot and no ``PlayerStatus`` BBR
+    success row, so it must still surface as a retry target.
+    """
+    other_source_player = make_player(
+        "Other", "Source", school="Gonzaga"
+    )
+    db_session.add(other_source_player)
+    await db_session.flush()
+    assert other_source_player.id is not None
+
+    db_session.add_all(
+        [
+            PlayerExternalId(
+                player_id=other_source_player.id,
+                system="bbr",
+                external_id="othersrc1",
+            ),
+            PlayerBioSnapshot(
+                player_id=other_source_player.id,
+                source="some_other_source",
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    comp, team = await _seed_competition(
+        db_session, year=2025, league_id="16", venue_slug="utah"
+    )
+    assert comp.id is not None
+    assert team.id is not None
+    await _participate(
+        db_session,
+        comp_id=comp.id,
+        team_entry_id=team.id,
+        name="Other Source",
+        person_id="bio-8",
+        canonical_player_id=other_source_player.id,
+    )
+    await db_session.commit()
+
+    targets = await select_bio_enrichment_targets(
+        db_session,
+        year=2025,
+        league_id="16",
+        player_ids={other_source_player.id},
+        retry_unenriched=True,
+    )
+
+    assert targets.slugs == {"othersrc1"}
