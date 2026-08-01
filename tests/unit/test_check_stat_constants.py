@@ -1,9 +1,9 @@
 """Tests for the stat-constant confinement checker (T9, #730).
 
 Phase 2's closing ratchet: designated stat coefficients (the TS%/TOV% free-throw
-term 0.44, and the Hollinger Game Score weights) may appear only under
-`app/services/stats/`. Without a mechanical guard, "the eight copies regrow the
-next time someone needs a formula in a query"
+term 0.44, and the Hollinger Game Score weights), registered SQL text, and
+registered SQLAlchemy expression shapes may appear only under `app/services/stats/`.
+Without a mechanical guard, "the eight copies regrow the next time someone needs a formula in a query"
 (docs/plans/programmatic-code-discipline.md §1.3). These tests pin: both rules
 firing on the shapes that actually caused the duplication, both rules staying
 quiet on the false-positive shapes verified against this codebase while building
@@ -341,7 +341,8 @@ class TestStringPatternRule:
 
 
 class TestRegistryFormulaReappearanceRule:
-    """Rule 3 (R4, T10/#741): exact reappearance of a registry-declared metric's
+    """Rule 3 (R4, T10/#741): exact reappearance of a registry-declared metric's.
+
     SQL text, whether or not it carries a designated coefficient.
 
     The blocker #730 declined a generic ``SUM(<box field>)`` sweep over: once
@@ -376,23 +377,34 @@ class TestRegistryFormulaReappearanceRule:
         assert found[0].code == "R4"
         assert "ftr_sql_text" in found[0].message
 
-    def test_efg_pct_text_interpolated_via_box_calls_is_not_flagged(self):
-        """``box(...)`` calls are interpolations, not literal text: the joined
-        literal segments (``" + 0.5 * "``, ``") / NULLIF("``, ...) never contain a
-        whole registered formula string on their own. This is the *correct*
-        box-callable shape (matching efg_pct_sql_text itself), not a duplicate --
-        rule 3 only fires on a fixed-field-name literal like T10's ten sites had."""
+    def test_efg_pct_text_interpolated_via_box_calls_is_flagged(self):
+        """Formatted ``box(...)`` columns are retained for R4 comparison."""
         found = _violations(
             """
             def efg_sql(box):
                 return f"({box('fgm')} + 0.5 * {box('fg3m')}) / NULLIF({box('fga')}, 0)"
             """
         )
-        assert found == []
+        assert len(found) == 1
+        assert found[0].code == "R4"
+
+    def test_ftr_text_interpolated_via_box_calls_is_flagged(self):
+        """Coefficient-free f-string formulas are checked too."""
+        found = _violations(
+            """
+            def ftr_sql(box):
+                return f"{box('fta')} * 1.0 / NULLIF({box('fga')}, 0)"
+            """
+        )
+        assert len(found) == 1
+        assert found[0].code == "R4"
 
     def test_fg_pct_text_is_never_flagged(self):
-        """fg_pct is permanently out of scope (#726) -- no registered *_sql_text
-        function emits its text, so no allowlist entry is needed to keep it quiet."""
+        """fg_pct is permanently out of scope (#726).
+
+        No registered ``*_sql_text`` function emits its text, so no allowlist entry is
+        needed to keep it quiet.
+        """
         found = _violations(
             """
             _pct_exprs = {
@@ -403,8 +415,10 @@ class TestRegistryFormulaReappearanceRule:
         assert found == []
 
     def test_calling_the_registry_function_is_not_flagged(self):
-        """The correct call-site shape -- calling fg3ar_sql_text -- is code, not a
-        string literal duplicating its output, so rule 3 does not see it at all."""
+        """The correct call-site shape is code, not a duplicate string literal.
+
+        Calling ``fg3ar_sql_text`` means rule 3 does not see the emitted output at all.
+        """
         found = _violations(
             """
             from app.services.stats.registry import fg3ar_sql_text
@@ -437,10 +451,77 @@ class TestRegistryFormulaReappearanceRule:
         assert found == []
 
     def test_known_registry_formula_texts_cover_the_t10_metrics(self):
-        """Sanity-checks the registry-introspection helper actually discovers the
-        three T10 functions (plus the pre-existing ones), not just an empty list."""
+        """Sanity-check registry introspection discovers the three T10 functions.
+
+        The pre-existing functions must be discovered too, rather than returning an
+        empty list.
+        """
         names = {name for name, _grain, _text in checker._known_registry_formula_texts()}
         assert {"efg_pct_sql_text", "fg3ar_sql_text", "ftr_sql_text"} <= names
+
+
+class TestRegistryExpressionReappearanceRule:
+    """Rule 4 (R5, #745): registry SQLAlchemy arithmetic cannot be retyped.
+
+    The arithmetic cannot be retyped outside the engine package.
+
+    The test uses ``astd_pct`` because it has no designated numeric coefficient;
+    that proves the new rule is comparing an introspected arithmetic shape rather
+    than merely repeating R1c's eFG% constant check.
+    """
+
+    def test_astd_expression_duplicate_is_flagged(self):
+        """A hand-written ORM expression matching the registry form goes red."""
+        found = _violations(
+            """
+            def having(ps):
+                return ps.ast_fgm + ps.unast_fgm
+            """
+        )
+        assert len(found) == 1
+        assert found[0].code == "R5"
+        assert "astd_pct_denom_expr" in found[0].message
+
+    def test_aggregate_column_wrappers_match_the_same_registry_shape(self):
+        """Row and ``func.sum`` aggregate leaves share one registry declaration."""
+        found = _violations(
+            """
+            def having(ps, func):
+                return func.sum(ps.ast_fgm) + func.sum(ps.unast_fgm)
+            """
+        )
+        assert len(found) == 1
+        assert found[0].code == "R5"
+
+    def test_unregistered_shooting_split_shape_is_not_flagged(self):
+        """fg_pct remains outside the registry-derived expression family."""
+        found = _violations(
+            """
+            def shooting_split(ps, func):
+                return func.sum(ps.fgm) / func.nullif(func.sum(ps.fga), 0)
+            """
+        )
+        assert found == []
+
+    def test_expression_waiver_suppresses_a_registry_shape(self):
+        found = _violations(
+            """
+            def having(ps):
+                # discipline: stat-constants legacy expression, see #746
+                return ps.ast_fgm + ps.unast_fgm
+            """
+        )
+        assert found == []
+
+    def test_expression_functions_are_discovered_from_the_registry(self):
+        """The R5 surface is introspected rather than hand-maintained."""
+        names = set(checker._registry_expression_functions())
+        assert names == {
+            "astd_pct_denom_expr",
+            "efg_pct_num_expr",
+            "tov_pct_denom_expr",
+            "ts_pct_denom_expr",
+        }
 
 
 class TestPackageScoping:

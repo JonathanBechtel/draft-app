@@ -12,6 +12,8 @@ A comprehensive, sortable leaderboard across five display modes:
 Every visible column is sortable.
 """
 
+# discipline: file-size Phase 2 formula wiring; no new scope in ticket #745
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

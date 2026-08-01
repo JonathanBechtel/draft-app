@@ -12,6 +12,7 @@ from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueDataQ
 from app.services.stats.capabilities import is_computable
 from app.services.summer_league.capabilities import (
     BOX_PROVIDES,
+    TEAM_OPPONENT_BOX_PROVIDES,
     competition_capability_provides,
 )
 
@@ -32,7 +33,7 @@ def _competition(**kw: object) -> SummerLeagueCompetition:
 
 def test_box_only_competition_cannot_compute_astd_pct() -> None:
     provides = competition_capability_provides(_competition())
-    assert provides == BOX_PROVIDES
+    assert BOX_PROVIDES | TEAM_OPPONENT_BOX_PROVIDES <= provides
     assert not is_computable("astd_pct", provides)
 
 

@@ -52,6 +52,20 @@ The rules
    2 is not a bare SUM() sweep" below for why this is scoped to *registered* metrics'
    exact emitted text rather than a generic aggregate-pattern sweep.
 
+4. **Registry expression-form reappearance (AST, "R5").** An arithmetic expression
+   over ORM columns outside ``app/services/stats/`` whose normalized AST shape
+   matches one emitted by a registry ``*_expr`` function. The registry function is
+   evaluated with a symbolic ``box`` callable, so the rule discovers future
+   expression forms from the registry instead of hand-listing metric names. Row and
+   aggregate wrappers such as ``ps.fga`` and ``func.sum(ps.fga)`` are normalized to
+   the same boxed column; the arithmetic structure and constants are still
+   compared. This catches the SQLAlchemy-expression half of a formula even when it
+   is nested inside a larger filter or sort expression.
+
+   The registry intentionally has no ``*_expr`` forms for ``fg3ar`` or ``ftr``;
+   the audit found inline filter expressions for both in the Explorer, so they are
+   residue for #746 rather than a reason to weaken this registry-derived rule.
+
 Prefer AST over regex, and why
 -------------------------------
 A regex sweep for ``0.44`` finds six hits in this codebase and only one matters --
@@ -573,13 +587,45 @@ def _float_literal_violations(
     )
 
 
+def _joined_str_formatted_value_text(node: ast.AST) -> str:
+    """Render a known f-string column expression as its SQL text equivalent.
+
+    The formula registry's text helpers receive a ``box`` callable, while the
+    usual call sites interpolate ``box("field")`` into an f-string. Keeping the
+    field name in the joined text lets R4 compare those call sites with the
+    registry output instead of silently discarding every formatted expression.
+    Unknown expressions remain visibly symbolic rather than becoming false
+    literal text.
+    """
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Call):
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id in {"box", "getattr"}
+            and len(node.args) >= 1
+            and isinstance(node.args[-1], ast.Constant)
+            and isinstance(node.args[-1].value, str)
+        ):
+            return node.args[-1].value
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "sum"
+            and len(node.args) == 1
+        ):
+            return f"SUM({_joined_str_formatted_value_text(node.args[0])})"
+    return "{" + ast.unparse(node) + "}"
+
+
 def _joined_str_literal_text(node: ast.JoinedStr) -> str:
-    """Concatenate the literal (non-interpolated) segments of an f-string."""
-    return "".join(
-        part.value
-        for part in node.values
-        if isinstance(part, ast.Constant) and isinstance(part.value, str)
-    )
+    """Concatenate literal and symbolic formatted segments of an f-string."""
+    parts: list[str] = []
+    for part in node.values:
+        if isinstance(part, ast.Constant) and isinstance(part.value, str):
+            parts.append(part.value)
+        elif isinstance(part, ast.FormattedValue):
+            parts.append(_joined_str_formatted_value_text(part.value))
+    return "".join(parts)
 
 
 def _joined_str_child_ids(tree: ast.AST) -> set[int]:
@@ -676,6 +722,211 @@ def _known_registry_formula_texts() -> list[tuple[str, str, str]]:
     return texts
 
 
+# Rule 4 (R5, #745) -- the expression counterpart to R4. The registry's
+# ``*_expr`` functions accept a ``box`` callable and return SQLAlchemy arithmetic
+# trees. A symbolic probe lets this checker compare the arithmetic shape without
+# importing a model table or matching SQLAlchemy's rendered SQL text.
+_ExpressionShape = tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class _ExpressionProbe:
+    """Symbolic value used to capture a registry expression's arithmetic shape."""
+
+    shape: _ExpressionShape
+
+    @staticmethod
+    def _shape(value: object) -> _ExpressionShape:
+        if isinstance(value, _ExpressionProbe):
+            return value.shape
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return ("constant", value)
+        raise TypeError(f"unsupported expression probe operand: {value!r}")
+
+    def _binary(self, operator: str, other: object) -> "_ExpressionProbe":
+        left = self.shape
+        right = self._shape(other)
+        if operator in {"add", "mul"}:
+            children = tuple(sorted((left, right), key=repr))
+            return _ExpressionProbe((operator, *children))
+        return _ExpressionProbe((operator, left, right))
+
+    def _reverse_binary(self, operator: str, other: object) -> "_ExpressionProbe":
+        left = self._shape(other)
+        right = self.shape
+        if operator in {"add", "mul"}:
+            children = tuple(sorted((left, right), key=repr))
+            return _ExpressionProbe((operator, *children))
+        return _ExpressionProbe((operator, left, right))
+
+    def __add__(self, other: object) -> "_ExpressionProbe":
+        return self._binary("add", other)
+
+    def __radd__(self, other: object) -> "_ExpressionProbe":
+        return self._reverse_binary("add", other)
+
+    def __sub__(self, other: object) -> "_ExpressionProbe":
+        return self._binary("sub", other)
+
+    def __rsub__(self, other: object) -> "_ExpressionProbe":
+        return self._reverse_binary("sub", other)
+
+    def __mul__(self, other: object) -> "_ExpressionProbe":
+        return self._binary("mul", other)
+
+    def __rmul__(self, other: object) -> "_ExpressionProbe":
+        return self._reverse_binary("mul", other)
+
+    def __truediv__(self, other: object) -> "_ExpressionProbe":
+        return self._binary("div", other)
+
+    def __rtruediv__(self, other: object) -> "_ExpressionProbe":
+        return self._reverse_binary("div", other)
+
+    def __neg__(self) -> "_ExpressionProbe":
+        return _ExpressionProbe(("neg", self.shape))
+
+
+def _registry_expression_functions() -> (
+    dict[str, Callable[[Callable[[str], _ExpressionProbe]], _ExpressionProbe]]
+):
+    """Every ``*_expr`` function declared directly in the registry module."""
+    return {
+        name: fn
+        for name, fn in inspect.getmembers(_stats_registry, inspect.isfunction)
+        if name.endswith("_expr") and fn.__module__ == _stats_registry.__name__
+    }
+
+
+def _known_registry_expression_shapes() -> list[tuple[str, _ExpressionShape]]:
+    """Return registry-derived expression shapes for the R5 AST comparison."""
+    shapes: list[tuple[str, _ExpressionShape]] = []
+    for name, function in sorted(_registry_expression_functions().items()):
+        result = function(lambda field: _ExpressionProbe(("column", field)))
+        if not isinstance(result, _ExpressionProbe):
+            raise TypeError(
+                f"{_stats_registry.__name__}.{name}() did not return an "
+                "arithmetic expression probe"
+            )
+        shapes.append((name, result.shape))
+    return shapes
+
+
+def _func_sum_argument(node: ast.Call) -> ast.AST | None:
+    """Return the operand of the ``func.sum(...)`` ORM aggregate wrapper."""
+    if (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "func"
+        and node.func.attr == "sum"
+        and len(node.args) == 1
+        and not node.keywords
+    ):
+        return node.args[0]
+    return None
+
+
+def _getattr_column_name(node: ast.Call) -> str | None:
+    """Return a literal column name from ``getattr(table, "column")``."""
+    if (
+        isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and len(node.args) == 2
+        and not node.keywords
+        and isinstance(node.args[1], ast.Constant)
+        and isinstance(node.args[1].value, str)
+    ):
+        return node.args[1].value
+    return None
+
+
+def _ast_binary_shape(node: ast.BinOp) -> _ExpressionShape | None:
+    """Normalize a binary arithmetic AST node to the registry probe shape."""
+    operator_names = {
+        ast.Add: "add",
+        ast.Sub: "sub",
+        ast.Mult: "mul",
+        ast.Div: "div",
+    }
+    operator = next(
+        (
+            name
+            for operator_type, name in operator_names.items()
+            if isinstance(node.op, operator_type)
+        ),
+        None,
+    )
+    if operator is None:
+        return None
+    left = _ast_expression_shape(node.left)
+    right = _ast_expression_shape(node.right)
+    if left is None or right is None:
+        return None
+    if operator in {"add", "mul"}:
+        children = tuple(sorted((left, right), key=repr))
+        return (operator, *children)
+    return (operator, left, right)
+
+
+def _ast_expression_shape(node: ast.AST) -> _ExpressionShape | None:
+    """Normalize a SQLAlchemy arithmetic subtree to the registry probe shape.
+
+    ORM attribute access and the ``func.sum``/``getattr`` forms used to box a
+    column at a particular grain are deliberately treated as the same leaf. The
+    rule is still structural: arbitrary calls, names, and SQL functions do not
+    become leaves, so only arithmetic over recognizable ORM columns can match.
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        if isinstance(node.value, bool):
+            return None
+        return ("constant", node.value)
+    if isinstance(node, ast.Attribute):
+        return ("column", node.attr)
+    if isinstance(node, ast.Call):
+        column_name = _getattr_column_name(node)
+        if column_name is not None:
+            return ("column", column_name)
+        sum_argument = _func_sum_argument(node)
+        return _ast_expression_shape(sum_argument) if sum_argument is not None else None
+    if isinstance(node, ast.BinOp):
+        return _ast_binary_shape(node)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+        operand = _ast_expression_shape(node.operand)
+        return ("neg", operand) if operand is not None else None
+    return None
+
+
+def _registry_expression_reappearance_violations(
+    rel: str, tree: ast.AST, parents: dict[ast.AST, ast.AST], lines: list[str]
+) -> list[Violation]:
+    """Rule 4: a registry-declared SQLAlchemy expression retyped outside the engine."""
+    known_shapes = _known_registry_expression_shapes()
+    shape_to_name = {shape: name for name, shape in known_shapes}
+    violations: list[Violation] = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.BinOp, ast.UnaryOp)):
+            continue
+        shape = _ast_expression_shape(node)
+        if shape is None:
+            continue
+        function_name = shape_to_name.get(shape)
+        if function_name is None or _waived(lines, node, parents):
+            continue
+        violations.append(
+            Violation(
+                rel,
+                node.lineno,
+                "R5",
+                f"SQLAlchemy expression duplicates app.services.stats.registry."
+                f"{function_name}() outside {_ENGINE_PACKAGE_PREFIX} -- import and "
+                f"call {function_name} instead of retyping the arithmetic",
+            )
+        )
+
+    return violations
+
+
 def _registry_formula_reappearance_violations(
     rel: str, tree: ast.AST, parents: dict[ast.AST, ast.AST], lines: list[str]
 ) -> list[Violation]:
@@ -730,7 +981,7 @@ def _registry_formula_reappearance_violations(
 
 
 def find_violations(path: Path, source: str) -> list[Violation]:
-    """Return rule-1, rule-2, and rule-3 violations for one file's source text.
+    """Return rule-1, rule-2, rule-3, and rule-4 violations for one file's source text.
 
     ``path`` is reported exactly as given (repo-relative for real files; anything a
     test likes, e.g. ``Path("sample.py")``, for a synthetic source) -- independent of
@@ -747,10 +998,33 @@ def find_violations(path: Path, source: str) -> list[Violation]:
 
     parents = _parent_map(tree)
     lines = source.splitlines()
+    float_violations = _float_literal_violations(rel, tree, parents, lines)
+    float_locations = {
+        (violation.path, violation.lineno) for violation in float_violations
+    }
+    string_violations = _string_pattern_violations(rel, tree, parents, lines)
+    string_locations = {
+        (violation.path, violation.lineno) for violation in string_violations
+    }
+    formula_violations = [
+        violation
+        for violation in _registry_formula_reappearance_violations(
+            rel, tree, parents, lines
+        )
+        if (violation.path, violation.lineno) not in string_locations
+    ]
+    expression_violations = [
+        violation
+        for violation in _registry_expression_reappearance_violations(
+            rel, tree, parents, lines
+        )
+        if (violation.path, violation.lineno) not in float_locations
+    ]
     return (
-        _float_literal_violations(rel, tree, parents, lines)
-        + _string_pattern_violations(rel, tree, parents, lines)
-        + _registry_formula_reappearance_violations(rel, tree, parents, lines)
+        float_violations
+        + string_violations
+        + formula_violations
+        + expression_violations
     )
 
 
@@ -860,7 +1134,7 @@ def _resolve_exemptions(
 
 
 def check(argv_paths: list[str]) -> list[Violation]:
-    """Run all three rules across the target files, apply exemptions, return findings."""
+    """Run all four rules across the target files, apply exemptions, return findings."""
     files = _resolve_target_files(argv_paths)
 
     raw_violations: list[Violation] = []
@@ -870,11 +1144,7 @@ def check(argv_paths: list[str]) -> list[Violation]:
     sites, malformed = _parse_exemption_sites()
     exempted, vacuous = _resolve_exemptions(sites)
 
-    violations = [
-        v
-        for v in raw_violations
-        if not (v.code == "R1" and (v.path, v.lineno) in exempted)
-    ]
+    violations = [v for v in raw_violations if (v.path, v.lineno) not in exempted]
     violations.extend(malformed)
     violations.extend(vacuous)
     return violations
@@ -894,8 +1164,9 @@ def main(argv: list[str] | None = None) -> int:
     for violation in sorted(violations, key=lambda v: (v.path, v.lineno)):
         print(f"  {violation.format()}", file=sys.stderr)
     print(
-        "\nDesignated stat coefficients (0.44, the Game Score weights) -- and any "
-        "metric the registry already declares a *_sql_text form for (R4) -- may "
+        "\nDesignated stat coefficients (0.44, the Game Score weights), any metric "
+        "the registry declares as a *_sql_text form (R4), and any registry "
+        "*_expr arithmetic shape (R5) -- may "
         "appear only under app/services/stats/. Move the formula into that package "
         "(or call the existing registry function) and import it, or -- if this is "
         "genuinely a one-off -- justify it inline:\n"
