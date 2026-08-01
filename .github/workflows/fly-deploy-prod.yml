@@ -423,12 +423,19 @@ jobs:
       # exactly like the other two. This is the closing net for the stop-wait-timeout case
       # above: even if the reconciliation retry also couldn't land the update, this step
       # makes that drift a failed check instead of something a human has to notice later.
+      # news-ingestion-cron is included here (not just the Summer League crons): it is
+      # updated by the same "Update cron machine (if exists)" step above and has the
+      # identical drift failure mode, but that update step is echo-and-continue on a
+      # missing machine ID -- a jq miss or rename there used to skip it with no
+      # backstop at all. It is not optional: unlike the readiness-gated Desk crons,
+      # this machine always exists in prod.
       - name: Verify Summer League cron image digests (post-deploy)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
           python scripts/verify_cron_image_digests.py \
             --app draft-app-prod \
+            --machine news-ingestion-cron \
             --machine summer-league-ingestion-cron \
             --machine summer-league-desk-cron \
             --machine summer-league-roster-cron \
