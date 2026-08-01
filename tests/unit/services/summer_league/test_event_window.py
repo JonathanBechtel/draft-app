@@ -134,6 +134,9 @@ async def test_no_year_set_opens_in_announced_window_next_season(
     Announced window without any code change.
     """
     monkeypatch.delenv("SL_ROSTER_YEAR", raising=False)
+    # A leaked SL_ROSTER_FORCE would satisfy the assertion below via the
+    # bypass branch rather than the window logic actually under test.
+    monkeypatch.delenv("SL_ROSTER_FORCE", raising=False)
 
     async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
         return [_2027_competition()]
@@ -195,3 +198,35 @@ async def test_year_alone_no_longer_bypasses_window(
         now=datetime(2026, 7, 29, tzinfo=timezone.utc),  # type: ignore[arg-type]
         year=2025,
     )
+
+
+@pytest.mark.parametrize("raw", ["0", "false", "FALSE", "no", "off", "OFF", "  ", ""])
+def test_falsy_force_values_do_not_bypass_the_window(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    """``SL_ROSTER_FORCE`` set to a falsy string must read as "not forced".
+
+    Without this, emptying ``_FALSY_ENV_VALUES`` -- which would make
+    ``SL_ROSTER_FORCE=0`` *enable* the bypass, the exact inversion an operator
+    disabling the flag would hit -- passes the whole suite.
+    """
+    monkeypatch.setenv("SL_ROSTER_FORCE", raw)
+
+    assert event_window.has_force_override() is False
+
+
+@pytest.mark.parametrize("raw", ["1", "true", "TRUE", "yes", " 1 "])
+def test_truthy_force_values_do_bypass_the_window(
+    monkeypatch: pytest.MonkeyPatch, raw: str
+) -> None:
+    """The positive control for the falsy set: an affirmative value forces the bypass."""
+    monkeypatch.setenv("SL_ROSTER_FORCE", raw)
+
+    assert event_window.has_force_override() is True
+
+
+def test_unset_force_flag_is_not_an_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An absent ``SL_ROSTER_FORCE`` is the default, non-forcing state."""
+    monkeypatch.delenv("SL_ROSTER_FORCE", raising=False)
+
+    assert event_window.has_force_override() is False

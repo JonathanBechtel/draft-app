@@ -18,6 +18,7 @@ than decoration:
 
 from __future__ import annotations
 
+import subprocess
 from typing import Any
 
 import pytest
@@ -345,3 +346,125 @@ def test_unreachable_flyctl_is_not_reported_as_stale(
 
     assert main(["--app", "draft-app-prod", "--report-only"]) == 0
     assert "flyctl" in capsys.readouterr().err
+
+
+def _stale_fleet_git() -> dict[tuple[str, ...], str]:
+    """Git responses describing a fleet one old commit behind the target ref."""
+    return {
+        ("rev-parse", "origin/main"): "newsha",
+        ("cat-file", "-e", "oldsha^{commit}"): "",
+        ("rev-list", "--count", "oldsha..newsha"): "1",
+        ("rev-list", "--reverse", "--max-count=1", "oldsha..newsha"): "newsha",
+        ("show", "-s", "--format=%cI", "oldsha"): "2020-01-01T00:00:00+00:00",
+        ("show", "-s", "--format=%cI", "newsha"): "2020-01-02T00:00:00+00:00",
+    }
+
+
+def test_main_fails_with_the_stale_code_message_when_over_the_age_threshold(
+    fake_git, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """The checker's primary alarm: BEHIND and too old exits 1 with the #669 message.
+
+    This is the branch the whole script exists for, and it is only reachable
+    through ``main()``'s real argv parsing -- calling ``is_stale`` directly with
+    a Python float leaves ``--max-age-hours`` untested, so a wrong ``type=`` or
+    a value never threaded into ``is_stale`` would silence the alarm with a
+    fully green suite.
+    """
+    fake_git(_stale_fleet_git())
+    monkeypatch.setattr(
+        freshness_mod,
+        "_run_flyctl_machine_list",
+        lambda _app: [_app_machine("oldsha")],
+    )
+
+    exit_code = main(["--app", "draft-app-prod", "--max-age-hours", "1"])
+
+    assert exit_code == 1
+    assert "running stale code" in capsys.readouterr().err
+
+
+def test_main_passes_when_the_age_threshold_is_raised_above_the_lag(
+    fake_git, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """The same fleet under a permissive threshold exits 0.
+
+    Paired with the test above, this proves ``--max-age-hours`` is genuinely
+    read from argv and drives the decision, rather than the exit code being
+    fixed by the fleet's shape alone.
+    """
+    fake_git(_stale_fleet_git())
+    monkeypatch.setattr(
+        freshness_mod,
+        "_run_flyctl_machine_list",
+        lambda _app: [_app_machine("oldsha")],
+    )
+
+    exit_code = main(["--app", "draft-app-prod", "--max-age-hours", "999999"])
+
+    assert exit_code == 0
+    assert "running stale code" not in capsys.readouterr().err
+
+
+def test_main_compares_against_the_ref_named_by_the_against_flag(
+    fake_git, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--against`` must select the ref the deployment is compared to.
+
+    The ``fake_git`` stub raises ``GitError`` on any unexpected git call, so a
+    ``--against`` value that never reached ``build_report`` would resolve
+    ``origin/main`` instead, produce a "could not resolve" note, and fail the
+    exit-0 assertion below.
+    """
+    fake_git({("rev-parse", "refs/heads/release"): "abc123"})
+    monkeypatch.setattr(
+        freshness_mod,
+        "_run_flyctl_machine_list",
+        lambda _app: [_app_machine("abc123")],
+    )
+
+    exit_code = main(["--app", "draft-app-prod", "--against", "refs/heads/release"])
+
+    assert exit_code == 0
+
+
+def test_an_unresolvable_target_ref_degrades_to_a_note(fake_git) -> None:
+    """A ref that git cannot resolve must be reported, not raised.
+
+    ``build_report`` catches ``GitError`` from the ``rev-parse`` so a typo'd or
+    not-yet-fetched ref produces an observable note instead of killing the
+    monitor -- the same degrade-don't-die posture as the unknown-age path.
+    """
+    fake_git({})
+
+    report = build_report(
+        "app", [_app_machine("oldsha")], target_ref="origin/does-not-exist"
+    )
+
+    assert report.target_sha is None
+    assert any("could not resolve" in note for note in report.notes)
+
+
+def test_git_failures_are_translated_into_giterror_with_the_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The real subprocess wrapper must surface git's own stderr in the error.
+
+    Every other test stubs ``_git`` itself, so without this the module's only
+    real process boundary -- and the message an operator would actually read
+    when the check breaks -- is never exercised.
+    """
+
+    def _failing_run(*_args: object, **_kwargs: object):
+        raise subprocess.CalledProcessError(
+            returncode=128,
+            cmd=["git", "rev-parse", "nope"],
+            stderr="fatal: bad revision",
+        )
+
+    monkeypatch.setattr(freshness_mod.subprocess, "run", _failing_run)
+
+    with pytest.raises(GitError) as excinfo:
+        freshness_mod._git("rev-parse", "nope")
+
+    assert "fatal: bad revision" in str(excinfo.value)

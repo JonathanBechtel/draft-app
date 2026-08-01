@@ -106,7 +106,7 @@ Also confirm the `db-health` job in the same workflow is green (it probes
 ### 2. Roster-cron year configuration — **[READ-ONLY]**
 
 `app/cli/summer_league_roster_runner.py`'s `SL_ROSTER_YEAR` default is "the current Eastern
-calendar year" (`app/services/summer_league/event_window.py`), so **no action is required for
+calendar year" (its `_default_year()` helper), so **no action is required for
 a same-calendar-year event** — 2027 Summer League run in 2027 needs no override. Only act if
 either is true:
 
