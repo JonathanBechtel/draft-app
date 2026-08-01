@@ -38,8 +38,8 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from collections.abc import Sequence
-from dataclasses import dataclass, field
+from collections.abc import Collection, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -95,6 +95,15 @@ from app.services.stats.inputs import (  # noqa: F401
     StatInputs as Box,
     _d,
 )
+from app.services.stats.registry import (
+    RollupClass,
+    require_rollup_class,
+    rollup_class_matches,
+)
+from app.services.summer_league import scoped_metrics
+
+ComputeResult = scoped_metrics.ComputeResult
+MetricFit = scoped_metrics.MetricFit
 
 # Qualification / gating thresholds.
 QUALIFY_MIN_MINUTES = 40.0  # minutes for a season to feed fits / leaders
@@ -132,6 +141,14 @@ _SEASON_EXCLUDED_GAME_STATUSES: tuple[SummerLeagueGameStatus, ...] = (
     SummerLeagueGameStatus.IN_PROGRESS,
     SummerLeagueGameStatus.POSTPONED,
     SummerLeagueGameStatus.CANCELED,
+)
+
+# Registry-declared pool-recalibrated metrics guard reusable scoped fits.
+_POOLED_FIT_METRICS = ("uper", "bpm", "ws82", "vorp82")
+require_rollup_class(
+    "summer_league.metrics pooled-fit projection",
+    RollupClass.POOL_RECALIBRATED,
+    *_POOLED_FIT_METRICS,
 )
 
 
@@ -355,31 +372,6 @@ def apply_sl_bpm(
             ps.metrics["vorp82"] = round(vorp82(bpm, ps.pct_min), 2)
 
 
-# --------------------------------------------------------------------------- #
-# Loading + assembly
-# --------------------------------------------------------------------------- #
-@dataclass
-class ComputeResult:
-    """Everything a rebuild needs to persist."""
-
-    contexts: dict[int, LeagueContext]
-    seasons: list[PlayerSeason]
-    pyth_exponent: float
-    pyth_n: int
-    ws_ppw_coeff: float
-    bpm_coef: Optional[dict[str, float]]
-    bpm_intercept: float
-    bpm_r2: float
-    bpm_n_fit: int
-    # Shot-diet zone FGA per (player_id, competition_id); empty dict when no
-    # shot-chart data exists (no SummerLeagueShotEvent rows ingested yet).
-    shot_diet: dict[tuple[int, int], dict[str, int]] = field(default_factory=dict)
-    # Assisted-FG counts per (player_id, competition_id) from PBP made-FG events;
-    # value is (ast_fgm, unast_fgm). Empty when no PBP data has been ingested.
-    assisted_fg: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)
-    as_of: Optional[datetime] = None
-
-
 @dataclass(frozen=True)
 class RebuildOptions:
     """Persistence options shared by published and staged metric rebuilds."""
@@ -399,15 +391,31 @@ class SeasonProjectionContext:
     adv_eligible: bool
 
 
-async def _source_as_of(db: AsyncSession) -> Optional[datetime]:
-    """Return the latest source-row update represented by the metric inputs."""
-    timestamps = [
-        await db.scalar(select(func.max(SummerLeagueGame.updated_at))),
-        await db.scalar(select(func.max(SummerLeagueTeamGameLog.updated_at))),
-        await db.scalar(select(func.max(SummerLeaguePlayerGameLog.updated_at))),
-        await db.scalar(select(func.max(SummerLeagueShotEvent.updated_at))),
-        await db.scalar(select(func.max(SummerLeaguePlayByPlayEvent.updated_at))),
+async def _source_as_of(
+    db: AsyncSession, competition_ids: Optional[Collection[int]] = None
+) -> Optional[datetime]:
+    """Return the latest source update represented by a full or scoped build."""
+    scope = frozenset(competition_ids) if competition_ids is not None else None
+    statements = [
+        select(func.max(SummerLeagueGame.updated_at)),
+        select(func.max(SummerLeagueTeamGameLog.updated_at)),
+        select(func.max(SummerLeaguePlayerGameLog.updated_at)),
+        select(func.max(SummerLeagueShotEvent.updated_at)),
+        select(func.max(SummerLeaguePlayByPlayEvent.updated_at)),
     ]
+    models = (
+        SummerLeagueGame,
+        SummerLeagueTeamGameLog,
+        SummerLeaguePlayerGameLog,
+        SummerLeagueShotEvent,
+        SummerLeaguePlayByPlayEvent,
+    )
+    if scope is not None:
+        statements = [
+            statement.where(model.competition_id.in_(scope))  # type: ignore[attr-defined]
+            for statement, model in zip(statements, models)
+        ]
+    timestamps = [await db.scalar(statement) for statement in statements]
     return max((stamp for stamp in timestamps if stamp is not None), default=None)
 
 
@@ -431,7 +439,7 @@ async def set_repeatable_read_snapshot(db: AsyncSession) -> None:
 
 
 async def _load_shot_diet(
-    db: AsyncSession,
+    db: AsyncSession, competition_ids: Optional[Collection[int]] = None
 ) -> dict[tuple[int, int], dict[str, int]]:
     """Query shot-zone FGA counts aggregated per (player_id, competition_id).
 
@@ -461,6 +469,10 @@ async def _load_shot_diet(
             SummerLeagueShotEvent.shot_zone_basic,
         )
     )
+    if competition_ids is not None:
+        stmt = stmt.where(
+            SummerLeagueShotEvent.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
+        )
     rows = (await db.execute(stmt)).all()
     out: dict[tuple[int, int], dict[str, int]] = defaultdict(dict)
     for player_id, competition_id, zone, fga in rows:
@@ -469,7 +481,7 @@ async def _load_shot_diet(
 
 
 async def _load_assisted_fg(
-    db: AsyncSession,
+    db: AsyncSession, competition_ids: Optional[Collection[int]] = None
 ) -> dict[tuple[int, int], tuple[int, int]]:
     """Query PBP made-FG events and count assisted vs unassisted per (player_id, competition_id).
 
@@ -509,6 +521,10 @@ async def _load_assisted_fg(
             SummerLeaguePlayByPlayEvent.competition_id,
         )
     )
+    if competition_ids is not None:
+        stmt = stmt.where(
+            SummerLeaguePlayByPlayEvent.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
+        )
     rows = (await db.execute(stmt)).all()
     return {
         (int(player_id), int(competition_id)): (int(ast_fgm), int(unast_fgm))
@@ -516,49 +532,58 @@ async def _load_assisted_fg(
     }
 
 
-async def _load(db: AsyncSession) -> tuple[Any, ...]:
+async def _load(
+    db: AsyncSession, competition_ids: Optional[Collection[int]] = None
+) -> tuple[Any, ...]:
+    """Load the raw rows needed for a full build or selected competitions."""
     comp = SummerLeagueCompetition
     tgl = SummerLeagueTeamGameLog
     pgl = SummerLeaguePlayerGameLog
+    scope = frozenset(competition_ids) if competition_ids is not None else None
 
+    comp_id: Any = comp.id
+    comps_stmt = select(comp)
+    if scope is not None:
+        comps_stmt = comps_stmt.where(comp_id.in_(scope))
     comps = {
-        c.id: (c.year, c.venue_slug) for c in (await db.execute(select(comp))).scalars()
+        c.id: (c.year, c.venue_slug) for c in (await db.execute(comps_stmt)).scalars()
     }
+
+    games_stmt = select(SummerLeagueGame).where(_season_game_status_clause())
+    if scope is not None:
+        games_stmt = games_stmt.where(
+            SummerLeagueGame.competition_id.in_(scope)  # type: ignore[attr-defined]
+        )
     games = {
         g.id: (g.home_team_entry_id, g.away_team_entry_id, g.home_score, g.away_score)
-        for g in (
-            await db.execute(
-                select(SummerLeagueGame).where(_season_game_status_clause())
-            )
-        ).scalars()
+        for g in (await db.execute(games_stmt)).scalars()
     }
-    team_rows = (
-        (
-            await db.execute(
-                select(tgl)
-                .join(
-                    SummerLeagueGame,
-                    SummerLeagueGame.id == tgl.game_id,  # type: ignore[arg-type]
-                )
-                .where(_season_game_status_clause())
-            )
+    team_stmt = (
+        select(tgl)
+        .join(
+            SummerLeagueGame,
+            SummerLeagueGame.id == tgl.game_id,  # type: ignore[arg-type]
         )
-        .scalars()
-        .all()
+        .where(_season_game_status_clause())
     )
+    if scope is not None:
+        team_stmt = team_stmt.where(tgl.competition_id.in_(scope))  # type: ignore[attr-defined]
+    team_rows = (await db.execute(team_stmt)).scalars().all()
+    team_mp_stmt = (
+        select(pgl.team_entry_id, func.sum(pgl.minutes_seconds))  # type: ignore[call-overload]
+        .join(
+            SummerLeagueGame,
+            SummerLeagueGame.id == pgl.game_id,  # type: ignore[arg-type]
+        )
+        .where(_season_game_status_clause())
+        .group_by(pgl.team_entry_id)
+    )
+    if scope is not None:
+        team_mp_stmt = team_mp_stmt.where(
+            pgl.competition_id.in_(scope)  # type: ignore[attr-defined]
+        )
     team_mp = {
-        tid: (sec or 0) / 60.0
-        for tid, sec in (
-            await db.execute(
-                select(pgl.team_entry_id, func.sum(pgl.minutes_seconds))  # type: ignore[call-overload]
-                .join(
-                    SummerLeagueGame,
-                    SummerLeagueGame.id == pgl.game_id,  # type: ignore[arg-type]
-                )
-                .where(_season_game_status_clause())
-                .group_by(pgl.team_entry_id)
-            )
-        ).all()
+        tid: (sec or 0) / 60.0 for tid, sec in (await db.execute(team_mp_stmt)).all()
     }
     sec: Any = pgl.minutes_seconds  # column expression for arithmetic/compare
 
@@ -575,32 +600,33 @@ async def _load(db: AsyncSession) -> tuple[Any, ...]:
         )
 
     pgl_player_id: Any = pgl.player_id
-    player_rows = (
-        await db.execute(
-            select(  # type: ignore[call-overload]
-                pgl.competition_id,
-                pgl.player_id,
-                pgl.team_entry_id,
-                func.count().label("gp"),
-                func.sum(sec).label("sec"),
-                *[func.sum(getattr(pgl, f)).label(f) for f in _BOX_INT_FIELDS],
-                func.sum(pgl.plus_minus).label("plus_minus"),
-                *[_source_rate_sum(metric) for metric in _SOURCE_RATE_COLUMNS],
-                *[_source_rate_seconds(metric) for metric in _SOURCE_RATE_COLUMNS],
-            )
-            .join(
-                SummerLeagueGame,
-                SummerLeagueGame.id == pgl.game_id,  # type: ignore[arg-type]
-            )
-            .join(PlayerMaster, PlayerMaster.id == pgl.player_id)
-            .where(
-                pgl_player_id.isnot(None),
-                sec > 0,
-                _season_game_status_clause(),
-            )
-            .group_by(pgl.competition_id, pgl.player_id, pgl.team_entry_id)
+    player_stmt = (
+        select(  # type: ignore[call-overload]
+            pgl.competition_id,
+            pgl.player_id,
+            pgl.team_entry_id,
+            func.count().label("gp"),
+            func.sum(sec).label("sec"),
+            *[func.sum(getattr(pgl, f)).label(f) for f in _BOX_INT_FIELDS],
+            func.sum(pgl.plus_minus).label("plus_minus"),
+            *[_source_rate_sum(metric) for metric in _SOURCE_RATE_COLUMNS],
+            *[_source_rate_seconds(metric) for metric in _SOURCE_RATE_COLUMNS],
         )
-    ).all()
+        .join(
+            SummerLeagueGame,
+            SummerLeagueGame.id == pgl.game_id,  # type: ignore[arg-type]
+        )
+        .join(PlayerMaster, PlayerMaster.id == pgl.player_id)
+        .where(
+            pgl_player_id.isnot(None),
+            sec > 0,
+            _season_game_status_clause(),
+        )
+        .group_by(pgl.competition_id, pgl.player_id, pgl.team_entry_id)
+    )
+    if scope is not None:
+        player_stmt = player_stmt.where(pgl.competition_id.in_(scope))  # type: ignore[attr-defined]
+    player_rows = (await db.execute(player_stmt)).all()
     return comps, games, team_rows, team_mp, player_rows
 
 
@@ -694,125 +720,84 @@ def _completeness(team_rows) -> dict[int, dict]:
     return out
 
 
-async def compute(db: AsyncSession) -> ComputeResult:
-    """Load raw logs and compute every metric in memory."""
-    as_of = await _source_as_of(db)
-    comps, games, team_rows, team_mp, player_rows = await _load(db)
-    shot_diet = await _load_shot_diet(db)
-    assisted_fg = await _load_assisted_fg(db)
+async def _load_active_fit(db: AsyncSession) -> Optional[MetricFit]:
+    """Load the active pooled fit, if a full rebuild has published one."""
+    stmt = (
+        select(SummerLeagueMetricModel)  # type: ignore[call-overload]
+        .where(SummerLeagueMetricModel.is_active.is_(True))  # type: ignore[attr-defined]
+        .order_by(SummerLeagueMetricModel.id.desc())  # type: ignore[union-attr]
+        .limit(1)
+    )
+    model = (await db.execute(stmt)).scalar_one_or_none()
+    if model is None:
+        return None
+    return MetricFit(
+        pyth_exponent=model.pyth_exponent,
+        pyth_n=model.pyth_n_teams,
+        ws_ppw_coeff=model.ws_ppw_coeff,
+        bpm_coef=dict(model.bpm_coefficients) if model.bpm_coefficients else None,
+        bpm_intercept=model.bpm_intercept,
+        bpm_r2=model.bpm_r2,
+        bpm_n_fit=model.bpm_n_fit,
+        model_version=model.model_version,
+    )
+
+
+def _can_reuse_pooled_fit() -> bool:
+    """Return whether the registry still supports the scoped-fit contract."""
+    return all(
+        rollup_class_matches(metric, RollupClass.POOL_RECALIBRATED)
+        for metric in _POOLED_FIT_METRICS
+    )
+
+
+async def compute(
+    db: AsyncSession,
+    *,
+    competition_ids: Optional[Sequence[int]] = None,
+    fit: Optional[MetricFit] = None,
+) -> ComputeResult:
+    """Load and project metrics, reusing the active fit for scoped calls."""
+    scope = frozenset(competition_ids) if competition_ids is not None else None
+    pooled_fit = fit
+    if scope is not None and pooled_fit is None and _can_reuse_pooled_fit():
+        pooled_fit = await _load_active_fit(db)
+
+    # Bootstrap without a reusable fit; otherwise every source query is scoped.
+    load_scope = scope if pooled_fit is not None else None
+    if load_scope is None:
+        # Preserve the original one-argument shape for full-build test doubles.
+        as_of = await _source_as_of(db)
+        comps, games, team_rows, team_mp, player_rows = await _load(db)
+        shot_diet = await _load_shot_diet(db)
+        assisted_fg = await _load_assisted_fg(db)
+    else:
+        as_of = await _source_as_of(db, load_scope)
+        comps, games, team_rows, team_mp, player_rows = await _load(db, load_scope)
+        shot_diet = await _load_shot_diet(db, load_scope)
+        assisted_fg = await _load_assisted_fg(db, load_scope)
     team_box, opp_box, team_comp, contexts, records = _build(
         comps, games, team_rows, team_mp
     )
+    seasons = scoped_metrics.assemble_seasons(
+        comps, team_box, opp_box, player_rows, _SOURCE_RATE_COLUMNS
+    )
+    projected_fit = scoped_metrics.project_metrics(
+        seasons, contexts, records, team_comp, pooled_fit
+    )
 
-    # Merge multiple team-entries per (comp, player); primary = most minutes.
-    merged: dict[tuple[int, int], dict] = {}
-    for r in player_rows:
-        key = (r.competition_id, r.player_id)
-        sec = float(r.sec or 0)
-        cur = merged.get(key)
-        if cur is None:
-            cur = {
-                "box": Box(),
-                "entry": r.team_entry_id,
-                "sec": sec,
-                "pm": 0.0,
-                "source_rate_weighted": defaultdict(float),
-                "source_rate_seconds": defaultdict(float),
-            }
-            merged[key] = cur
-        bx = cur["box"]
-        bx.gp += int(r.gp)
-        bx.mp += sec / 60.0
-        cur["pm"] += float(r.plus_minus or 0)
-        for f in _BOX_INT_FIELDS:
-            setattr(bx, f, getattr(bx, f) + float(getattr(r, f) or 0))
-        for metric in _SOURCE_RATE_COLUMNS:
-            cur["source_rate_weighted"][metric] += float(
-                getattr(r, f"{metric}_weighted") or 0
-            )
-            cur["source_rate_seconds"][metric] += float(
-                getattr(r, f"{metric}_seconds") or 0
-            )
-        if sec > cur["sec"]:
-            cur["entry"] = r.team_entry_id
-            cur["sec"] = sec
-
-    seasons: list[PlayerSeason] = []
-    for (cid, pid), v in merged.items():
-        year, venue = comps[cid]
-        entry = v["entry"]
-        source_rates = {
-            metric: (
-                round(100.0 * v["source_rate_weighted"][metric] / denominator, 1)
-                if (denominator := v["source_rate_seconds"][metric])
-                else None
-            )
-            for metric in _SOURCE_RATE_COLUMNS
+    if scope is not None and load_scope is None:
+        contexts = {cid: ctx for cid, ctx in contexts.items() if cid in scope}
+        seasons = [ps for ps in seasons if ps.competition_id in scope]
+        shot_diet = {key: value for key, value in shot_diet.items() if key[1] in scope}
+        assisted_fg = {
+            key: value for key, value in assisted_fg.items() if key[1] in scope
         }
-        seasons.append(
-            PlayerSeason(
-                player_id=pid,
-                competition_id=cid,
-                primary_team_entry_id=entry,
-                year=year,
-                venue=venue,
-                box=v["box"],
-                team=team_box[entry],
-                opp=opp_box[entry],
-                pm=v["pm"],
-                source_rates=source_rates,
-            )
-        )
-
-    by_pool: dict[int, list[PlayerSeason]] = defaultdict(list)
-    for ps in seasons:
-        by_pool[ps.competition_id].append(ps)
-
-    # Gate pools for league-relative metrics.
-    adv_pools: set[int] = set()
-    for cid, pool in by_pool.items():
-        qual = sum(1 for p in pool if p.box.mp >= QUALIFY_MIN_MINUTES)
-        ctx = contexts[cid]
-        cfrac = _d(ctx.complete_games, ctx.total_games)
-        if cfrac >= ADV_MIN_COMPLETE_FRAC and qual >= ADV_MIN_PLAYERS:
-            adv_pools.add(cid)
-            ctx.adv_eligible = True
-
-    # (a) SL points-to-wins from the Pythagorean exponent.
-    pyth_x, pyth_n = fit_pythagorean(records, team_comp, adv_pools)
-    ws_ppw_coeff = 4.0 / pyth_x
-
-    for ps in seasons:
-        compute_metrics(ps, contexts[ps.competition_id], ws_ppw_coeff)
-
-    # Standardize PER per pool so the minute-weighted mean aPER -> 15.
-    for cid, pool in by_pool.items():
-        if not contexts[cid].adv_eligible:
-            continue
-        num = sum((ps.aper or 0.0) * ps.box.mp for ps in pool)
-        den = sum(ps.box.mp for ps in pool)
-        scalar = _d(num, den)
-        contexts[cid].aper_scalar = scalar
-        for ps in pool:
-            ps.metrics["per"] = (
-                round(ps.aper * _d(15.0, scalar), 1) if ps.aper is not None else None
-            )
-
-    # (b) SL-native BPM (+ OBPM/DBPM/VORP); fit only over adv pools.
-    adv_by_pool = {cid: pool for cid, pool in by_pool.items() if cid in adv_pools}
-    coef, intercept, r2, n_fit = fit_sl_bpm(seasons, adv_pools)
-    apply_sl_bpm(seasons, adv_by_pool, coef, intercept)
 
     return ComputeResult(
+        fit=projected_fit,
         contexts=contexts,
         seasons=seasons,
-        pyth_exponent=pyth_x,
-        pyth_n=pyth_n,
-        ws_ppw_coeff=ws_ppw_coeff,
-        bpm_coef=coef,
-        bpm_intercept=intercept,
-        bpm_r2=r2,
-        bpm_n_fit=n_fit,
         shot_diet=shot_diet,
         assisted_fg=assisted_fg,
         as_of=as_of,
@@ -926,13 +911,11 @@ async def _rebuild_with_options(
       this function returns. When false, the caller can include the flip in a
       separate short publication transaction.
 
-    :func:`compute` always loads and fits over the *entire* raw dataset
-    regardless of scope: the league-relative recalibration constants and the
-    SL-native Pythagorean/BPM fits are only correct when derived from the
-    full pool, never a truncated one. Scope only narrows what gets
-    *persisted* -- which is what makes a scoped call safe to run hourly
-    without either an expensive/incorrect truncated fit or a destructive
-    wipe of data outside its scope.
+    A full :func:`compute` fits over the entire raw dataset. A scoped
+    :func:`compute` reuses the active full-pool fit and loads only its requested
+    competition rows; the registry's ``pool_recalibrated`` declarations guard
+    that reuse. If no active fit exists, the scoped call bootstraps one full fit
+    before narrowing the returned projections.
 
     Returns a small summary dict (counts of what was actually written). The
     caller controls the transaction. :func:`rebuild_staged` is used by the full
@@ -956,7 +939,7 @@ async def _rebuild_with_options(
     # this path is called directly by the Desk tick without the full-ingestion
     # snapshot helper.
     await set_rebuild_idle_timeout(db)
-    result = await compute(db)
+    result = await compute(db, competition_ids=competition_ids)
     adv_cids = {cid for cid, ctx in result.contexts.items() if ctx.adv_eligible}
     scope = frozenset(competition_ids) if competition_ids is not None else None
     publication_version = await next_metric_version(db)
@@ -979,9 +962,23 @@ async def _rebuild_with_options(
     else:
         # Scoped ticks reuse the active global fit and only stage the selected
         # competition scopes.
-        generated_model_version = model_version or await _active_or_fresh_model_version(
-            db
+        result_fit = getattr(result, "fit", None)
+        fit_model_version = getattr(result_fit, "model_version", None)
+        generated_model_version = (
+            model_version
+            or fit_model_version
+            or await _active_or_fresh_model_version(db)
         )
+        if result_fit is not None and fit_model_version is None:
+            # A first-ever scoped rebuild bootstrapped a full fit because no
+            # active model existed. Retain it now so the next tick can take the
+            # genuinely scoped path instead of repeating the bootstrap.
+            await publish_metric_model(
+                db,
+                version=generated_model_version,
+                result=result,
+                activate=publish,
+            )
         contexts_to_write = [
             ctx for cid, ctx in result.contexts.items() if cid in scope
         ]
