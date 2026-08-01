@@ -5,9 +5,9 @@ Aggregates normalized Summer League player box-score lines
 the player-detail page's Summer League section.
 
 This is intentionally raw-data-only: per-game plus two lightweight rate
-transforms (per-36 and per-100). Per-36 needs only minutes; per-100 uses NBA's
-supplied on-court ``pace`` (possessions/48) so no possession model is required.
-Per-100 is ``None`` for seasons whose games carry no ``pace`` (pre-2017).
+transforms (per-36 and per-100). Per-36 needs only minutes; per-100 uses the
+shared engine's same-game team/opponent possession estimate. Per-100 is
+``None`` for competitions whose box data cannot support that estimate.
 No composite/derived metrics are computed here.
 """
 
@@ -16,9 +16,9 @@ from __future__ import annotations
 # discipline: file-size current-projection read predicate; no new stats service surface
 
 from dataclasses import asdict, dataclass
-from typing import Optional
+from typing import Any, Optional
 
-from sqlalchemy import case, desc, select
+from sqlalchemy import and_, case, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -26,6 +26,7 @@ from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
+    SummerLeagueTeamGameLog,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
@@ -34,10 +35,16 @@ from app.services.stats.formulas import astd_pct_ratio, ts_pct_ratio
 from app.services.summer_league.capabilities import row_provides
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
+from app.services.summer_league.pace import (
+    player_possessions_from_rows,
+    team_box_columns,
+)
 from app.services.summer_league_shotchart_service import (
     get_player_shot_dots,
     get_player_shot_zones,
 )
+
+_MINUTES_PER_GAME = MINUTES_PER_GAME
 
 # Human-readable venue labels keyed by the competition ``venue_slug``.
 VENUE_LABELS: dict[str, str] = {
@@ -79,7 +86,6 @@ _SUM_STATS = _RATE_STATS + (
     "pf",
 )
 
-_MINUTES_PER_GAME = MINUTES_PER_GAME
 _RECENT_GAME_LIMIT = 5
 
 
@@ -198,14 +204,35 @@ def _aggregate_season(
         stat: float(sum((getattr(r, stat) or 0) for r in played)) for stat in _SUM_STATS
     }
 
-    # Possessions from NBA-supplied on-court pace; absent before 2017.
+    # Possessions are estimated from same-game team/opponent boxes by the
+    # shared engine adapter. A competition needs complete coverage; career may
+    # extrapolate complete competitions across a mixed historical span.
+    possession_groups: dict[tuple[Any, ...], list[Any]] = {}
+    for row in played:
+        key = (
+            getattr(row, "competition_id", None),
+            getattr(row, "year", None),
+            getattr(row, "venue_slug", None),
+        )
+        possession_groups.setdefault(key, []).append(row)
+    estimated = [
+        (group, player_possessions_from_rows(group))
+        for group in possession_groups.values()
+    ]
     total_possessions: Optional[float] = None
-    poss_acc = 0.0
-    for r in played:
-        if r.pace and r.minutes_seconds:
-            poss_acc += r.pace * (r.minutes_seconds / 60.0) / _MINUTES_PER_GAME
-    if poss_acc > 0:
-        total_possessions = poss_acc
+    if estimated and all(value is not None for _, value in estimated):
+        total_possessions = sum(value or 0.0 for _, value in estimated)
+    elif year is None:
+        covered_minutes = sum(
+            sum((r.minutes_seconds or 0) for r in group) / 60.0
+            for group, value in estimated
+            if value is not None
+        )
+        covered_possessions = sum(
+            value or 0.0 for _, value in estimated if value is not None
+        )
+        if covered_minutes > 0 and covered_possessions > 0:
+            total_possessions = covered_possessions * total_minutes / covered_minutes
 
     venues = sorted({VENUE_LABELS.get(r.venue_slug, r.venue_slug) for r in played})
 
@@ -313,19 +340,29 @@ async def get_summer_league_profile_by_player_id(
         logs (so the route can omit the section).
     """
     opponent = aliased(SummerLeagueTeamEntry)
-    pgl = SummerLeaguePlayerGameLog
+    pgl: Any = SummerLeaguePlayerGameLog
+    game: Any = SummerLeagueGame
+    team_log: Any = aliased(SummerLeagueTeamGameLog)
+    opponent_log: Any = aliased(SummerLeagueTeamGameLog)
+    opponent_team_id = case(
+        (
+            game.home_team_entry_id == pgl.team_entry_id,
+            game.away_team_entry_id,
+        ),
+        else_=game.home_team_entry_id,
+    )
 
     stmt = (
         select(
-            SummerLeagueGame.id.label("sl_game_id"),  # type: ignore[union-attr]
+            game.id.label("sl_game_id"),  # type: ignore[union-attr]
             SummerLeagueCompetition.year,
             SummerLeagueCompetition.venue_slug,
-            SummerLeagueGame.game_date,
+            game.game_date,
             opponent.raw_team_abbreviation,
             opponent.raw_team_name,
             pgl.minutes_seconds,
+            pgl.team_entry_id.label("team_entry_id"),
             pgl.starter_position,
-            pgl.pace,
             pgl.pts,
             pgl.reb,
             pgl.ast,
@@ -341,24 +378,40 @@ async def get_summer_league_profile_by_player_id(
             pgl.oreb,
             pgl.dreb,
             pgl.pf,
+            *team_box_columns(team_log, "team"),
+            *team_box_columns(opponent_log, "opp"),
         )  # type: ignore[call-overload, misc]
         .select_from(pgl)
         .join(SummerLeagueCompetition, SummerLeagueCompetition.id == pgl.competition_id)
-        .join(SummerLeagueGame, SummerLeagueGame.id == pgl.game_id)
+        .join(game, game.id == pgl.game_id)
+        .outerjoin(
+            team_log,
+            and_(
+                team_log.game_id == pgl.game_id,
+                team_log.team_entry_id == pgl.team_entry_id,
+            ),
+        )
+        .outerjoin(
+            opponent_log,
+            and_(
+                opponent_log.game_id == pgl.game_id,
+                opponent_log.team_entry_id == opponent_team_id,
+            ),
+        )
         .join(
             opponent,
             opponent.id  # type: ignore[arg-type]
             == case(
                 (  # type: ignore[arg-type]
-                    SummerLeagueGame.home_team_entry_id == pgl.team_entry_id,
-                    SummerLeagueGame.away_team_entry_id,
+                    game.home_team_entry_id == pgl.team_entry_id,
+                    game.away_team_entry_id,
                 ),
-                else_=SummerLeagueGame.home_team_entry_id,
+                else_=game.home_team_entry_id,
             ),
             isouter=True,
         )
         .where(pgl.player_id == player_id)  # type: ignore[arg-type]
-        .order_by(desc(SummerLeagueGame.game_date), desc(pgl.id))  # type: ignore[arg-type]
+        .order_by(desc(game.game_date), desc(pgl.id))  # type: ignore[arg-type]
     )
 
     result = await db.execute(stmt)
