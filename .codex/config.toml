@@ -1,6 +1,11 @@
 [features]
 experimental_use_rmcp_client = true
 web_search_request = true
+multi_agent = true
 
 [tools]
 web_search = true
+
+[agents.luna]
+description = "Fast, narrowly scoped subagent using Luna with Extra High reasoning."
+config_file = "agents/luna.toml"
