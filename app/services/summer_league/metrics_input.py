@@ -29,6 +29,7 @@ METRICS_INPUT_WATERMARK_VERSION = "sl-metrics-input-v2"
 
 _IMPLEMENTATION_FILES = (
     ("metrics.py", Path(__file__).with_name("metrics.py")),
+    ("scoped_metrics.py", Path(__file__).with_name("scoped_metrics.py")),
     ("metric_publish.py", Path(__file__).with_name("metric_publish.py")),
     (
         "schemas/summer_league_metrics.py",
