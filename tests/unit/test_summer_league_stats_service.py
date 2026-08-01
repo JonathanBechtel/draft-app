@@ -167,6 +167,20 @@ def test_missing_engine_possessions_yields_no_per_100() -> None:
     assert season.modes["per_game"].pts == pytest.approx(14.0)
 
 
+def test_career_extrapolates_only_complete_competitions() -> None:
+    """Career estimates extrapolate complete competition denominators only."""
+    rows = [
+        _row(venue_slug="complete", engine_possessions=50.0),
+        _row(venue_slug="complete", engine_possessions=50.0),
+        _row(venue_slug="gap", engine_possessions=None),
+    ]
+
+    season = _aggregate_season(rows, year=None, season_label="Career")
+
+    assert season is not None
+    assert season.total_possessions == pytest.approx(150.0)
+
+
 def test_zero_attempts_render_none_percentages() -> None:
     """No FGA/3PA/FTA -> percentages are None, not a divide-by-zero."""
     rows = [_row(minutes_seconds=600, pts=0, fga=0, fg3a=0, fta=0)]

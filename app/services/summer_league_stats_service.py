@@ -36,7 +36,7 @@ from app.services.summer_league.capabilities import row_provides
 from app.services.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league.metrics import game_score_from_row
 from app.services.summer_league.pace import (
-    player_possessions_from_row,
+    player_possessions_from_rows,
     team_box_columns,
 )
 from app.services.summer_league_shotchart_service import (
@@ -207,17 +207,30 @@ def _aggregate_season(
     # Possessions are estimated from same-game team/opponent boxes by the
     # shared engine adapter. A competition needs complete coverage; career may
     # extrapolate complete competitions across a mixed historical span.
-    estimated = [player_possessions_from_row(r) for r in played]
+    possession_groups: dict[tuple[Any, ...], list[Any]] = {}
+    for row in played:
+        key = (
+            getattr(row, "competition_id", None),
+            getattr(row, "year", None),
+            getattr(row, "venue_slug", None),
+        )
+        possession_groups.setdefault(key, []).append(row)
+    estimated = [
+        (group, player_possessions_from_rows(group))
+        for group in possession_groups.values()
+    ]
     total_possessions: Optional[float] = None
-    if estimated and all(value is not None for value in estimated):
-        total_possessions = sum(value or 0.0 for value in estimated)
+    if estimated and all(value is not None for _, value in estimated):
+        total_possessions = sum(value or 0.0 for _, value in estimated)
     elif year is None:
         covered_minutes = sum(
-            (r.minutes_seconds or 0) / 60.0
-            for r, value in zip(played, estimated)
+            sum((r.minutes_seconds or 0) for r in group) / 60.0
+            for group, value in estimated
             if value is not None
         )
-        covered_possessions = sum(value or 0.0 for value in estimated)
+        covered_possessions = sum(
+            value or 0.0 for _, value in estimated if value is not None
+        )
         if covered_minutes > 0 and covered_possessions > 0:
             total_possessions = covered_possessions * total_minutes / covered_minutes
 
@@ -348,6 +361,7 @@ async def get_summer_league_profile_by_player_id(
             opponent.raw_team_abbreviation,
             opponent.raw_team_name,
             pgl.minutes_seconds,
+            pgl.team_entry_id.label("team_entry_id"),
             pgl.starter_position,
             pgl.pts,
             pgl.reb,
