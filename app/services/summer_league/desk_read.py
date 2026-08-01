@@ -105,6 +105,7 @@ from app.services.event_desk.registry import (
 )
 from app.services.event_desk.state_machine import inner_state
 from app.services.event_desk.timeutils import to_eastern, to_eastern_date
+from app.services.stats.registry import RollupClass, require_rollup_class
 from app.services.summer_league.cohort_baselines import (
     blend_event_aggregates,
     cohort_key_for,
@@ -115,6 +116,8 @@ from app.services.summer_league.desk_grades import (
 )
 from app.services.summer_league.desk_selection import Surface
 from app.services.summer_league.constants import MINUTES_PER_GAME
+from app.services.stats.formulas import pace_seconds_from_possessions
+from app.services.stats.scaling import scale_python
 from app.services.summer_league.desk_storylines import (
     ClassLeaderCandidate,
     draft_slot_fallback,
@@ -1517,6 +1520,33 @@ _ADV_RATE_COMPOSITE_KEYS: tuple[str, ...] = (
     "ws82",
     "bpm",
 )
+# T8b (#729): ``ws82``/``bpm`` are registry pool_recalibrated composites --
+# minute-weighting them across pooled venue rows is the same cross-pool blend
+# approximation `summer_league_metrics_service._blend_leader_values` documents,
+# consistent with (not a re-derivation of) the registry's class.
+require_rollup_class(
+    "Class Tracker's pool-recalibrated composites",
+    RollupClass.POOL_RECALIBRATED,
+    "ws82",
+    "bpm",
+)
+# **Known, flagged conflict -- not resolved here (T8b / #729 scope discipline,
+# same conflict raised in `_blend_leader_values`).** ``usg_pct``/``ast_pct``/
+# ``trb_pct``/``tov_pct`` are declared ``RollupClass.RECOMBINABLE`` in the
+# registry ("recompute from summed box totals"), not minute-weighted-average.
+# ``usg_pct``/``ast_pct``/``trb_pct`` genuinely can't be recombined from these
+# pooled rows (their formulas need team/opponent box totals this view doesn't
+# retain); ``tov_pct`` only needs ``tov``/``fga``/``fta`` -- already summed a
+# few lines below for the box-family FG%/3P%/FT% -- so it could be recombined
+# the same way and currently isn't.
+require_rollup_class(
+    "Class Tracker's minute-weighted recombinables",
+    RollupClass.RECOMBINABLE,
+    "usg_pct",
+    "ast_pct",
+    "trb_pct",
+    "tov_pct",
+)
 
 
 def _r1(value: Optional[float]) -> Optional[float]:
@@ -1592,14 +1622,15 @@ def _build_stat_columns(
     gp_total = sum(r.gp for r in rows)
     minutes_total = sum(float(r.minutes or 0) for r in rows)
 
-    factor: Optional[float]
-    if stat_view == "per36":
-        factor = 36.0 / minutes_total if minutes_total else None
-    elif stat_view == "per100":
-        poss = _pooled_possessions(rows)
-        factor = 100.0 / poss if poss else None
-    else:  # "box" -- per-game average, the tracker's baseline display.
-        factor = 1.0 / gp_total if gp_total else None
+    mode = {"box": "per_game", "per36": "per_36", "per100": "per_100"}[stat_view]
+    possessions = _pooled_possessions(rows)
+    factor = scale_python(
+        1.0,
+        mode,
+        gp=gp_total,
+        seconds=minutes_total * 60.0,
+        pace_seconds=pace_seconds_from_possessions(possessions),
+    )
 
     def _scaled(key: str) -> Optional[float]:
         if factor is None:

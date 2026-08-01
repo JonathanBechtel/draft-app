@@ -32,6 +32,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.services.stats.capabilities import is_computable
+from app.services.stats.formulas import (
+    astd_pct_line,
+    efg_pct_line,
+    fg3ar_line,
+    ftr_line,
+    win_shares_per_40,
+    tov_pct_line,
+    ts_pct_line,
+)
+from app.services.stats.registry import RollupClass, require_rollup_class
+from app.services.summer_league.capabilities import row_provides, rows_provide
 
 # Minimum total minutes in a competition before its rate composites are
 # trustworthy enough to surface. Small-sample pools blow PER/BPM up well past
@@ -194,15 +206,50 @@ def _weighted_mean(
 def _pooled_ts(seasons: list[PlayerMetricSeason]) -> Optional[float]:
     """Career True Shooting % pooled from raw shot totals across competitions.
 
-    TS% = PTS / (2 · (FGA + 0.44 · FTA)). Aggregating it correctly means summing
-    the underlying possessions, not minute-weighting each pool's percentage — a
-    player with uneven shot volume per minute would otherwise read a misstated
-    career mark. Returned on the same 0-100 scale as the stored per-pool values;
-    ``None`` when there are no true-shooting attempts to divide by.
+    Delegates the formula to :func:`app.services.stats.formulas.ts_pct_line`.
+    Aggregating it correctly means summing the underlying possessions first,
+    not minute-weighting each pool's percentage — a player with uneven shot
+    volume per minute would otherwise read a misstated career mark. Returned
+    on the same 0-100 scale as the stored per-pool values; ``None`` when there
+    are no true-shooting attempts to divide by.
     """
     pts = sum(s.pts for s in seasons)
-    tsa = 2.0 * sum(s.fga + 0.44 * s.fta for s in seasons)
-    return _round1(100.0 * pts / tsa) if tsa > 0 else None
+    fga = sum(s.fga for s in seasons)
+    fta = sum(s.fta for s in seasons)
+    return ts_pct_line(pts=pts, fga=fga, fta=fta)
+
+
+# T8b (#729): the advanced-metrics wiring's per-field rollup handling below is
+# checked against ``app.services.stats.registry``'s ``rollup_class`` instead of
+# being re-derived only in the comments/docstring above. ``ws``/``vorp`` are the
+# registry's only ``additive_share`` entries (their ``ows``/``dws`` components,
+# and ``per``/``obpm``/``dbpm``, aren't registered separately -- T7 scoped the
+# registry to the metrics T4-T6 actually consolidated).
+_CAREER_SUMMED_KEYS: tuple[str, ...] = ("ws", "vorp")
+require_rollup_class(
+    "_career's summed keys", RollupClass.ADDITIVE_SHARE, *_CAREER_SUMMED_KEYS
+)
+
+# ``ftr``/``tov_pct``/``fg3ar`` are recomputed from this player's own summed box
+# volume (fga/fta/fg3a/tov -- all season-level columns), matching the registry's
+# ``recombinable`` contract exactly, unlike the minute-weighted approximations
+# below.
+_CAREER_RECOMBINED_KEYS: tuple[str, ...] = ("ftr", "tov_pct", "fg3ar")
+require_rollup_class(
+    "_career's box-recombined keys", RollupClass.RECOMBINABLE, *_CAREER_RECOMBINED_KEYS
+)
+
+# ``ws82_avg``/``vorp82_avg`` are declared ``pool_recalibrated`` in the registry
+# ("must be recomputed against the pool context ... never averaged") but this
+# site minute-weight-averages them anyway, same as ``per_avg``/``bpm_avg``/
+# ``obpm_avg``/``dbpm_avg``. That is a deliberate, already-labeled exception --
+# see :class:`PlayerMetricCareer`'s docstring ("soft 'career average' context,
+# never a recalibrated headline") -- not a silent re-derivation of the taxonomy,
+# so it is flagged here rather than resolved (T8b / #729 scope discipline; see
+# the sibling conflict in :func:`_blend_leader_values`).
+require_rollup_class(
+    "_career's ws82/vorp82 averages", RollupClass.POOL_RECALIBRATED, "ws82", "vorp82"
+)
 
 
 def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
@@ -212,13 +259,12 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
     vorp_vals = [s.vorp for s in seasons if s.vorp is not None]
     ws_total = sum(ws_vals) if ws_vals else None
     # Recompute WS/40 from the summed shares so it stays internally consistent.
-    ws40 = (ws_total / minutes * 40.0) if (ws_total is not None and minutes) else None
+    ws40 = win_shares_per_40(ws_total, minutes) if ws_total is not None else None
     # FTr / 3PAr / TOV% pool exactly from summed box volume (like career TS%).
     fga = sum(s.fga for s in seasons)
     fg3a = sum(s.fg3a for s in seasons)
     fta = sum(s.fta for s in seasons)
     tov = sum(s.tov for s in seasons)
-    tov_den = fga + 0.44 * fta + tov
     ows_vals = [s.ows for s in seasons if s.ows is not None]
     dws_vals = [s.dws for s in seasons if s.dws is not None]
     return PlayerMetricCareer(
@@ -233,12 +279,16 @@ def _career(seasons: list[PlayerMetricSeason]) -> PlayerMetricCareer:
         bpm_avg=_round1(_weighted_mean([(s.bpm, s.minutes) for s in seasons])),
         ws82_avg=_round1(_weighted_mean([(s.ws82, s.minutes) for s in seasons])),
         vorp82_avg=_round1(_weighted_mean([(s.vorp82, s.minutes) for s in seasons])),
-        ftr=_round3(fta / fga) if fga > 0 else None,
-        tov_pct=_round1(100.0 * tov / tov_den) if tov_den > 0 else None,
-        fg3ar=_round3(fg3a / fga) if fga > 0 else None,
-        astd_pct=_assisted_share(
-            sum((s.ast_fgm or 0) for s in seasons),
-            sum((s.unast_fgm or 0) for s in seasons),
+        ftr=ftr_line(fga=fga, fta=fta),
+        tov_pct=tov_pct_line(fga=fga, fta=fta, tov=tov),
+        fg3ar=fg3ar_line(fg3a=fg3a, fga=fga),
+        astd_pct=(
+            _assisted_share(
+                sum((s.ast_fgm or 0) for s in seasons),
+                sum((s.unast_fgm or 0) for s in seasons),
+            )
+            if is_computable("astd_pct", rows_provide(seasons))
+            else None
         ),
         ows=round(sum(ows_vals), 1) if ows_vals else None,
         dws=round(sum(dws_vals), 1) if dws_vals else None,
@@ -259,10 +309,7 @@ def _assisted_share(
     ast_fgm: Optional[int], unast_fgm: Optional[int]
 ) -> Optional[float]:
     """Assisted share of made FGs (0-100) from PBP counts; None without PBP data."""
-    made = (ast_fgm or 0) + (unast_fgm or 0)
-    if made <= 0:
-        return None
-    return round(100.0 * (ast_fgm or 0) / made, 1)
+    return astd_pct_line(ast_fgm=ast_fgm, unast_fgm=unast_fgm)
 
 
 def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
@@ -288,7 +335,11 @@ def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
         ftr=_round3(row.ftr),
         ast_fgm=row.ast_fgm,
         unast_fgm=row.unast_fgm,
-        astd_pct=_assisted_share(row.ast_fgm, row.unast_fgm),
+        astd_pct=(
+            _assisted_share(row.ast_fgm, row.unast_fgm)
+            if is_computable("astd_pct", row_provides(row))
+            else None
+        ),
         usg_pct=_round1(row.usg_pct),
         ast_pct=_round1(row.ast_pct),
         tov_pct=_round1(row.tov_pct),
@@ -668,6 +719,12 @@ async def _competition_has_rows(db: AsyncSession, year: int, venue_slug: str) ->
 # Blending pool-recalibrated composites across differently-calibrated pools is an
 # approximation the "All" scope accepts by design.
 _ADV_BLEND_SUM_COLS: tuple[str, ...] = ("ows", "dws", "ws", "vorp")
+# T8b (#729): the registry's only additive_share entries are ws/vorp (ows/dws are
+# their unregistered components) -- read, not re-derived.
+require_rollup_class(
+    "_blend_leader_values' summed cols", RollupClass.ADDITIVE_SHARE, "ws", "vorp"
+)
+
 _ADV_BLEND_RATE_COLS: tuple[str, ...] = (
     "per",
     "usg_pct",
@@ -683,6 +740,41 @@ _ADV_BLEND_RATE_COLS: tuple[str, ...] = (
     "obpm",
     "dbpm",
     "bpm",
+)
+# ``ortg``/``drtg``/``bpm`` are registry pool_recalibrated composites; minute-
+# weighting them here is the same documented cross-pool blend approximation as
+# ws82/vorp82 above -- consistent with the registry's class, not a re-derivation.
+require_rollup_class(
+    "_blend_leader_values' pool-recalibrated composites",
+    RollupClass.POOL_RECALIBRATED,
+    "ortg",
+    "drtg",
+    "bpm",
+)
+# **Known, flagged conflict -- not resolved here (T8b / #729 scope discipline).**
+# ``usg_pct``/``orb_pct``/``drb_pct``/``trb_pct``/``ast_pct``/``stl_pct``/
+# ``blk_pct``/``tov_pct`` are all declared ``RollupClass.RECOMBINABLE`` in the
+# registry -- "recompute from summed box totals", not "minute-weighted average".
+# Most of them genuinely can't be recomputed here (their formulas need team/
+# opponent box totals this blend's season rows don't retain), so the weighted-
+# mean approximation is the only option. ``tov_pct`` is the one exception: its
+# formula only needs ``tov``/``fga``/``fta``, which this function already sums
+# from raw box volume a few lines below for ts_pct/efg_pct/fg3ar/ftr -- so it
+# *could* be recombined exactly the same way, and currently isn't. This is a
+# deliberate prior decision (career TOV% pooling is minute-weighted), and this
+# ticket adopts the registry classification without resolving the conflict it
+# surfaces; see the PR/report for the raised discrepancy.
+require_rollup_class(
+    "_blend_leader_values' minute-weighted recombinables",
+    RollupClass.RECOMBINABLE,
+    "usg_pct",
+    "orb_pct",
+    "drb_pct",
+    "trb_pct",
+    "ast_pct",
+    "stl_pct",
+    "blk_pct",
+    "tov_pct",
 )
 
 
@@ -721,19 +813,15 @@ def _blend_leader_values(
     fgm = sum(s.fgm for s in seasons)
     fg3m = sum((s.fg3m or 0) for s in seasons)
     fg3a = sum((s.fg3a or 0) for s in seasons)
-    tsa = 2.0 * (fga + 0.44 * fta)
-    out["ts_pct"] = _round1(100.0 * pts / tsa) if tsa > 0 else None
-    out["efg_pct"] = _round1(100.0 * (fgm + 0.5 * fg3m) / fga) if fga > 0 else None
-    out["fg3ar"] = _round3(fg3a / fga) if fga > 0 else None
-    out["ftr"] = _round3(fta / fga) if fga > 0 else None
+    out["ts_pct"] = ts_pct_line(pts=pts, fga=fga, fta=fta)
+    out["efg_pct"] = efg_pct_line(fgm=fgm, fga=fga, fg3m=fg3m)
+    out["fg3ar"] = fg3ar_line(fg3a=fg3a, fga=fga)
+    out["ftr"] = ftr_line(fga=fga, fta=fta)
 
     # WS/40 recomputed from summed shares so it stays internally consistent.
     ws_total = out["ws"]
-    out["ws40"] = (
-        round(ws_total / minutes * 40.0, 2)
-        if (ws_total is not None and minutes)
-        else None
-    )
+    ws40 = win_shares_per_40(ws_total, minutes) if ws_total is not None else None
+    out["ws40"] = round(ws40, 2) if ws40 is not None else None
 
     # GmSc is a per-game score; blend it game-weighted.
     out["gmsc"] = _round1(_weighted_mean([(s.gmsc, float(s.gp)) for s in seasons]))

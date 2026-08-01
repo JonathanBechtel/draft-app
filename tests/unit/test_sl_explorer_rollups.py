@@ -319,18 +319,23 @@ def test_recombinable_pts_per100_pools_combined() -> None:
 def test_all_services_share_possession_base() -> None:
     """Possessions divide by one shared per-48 base, so the per-100 math can't drift.
 
-    The explorer, leaders, and player-page services must all reference the single
-    ``summer_league.constants.MINUTES_PER_GAME`` — the guard that keeps the
-    pooled Pts/100 column and every per-100 mode in agreement.
+    The pooled Explorer rollup and Summer League stats service use the single
+    ``summer_league.constants.MINUTES_PER_GAME``. Display-only per-mode scaling
+    delegates to ``app.services.stats.scaling``, whose SQL/Python pair keeps
+    leaderboards and rendered values in lockstep.
+
+    The engine cannot import the Summer League constant — import-linter
+    contract 3 forbids ``app.services.stats -> app.services.summer_league*`` —
+    so the 48 is baked into ``_PER_100_NUMERATOR`` (``100 * 60 * 48``). That is
+    the drift this asserts against: the one place the two packages must agree
+    numerically without being able to share a symbol.
     """
-    from app.services import summer_league_explorer_service as exp
-    from app.services import summer_league_leaders_service as led
     from app.services import summer_league_stats_service as sts
+    from app.services.stats import scaling
 
     assert MINUTES_PER_GAME == 48.0
-    assert exp._MINUTES_PER_GAME is MINUTES_PER_GAME
-    assert led._MINUTES_PER_GAME is MINUTES_PER_GAME
     assert sts._MINUTES_PER_GAME is MINUTES_PER_GAME
+    assert scaling._PER_100_NUMERATOR == 100.0 * 60.0 * MINUTES_PER_GAME
 
 
 def test_recombinable_pts_per100_extrapolates_partial_pace() -> None:
