@@ -318,9 +318,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
 
         config = types.GenerateContentConfig(
             response_modalities=["IMAGE", "TEXT"],
-            image_config=types.ImageConfig(  # type: ignore[attr-defined]
-                image_size=image_size
-            ),  # type: ignore[call-arg]
+            image_config=types.ImageConfig(image_size=image_size),  # type: ignore[attr-defined,call-arg]
             system_instruction=[types.Part.from_text(text=system_prompt)],
         )
 
@@ -675,9 +673,7 @@ Be specific and objective. This will help an AI illustrator capture their likene
             },
             config=types.GenerateContentConfig(
                 response_modalities=["IMAGE", "TEXT"],
-                image_config=types.ImageConfig(  # type: ignore[attr-defined]
-                    image_size=image_size
-                ),  # type: ignore[call-arg]
+                image_config=types.ImageConfig(image_size=image_size),  # type: ignore[attr-defined,call-arg]
                 system_instruction=[types.Part.from_text(text=system_prompt)],
             ),
         )
