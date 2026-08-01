@@ -452,6 +452,20 @@ async def _default_fetcher(url: str) -> str:
     return extract_article_text(html)
 
 
+async def fetch_article_text(url: str) -> str:
+    """Public entry point for :func:`_default_fetcher`, for callers outside this module.
+
+    Routes are expected to fetch an article's text *before* opening a
+    persistence transaction (the runtime network guard rejects HTTP while a
+    DB transaction is open) and then hand the already-fetched text to
+    :func:`extract_board_from_article`. Reaching directly into a
+    module-private helper (``board_extraction_service._default_fetcher``)
+    for that pre-fetch works but leaks an implementation detail across a
+    module boundary; this wrapper is the supported way to do the same fetch.
+    """
+    return await _default_fetcher(url)
+
+
 def _substack_api_url(url: str) -> Optional[str]:
     """Translate a Substack post URL to its public API endpoint.
 

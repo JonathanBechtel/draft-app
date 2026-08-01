@@ -108,27 +108,30 @@ which is precisely the window this phase's exit criteria measure.** Tracked as #
 
 ### Status
 
-**Shipped:** migration safety and the readiness probe · deploy-freshness alarm · import
-contract 4 · `DatedVersionMixin` (definition only) · metric-model fit-history retention ·
-runtime network/writer-lock guards · ingestion identity guard · the metrics rebuild gate
-(unchanged-input skip only — see #701).
+**Build work complete; exit criteria await a live window.** All three of Phase 1's remaining
+build items have shipped: **version-flip publish** (#697, PR #702), **intra-day compaction**
+(#698, PR #703), and **latency-class partitioning** (#699, PR #706) are closed. Combined with the
+items already listed below as shipped — migration safety and the readiness probe ·
+deploy-freshness alarm · import contract 4 · `DatedVersionMixin` (definition only) ·
+metric-model fit-history retention · runtime network/writer-lock guards · ingestion identity
+guard · the metrics rebuild gate (unchanged-input skip) — every build item in this phase's table
+is now shipped. What is left is verification, not code: the phase's exit criteria require hourly
+tick completion measured **inside live-game windows**, and Summer League 2026 ended 2026-07-19, so
+closing them needs either the next event or a deliberate staging replay (see the "cannot be met
+off-season" note below).
 
-**Remaining**, and all three are tracked as their own tickets:
-
-| Remaining item | Why it is still open |
-|---|---|
-| **Version-flip publish** (#697) | The largest change in the phase, and the entry gate removed its urgency by exonerating the path it converts. Still owed: it retires the last two unscoped-delete waivers in `metrics.py` and creates Phase 3's time axis |
-| **Intra-day compaction** (#698) | Cannot precede the version-flip — there are no hourly versions to compact until versions exist |
-| **Latency-class partitioning** (#699) | Buildable now but **not verifiable** until there are live games to poll; shipping it off-season means unverified code lying dormant until July |
-
-**Moved to Phase 2: in-event metrics scoping (#701).** The rebuild still does a full-pool
-`compute()` whenever the input watermark moves, which in a live event is every tick. That is real,
-but it is not Phase 1's to fix. Phase 1 needs the cost **contained** — #699's partitioning stops
-the slow class blocking the Desk tick, which is what the exit criterion actually measures.
-**Reducing** the cost means splitting `compute()` and `ComputeResult`, which is the stat engine
-Phase 2 lifts and consolidates, and it cannot be done safely before Phase 2's first item — the
-golden-number parity harness that proves the values did not move. Doing it here would change how
-the numbers are computed before the guard that verifies them, and would touch the same code twice.
+**Moved to Phase 2: in-event metrics scoping (#701).** Still open. The rebuild still does a
+full-pool `compute()` whenever the input watermark moves, which in a live event is every tick.
+That is real, but it is not Phase 1's to fix. Phase 1 needs the cost **contained** — #699's
+partitioning (now shipped) stops the slow class blocking the Desk tick, which is what the exit
+criterion actually measures. **Reducing** the cost means splitting `compute()` and `ComputeResult`,
+which is the stat engine Phase 2 lifts and consolidates, and it cannot be done safely before
+Phase 2's first item — the golden-number parity harness that proves the values did not move. Doing
+it here would change how the numbers are computed before the guard that verifies them, and would
+touch the same code twice. #701 is not a bespoke fix waiting on its own ticket to land — it is
+inherited by whatever class-based engine machinery Phase 2's metric registry (stat-engine §2–3)
+introduces once the fit/projection split exists there; there is nothing for #701 to do until that
+backbone is built.
 
 **Also open, but a decision rather than work:** auto-deploy on merge to `main`. The freshness
 alarm observes and deliberately cannot deploy.
@@ -142,10 +145,10 @@ the criteria, not an outstanding task.
 |---|---|
 | Runtime guards: no network I/O while a transaction is open or the writer lock is held (ContextVar + client checks; hard-fail dev/test, warn+stack in prod) — **SHIPPED** (#692 via PR #696): `app/utils/network_guard.py`; transaction depth from SQLAlchemy `after_begin`/`after_transaction_end`, writer-lock depth marked at both acquire sites in `write_lock.py`, and the guard *called* from the NBA-stats client rather than merely defined | discipline §2.1–2.2 |
 | `DatedVersionMixin` (`version` / `registry_version` / `calculation_version` / `is_current` / `as_of`) — defined **here** so the version-flip tables inherit it from day one — **SHIPPED**: definition only in `app/schemas/base.py`; nothing adopts it and no table is created (verified by autogenerate against a scratch DB). Process time is deliberately excluded so job-run time cannot be rendered as a user-facing "as of" (P4) | alignment §5b |
-| **Version-flip publish replacing the mega-transaction** — build the new metrics version outside any lock, materialize variants, flip the pointer in a tiny transaction (`app/cli/summer_league_ingest_runner.py:1308-1348`) | desk §5, stat-engine §5 |
-| Intra-day compaction policy for hourly rebuild versions (retain daily close + current) — lands with the version-flip so retention is bounded from the first event | stat-engine §5 |
+| **Version-flip publish replacing the mega-transaction** — build the new metrics version outside any lock, materialize variants, flip the pointer in a tiny transaction (`app/cli/summer_league_ingest_runner.py:1308-1348`) — **SHIPPED** (#697 via PR #702) | desk §5, stat-engine §5 |
+| Intra-day compaction policy for hourly rebuild versions (retain daily close + current) — lands with the version-flip so retention is bounded from the first event — **SHIPPED** (#698 via PR #703): `app/services/summer_league/metric_compaction.py` | stat-engine §5 |
 | Stop deleting `SummerLeagueMetricModel` (auditable fit history) — **SHIPPED**: publishing deactivates prior fits instead of wiping the table; upsert on `model_version` keeps a rebuild re-runnable. Removes one of three P2 waivers in `metrics.py`; the remaining two are the projection tables the version-flip retires | stat-engine §5 |
-| Latency-class partitioning: fast live poller / medium projection builder / slow backbone | desk §2 |
+| Latency-class partitioning: fast live poller / medium projection builder / slow backbone — **SHIPPED** (#699 via PR #706): fast/medium/slow Desk tick classes, per-class Fly cron machines gated behind promotion | desk §2 |
 | **Migration safety** (from #669) — **ship this first.** Short `lock_timeout`; `transaction_per_migration=True` so a blocked revision cannot hold earlier revisions' `ACCESS EXCLUSIVE` locks chain-wide (the entry gate's mechanism #1 — `lock_timeout` alone does not bound lock *lifetime*); `CREATE INDEX CONCURRENTLY` via `autocommit_block()`; the §1.7 checker enforcing both halves on new revisions; a DB-exercising readiness probe so `/health` cannot stay green through a database outage | desk §5a, discipline §1.7 |
 | **Deploy freshness** (new, from the entry gate) — prod ran 3.5 days behind `main` through the entire Vegas window, and "the chunking fixes shipped" was true of `main` and false of production — **PARTLY SHIPPED**: `scripts/check_deploy_freshness.py` + a daily workflow now measure and report the gap (app machines vs `origin/main`, via the `GH_SHA` image label). Auto-deploy on merge remains an open owner decision — the alarm observes, it does not deploy | #669 |
 | Ingestion-side identity guard: suffix/diacritic/variant-aware matching **before** a new `players_master` row is created — the Jr./II/accent dup class has been re-fixed downstream at least three times — **SHIPPED** (#693 via PR #696): variant-aware matching in the resolution path, with ambiguous variants left reviewable rather than resolved into competing identities (the father/son namesake trap) | backlog 4.3 |
@@ -243,6 +246,25 @@ Phases 0–1 and have been constraining the work throughout.
 remains; the contract-4 ignore list is strictly shorter than at Phase 1, and each remaining entry
 is a known, named coupling.
 
+**Accepted coupling (decision, not a gap):** contract 4 only forbids `event_desk` importing
+Summer League. The reverse direction — Summer League importing `event_desk` — is real and
+pervasive today: `metrics_rebuild_gate.py`, `desk_read.py`, `desk_tick/*`, `event_window.py`, and
+`app/cli/summer_league_ingest_runner.py` all import from `app.services.event_desk` (registry,
+lifecycle, timeutils, render_snapshots, snapshot_materialization, state_machine, controller). This
+is not an oversight uncovered by review — it is how the version-flip publish (#697) and the Desk
+tick's latency-class split (#699) actually share the render-snapshot/lifecycle machinery — but it
+is uncovered by any import-linter contract, which makes it invisible drift risk. Adding a forbidden
+contract for this direction now would start with a double-digit baseline (the mirror image of
+contract 4's original prediction), not the small ratchet contract 4 turned out to be, and Summer
+League is the *only* concrete `event_desk` consumer at N=1 — the same "framework-shaped at N=1 is
+the trap" reasoning that defers Event Desk generalization applies here. **Decision: accepted as
+Phase 5 material, not contracted now.** Phase 5's "layer collapse" item is where this gets resolved
+for real, by moving the shared render-snapshot/lifecycle logic to wherever it stops mattering which
+direction the import runs; a contract before that move would just be pre-baselining debt this phase
+intends to delete outright. Re-open this decision if a second event/spoke needs `event_desk` before
+Phase 5 lands — that is the condition under which the coupling stops being one-way in practice and
+a contract earns its keep.
+
 ---
 
 ## Open tickets mapped to this plan
@@ -252,8 +274,8 @@ The live issue queue and this plan describe the same work; keep them pointing at
 | Ticket(s) | Relationship |
 |---|---|
 | **#669** (incident record) | The observed evidence behind Phase 1's entry gate, and the source of the migration-safety items. **Entry gate closed** — the diagnosis is a comment on the issue; migration safety shipped as the phase's first change. Remaining open follow-ups on the issue (metrics-compute scoping is only half closed — see #701): a maximum transaction/writer-lock lifetime per cron phase, alerting on old transactions and pool saturation, and per-stage cron telemetry that survives machine restarts |
-| **#698, #699** (Phase 1 remainder) | The two build items left: compaction (now unblocked — #697 shipped the versions it compacts) and latency-class partitioning (blocked on a live event or a staging replay, not on code) |
-| **#701** (in-event metrics scoping) | **Phase 2**, re-filed from Phase 1. Its precondition is Phase 2's golden-number harness, and its fix restructures the engine Phase 2 lifts. Phase 1 contains the cost via #699 rather than reducing it |
+| **#697, #698, #699** (Phase 1 remainder) | **Closed** (PRs #702, #703, #706): version-flip publish, intra-day compaction, and latency-class partitioning all shipped. Phase 1's build work is complete; only the live-window exit criteria remain |
+| **#701** (in-event metrics scoping) | **Phase 2**, re-filed from Phase 1, still open. Its precondition is Phase 2's golden-number harness, and its fix restructures the engine Phase 2 lifts — it is inherited by that engine's class machinery rather than fixed standalone. Phase 1 contains the cost via #699 (shipped) rather than reducing it |
 | **#692, #693, #694** | **Closed** (PR #696): runtime network/writer-lock guards, the ingestion identity guard, and the metrics rebuild gate. #694 stopped the *unchanged-input* recompute only; the in-event full-pool cost it was meant to bound is still open as #701 |
 | **#661** (scheduler success ≠ data refresh) | Implements the operational half of desk §1's watermark contract — scheduler / source / projection / snapshot signals kept distinct. Complements Phase 5's user-facing contract; ship whenever ready |
 | **#662–#667** (Desk decomposition) | Phase 5 material. **Sequencing guard:** execute after Phase 2's stat consolidation, or restrict each ticket to pure moves — otherwise duplicated math gets scattered into more files (sequencing rule 3) |
