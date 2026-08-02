@@ -13,6 +13,8 @@ Origin: ticket #718, filed from the post-merge review of PR #706 (`390b9b7`) rec
 `docs/plans/summer-league-remediation-roadmap.md`'s Phase 1 status section. Master reference:
 #743.
 
+Historical trend archive (dev/staging first): `scripts/backfill_sl_daily_trend_versions.py --year YYYY --dry-run` (ticket #759; use the same `with-db-env.sh` wrapper before a real run).
+
 ## Why this exists
 
 Phase 1's remaining risk sits in exactly two shapes: things that **cannot be verified
