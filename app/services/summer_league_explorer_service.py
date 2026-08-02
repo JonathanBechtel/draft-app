@@ -2900,7 +2900,13 @@ def _build_player_career_stmt(q: ExplorerQuery) -> Any:
             # count query below folds these group values to a scope-wide MIN,
             # so a paginated page can never advertise a newer watermark than a
             # current snapshot row outside that page.
-            func.min(ps.as_of).label("as_of"),  # type: ignore[attr-defined]
+            case(
+                (
+                    func.count(ps.as_of) == func.count(),  # type: ignore[attr-defined]
+                    func.min(ps.as_of),  # type: ignore[attr-defined]
+                ),
+                else_=None,
+            ).label("as_of"),
             # _compute_player_values expects seconds; minutes * 60 converts.
             (func.sum(ps.minutes) * 60).label("sec"),  # type: ignore[attr-defined]
             pace_sec_expr.label("pace_sec"),
@@ -3005,7 +3011,16 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     count_sq = stmt.subquery("_count_sq")
     count_row = (
         await db.execute(
-            select(func.count(), func.min(count_sq.c.as_of)).select_from(count_sq)
+            select(
+                func.count(),
+                case(
+                    (
+                        func.count(count_sq.c.as_of) == func.count(),
+                        func.min(count_sq.c.as_of),
+                    ),
+                    else_=None,
+                ),
+            ).select_from(count_sq)
         )
     ).one()
     total = int(count_row[0] or 0)
@@ -3283,7 +3298,13 @@ async def _query_players_per_competition(
         ps.as_of.label("as_of"),  # type: ignore[attr-defined, union-attr]
         # Window aggregation runs after WHERE but before LIMIT/OFFSET, so every
         # page reports the oldest watermark for the complete filtered scope.
-        func.min(ps.as_of).over().label("scope_as_of"),  # type: ignore[attr-defined, union-attr]
+        case(
+            (
+                func.count(ps.as_of).over() == func.count().over(),  # type: ignore[attr-defined, union-attr]
+                func.min(ps.as_of).over(),  # type: ignore[attr-defined, union-attr]
+            ),
+            else_=None,
+        ).label("scope_as_of"),
         ps.gp.label("gp"),  # type: ignore[attr-defined]
         (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
         (ps.pace * ps.minutes * 60).label("pace_sec"),  # type: ignore[attr-defined,operator]

@@ -1419,6 +1419,34 @@ async def test_snapshot_freshness_uses_oldest_current_watermark(
 
 
 @pytest.mark.asyncio
+async def test_snapshot_freshness_is_unknown_when_any_watermark_is_missing(
+    db_session: AsyncSession,
+) -> None:
+    """A dated row cannot mask degraded currency elsewhere in the scope."""
+    await _seed_grain(db_session)
+    seasons = (
+        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
+    )
+    seasons[0].as_of = datetime(2026, 8, 1, 12, 0)
+    seasons[1].as_of = None
+    await db_session.flush()
+
+    career = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
+    per_competition = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+
+    assert career.as_of is None
+    assert per_competition.as_of is None
+
+
+@pytest.mark.asyncio
 async def test_per_competition_freshness_is_stable_across_pages(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,

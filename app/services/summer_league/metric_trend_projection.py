@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime
 from math import floor
 from typing import Any, TypeAlias
 
@@ -16,6 +18,14 @@ from app.services.stats.inputs import PlayerSeason
 TREND_METRIC_KEYS = ("gmsc", "ts_pct", "bpm")
 TrendBand: TypeAlias = dict[str, float]
 TrendBands: TypeAlias = dict[str, TrendBand]
+
+
+@dataclass(frozen=True)
+class ScopedSeasonTrendProjection:
+    """A merged scoped band and the oldest snapshot watermark it depends on."""
+
+    bands: dict[int, TrendBands]
+    as_of: datetime | None
 
 
 def percentile(values: Sequence[float], probability: float) -> float:
@@ -62,12 +72,14 @@ async def materialize_scoped_season_trend_bands(
     seasons: Sequence[PlayerSeason],
     *,
     scoped_competition_ids: frozenset[int],
-) -> dict[int, TrendBands]:
+    scoped_as_of: datetime | None,
+) -> ScopedSeasonTrendProjection:
     """Merge a scoped tick with other current competitions in the same years."""
     years = {season.year for season in seasons}
     values_by_year: dict[int, dict[str, list[float]]] = defaultdict(
         lambda: defaultdict(list)
     )
+    sibling_watermarks: list[datetime | None] = []
     if years:
         rows = (
             await db.execute(
@@ -76,6 +88,7 @@ async def materialize_scoped_season_trend_bands(
                     SummerLeaguePlayerSeason.gmsc,
                     SummerLeaguePlayerSeason.ts_pct,
                     SummerLeaguePlayerSeason.bpm,
+                    SummerLeaguePlayerSeason.as_of,
                 ).where(
                     SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
                     SummerLeaguePlayerSeason.year.in_(years),  # type: ignore[attr-defined]
@@ -85,6 +98,7 @@ async def materialize_scoped_season_trend_bands(
                 )
             )
         ).all()
+        sibling_watermarks = [row.as_of for row in rows]
         for row in rows:
             for metric_key in TREND_METRIC_KEYS:
                 value: Any = getattr(row, metric_key)
@@ -95,10 +109,20 @@ async def materialize_scoped_season_trend_bands(
             value = season.metrics.get(metric_key)
             if value is not None:
                 values_by_year[season.year][metric_key].append(float(value))
-    return {
-        year: _bands_for_values(metric_values)
-        for year, metric_values in values_by_year.items()
-    }
+    watermarks = [scoped_as_of, *sibling_watermarks]
+    known_watermarks = [value for value in watermarks if value is not None]
+    conservative_as_of = (
+        min(known_watermarks)
+        if watermarks and len(known_watermarks) == len(watermarks)
+        else None
+    )
+    return ScopedSeasonTrendProjection(
+        bands={
+            year: _bands_for_values(metric_values)
+            for year, metric_values in values_by_year.items()
+        },
+        as_of=conservative_as_of,
+    )
 
 
 def materialize_trend_bands(

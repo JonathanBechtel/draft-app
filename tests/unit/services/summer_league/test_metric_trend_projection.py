@@ -1,5 +1,6 @@
 """Unit coverage for offline Summer League trend-band materialization."""
 
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -56,13 +57,27 @@ async def test_scoped_season_band_merges_other_current_competitions() -> None:
     """A scoped live tick retains an accurate year-wide materialized band."""
     db = AsyncMock()
     db.execute.return_value = SimpleNamespace(
-        all=lambda: [SimpleNamespace(year=2026, gmsc=8.0, ts_pct=None, bpm=None)]
+        all=lambda: [
+            SimpleNamespace(
+                year=2026,
+                gmsc=8.0,
+                ts_pct=None,
+                bpm=None,
+                as_of=datetime(2026, 7, 10, 10),
+            )
+        ]
     )
 
-    bands = await materialize_scoped_season_trend_bands(
+    projection = await materialize_scoped_season_trend_bands(
         db,
         [_season(1, 10, 2026, 4.0)],
         scoped_competition_ids=frozenset({10}),
+        scoped_as_of=datetime(2026, 7, 10, 12),
     )
 
-    assert bands[2026]["gmsc"] == {"median": 6.0, "q1": 5.0, "q3": 7.0}
+    assert projection.bands[2026]["gmsc"] == {
+        "median": 6.0,
+        "q1": 5.0,
+        "q3": 7.0,
+    }
+    assert projection.as_of == datetime(2026, 7, 10, 10)

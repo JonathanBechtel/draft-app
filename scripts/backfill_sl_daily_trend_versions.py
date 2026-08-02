@@ -165,8 +165,10 @@ async def _has_complete_archival_close(
     season_published: Any = getattr(SummerLeaguePlayerSeason, "published_at")
     context_competition_id: Any = getattr(SummerLeagueMetricContext, "competition_id")
     context_effective_day: Any = getattr(SummerLeagueMetricContext, "effective_day")
+    context_archival: Any = getattr(SummerLeagueMetricContext, "is_archival")
     season_competition_id: Any = getattr(SummerLeaguePlayerSeason, "competition_id")
     season_effective_day: Any = getattr(SummerLeaguePlayerSeason, "effective_day")
+    season_archival: Any = getattr(SummerLeaguePlayerSeason, "is_archival")
     season_competition_bands: Any = getattr(
         SummerLeaguePlayerSeason, "trend_competition_bands"
     )
@@ -179,6 +181,7 @@ async def _has_complete_archival_close(
             context_effective_day == effective_day,
             context_current.is_(False),  # type: ignore[attr-defined]
             context_published.is_not(None),  # type: ignore[attr-defined]
+            context_archival.is_(True),
         )
     )
     season_count = await db.scalar(
@@ -189,6 +192,7 @@ async def _has_complete_archival_close(
             season_effective_day == effective_day,
             season_current.is_(False),  # type: ignore[attr-defined]
             season_published.is_not(None),  # type: ignore[attr-defined]
+            season_archival.is_(True),
             season_competition_bands.is_not(None),
             season_year_bands.is_not(None),
         )

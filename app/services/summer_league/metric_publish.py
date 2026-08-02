@@ -418,6 +418,7 @@ async def publish_archival_metric_version(  # noqa: PLR0913
     values: dict[str, object] = {
         "published_at": published_at,
         "effective_day": effective_day,
+        "is_archival": True,
     }
     if as_of is not None:
         values["as_of"] = as_of

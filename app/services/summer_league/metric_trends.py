@@ -81,6 +81,49 @@ def _effective_day_expression() -> Any:
     )
 
 
+def _shape_trend_points(
+    rows: Sequence[Any],
+    *,
+    scope_kind: str,
+    keys: Sequence[str],
+    player_id: int | None,
+) -> list[TrendPoint]:
+    """Shape one materialized row per day into the public point contract."""
+    points: list[TrendPoint] = []
+    metric_order = {key: index for index, key in enumerate(keys)}
+    band_column = (
+        "trend_competition_bands"
+        if scope_kind == "competition"
+        else "trend_season_bands"
+    )
+    as_of_column = "as_of" if scope_kind == "competition" else "trend_season_as_of"
+    for row in rows:
+        day = row["effective_day"]
+        if day is None:
+            continue
+        stored_bands = row[band_column] or {}
+        for key in keys:
+            stored_band = stored_bands.get(key)
+            if stored_band is None or (player_id is not None and row[key] is None):
+                continue
+            band = TrendCohortBand(
+                median=float(stored_band["median"]),
+                q1=float(stored_band["q1"]),
+                q3=float(stored_band["q3"]),
+            )
+            points.append(
+                TrendPoint(
+                    metric_key=key,
+                    effective_day=day,
+                    value=float(row[key]) if player_id is not None else band.median,
+                    cohort_band=band,
+                    as_of=row[as_of_column],
+                )
+            )
+    points.sort(key=lambda point: (point.effective_day, metric_order[point.metric_key]))
+    return points
+
+
 async def get_daily_trend(
     db: AsyncSession,
     *,
@@ -119,6 +162,7 @@ async def get_daily_trend(
     version_column: Any = getattr(SummerLeaguePlayerSeason, "version")
     published_at_column: Any = getattr(SummerLeaguePlayerSeason, "published_at")
     id_column: Any = getattr(SummerLeaguePlayerSeason, "id")
+    archival_column: Any = getattr(SummerLeaguePlayerSeason, "is_archival")
     selected_columns = [
         id_column,
         competition_id_column,
@@ -127,8 +171,10 @@ async def get_daily_trend(
         getattr(SummerLeaguePlayerSeason, "as_of"),
         published_at_column,
         effective_day.label("effective_day"),
+        archival_column,
         getattr(SummerLeaguePlayerSeason, "trend_competition_bands"),
         getattr(SummerLeaguePlayerSeason, "trend_season_bands"),
+        getattr(SummerLeaguePlayerSeason, "trend_season_as_of"),
         *[getattr(SummerLeaguePlayerSeason, key).label(key) for key in keys],
     ]
     # Publication versions are allocated globally, while the archival backfill
@@ -141,6 +187,7 @@ async def get_daily_trend(
     rank = func.row_number().over(
         partition_by=winner_partition,
         order_by=(
+            archival_column.desc(),
             version_column.desc(),
             published_at_column.desc(),
             id_column.desc(),
@@ -188,6 +235,7 @@ async def get_daily_trend(
     scope_rank = func.row_number().over(
         partition_by=ranked.c.effective_day,
         order_by=(
+            ranked.c.is_archival.desc(),
             ranked.c.version.desc(),
             ranked.c.published_at.desc(),
             ranked.c.id.desc(),
@@ -208,44 +256,12 @@ async def get_daily_trend(
         .all()
     )
 
-    points: list[TrendPoint] = []
-    metric_order = {key: index for index, key in enumerate(keys)}
-    band_column = (
-        "trend_competition_bands"
-        if scope_kind == "competition"
-        else "trend_season_bands"
+    return _shape_trend_points(
+        rows,
+        scope_kind=scope_kind,
+        keys=keys,
+        player_id=player_id,
     )
-    for row in rows:
-        day = row["effective_day"]
-        if day is None:
-            continue
-        stored_bands = row[band_column] or {}
-        for key in keys:
-            stored_band = stored_bands.get(key)
-            if stored_band is None:
-                continue
-            band = TrendCohortBand(
-                median=float(stored_band["median"]),
-                q1=float(stored_band["q1"]),
-                q3=float(stored_band["q3"]),
-            )
-            if player_id is not None and row[key] is None:
-                continue
-            value = float(row[key]) if player_id is not None else band.median
-            points.append(
-                TrendPoint(
-                    metric_key=key,
-                    effective_day=day,
-                    value=value,
-                    cohort_band=band,
-                    as_of=row["as_of"],
-                )
-            )
-
-    # The loops above already produce day order. Keep the explicit key order in
-    # the contract even when the database returns rows in a different plan order.
-    points.sort(key=lambda point: (point.effective_day, metric_order[point.metric_key]))
-    return points
 
 
 def trend_points_to_context(

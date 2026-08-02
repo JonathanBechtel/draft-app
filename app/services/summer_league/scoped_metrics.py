@@ -52,6 +52,7 @@ class ComputeResult:
         default_factory=dict
     )
     competition_effective_days: dict[int, date] = field(default_factory=dict)
+    season_trend_as_of: Optional[datetime] = None
     as_of: Optional[datetime] = None
 
     @property

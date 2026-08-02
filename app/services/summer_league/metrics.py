@@ -943,12 +943,16 @@ async def compute(
         seasons,
         include_season_scope=load_scope is None,
     )
+    season_trend_as_of = as_of
     if load_scope is not None:
-        season_trend_bands = await materialize_scoped_season_trend_bands(
+        scoped_season_projection = await materialize_scoped_season_trend_bands(
             db,
             seasons,
             scoped_competition_ids=scope or frozenset(),
+            scoped_as_of=as_of,
         )
+        season_trend_bands = scoped_season_projection.bands
+        season_trend_as_of = scoped_season_projection.as_of
 
     if scope is not None and load_scope is None:
         contexts = {cid: ctx for cid, ctx in contexts.items() if cid in scope}
@@ -967,6 +971,7 @@ async def compute(
         competition_trend_bands=competition_trend_bands,
         season_trend_bands=season_trend_bands,
         competition_effective_days=competition_effective_days,
+        season_trend_as_of=season_trend_as_of,
         as_of=as_of,
     )
 
@@ -1038,6 +1043,7 @@ def _season_columns(
         "effective_day": projection.effective_day,
         "trend_competition_bands": None,
         "trend_season_bands": None,
+        "trend_season_as_of": None,
         "published_at": None,
     }
 
@@ -1218,6 +1224,7 @@ async def _rebuild_with_options(
             ps.competition_id
         )
         cols["trend_season_bands"] = result.season_trend_bands.get(ps.year)
+        cols["trend_season_as_of"] = getattr(result, "season_trend_as_of", result.as_of)
         db.add(SummerLeaguePlayerSeason(**cols))
         n_seasons += 1
 

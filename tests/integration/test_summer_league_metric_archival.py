@@ -27,8 +27,62 @@ from app.services.summer_league.metric_publish import (
     publish_archival_metric_version,
 )
 from app.services.summer_league_metrics_service import get_player_metric_seasons
-from scripts.backfill_sl_daily_trend_versions import run_backfill
+from scripts.backfill_sl_daily_trend_versions import (
+    _has_complete_archival_close,
+    run_backfill,
+)
 from tests.integration.conftest import make_player
+
+
+@pytest.mark.asyncio
+async def test_backfill_guard_rejects_ordinary_demoted_publications(
+    db_session: AsyncSession,
+) -> None:
+    """Only an explicit cutoff-bound archive can make a target complete."""
+    competition = SummerLeagueCompetition(
+        year=2021,
+        league_id="ordinary-close-not-archive",
+        venue_slug="las_vegas",
+        display_name="Ordinary Close",
+    )
+    player = make_player("Ordinary", "Close")
+    db_session.add_all([competition, player])
+    await db_session.flush()
+    assert competition.id is not None and player.id is not None
+    day = date(2021, 7, 9)
+    context = SummerLeagueMetricContext(
+        competition_id=competition.id,
+        year=2021,
+        venue_slug="las_vegas",
+        version=1,
+        is_current=False,
+        published_at=datetime(2026, 8, 1, 12),
+        effective_day=day,
+    )
+    season = SummerLeaguePlayerSeason(
+        competition_id=competition.id,
+        player_id=player.id,
+        year=2021,
+        venue_slug="las_vegas",
+        version=1,
+        is_current=False,
+        published_at=datetime(2026, 8, 1, 12),
+        effective_day=day,
+        trend_competition_bands={"gmsc": {"median": 1.0, "q1": 1.0, "q3": 1.0}},
+        trend_season_bands={"gmsc": {"median": 1.0, "q1": 1.0, "q3": 1.0}},
+    )
+    db_session.add_all([context, season])
+    await db_session.flush()
+
+    assert not await _has_complete_archival_close(
+        db_session, competition_id=competition.id, effective_day=day
+    )
+    context.is_archival = True
+    season.is_archival = True
+    await db_session.flush()
+    assert await _has_complete_archival_close(
+        db_session, competition_id=competition.id, effective_day=day
+    )
 
 
 @pytest.mark.asyncio
@@ -179,6 +233,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
     assert len(archival_rows) == 1
     assert archival_rows[0].is_current is False
     assert archival_rows[0].published_at is not None
+    assert archival_rows[0].is_archival is True
 
     published_at = archival_rows[0].published_at
     second = await publish_archival_metric_version(

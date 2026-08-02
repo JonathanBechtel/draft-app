@@ -28,6 +28,62 @@ def _single_value_bands(**values: float) -> dict[str, dict[str, float]]:
 
 
 @pytest.mark.asyncio
+async def test_archival_close_wins_over_later_normal_same_day_version(
+    db_session: AsyncSession,
+) -> None:
+    """A later full rebuild cannot retroactively replace a cutoff-bound close."""
+    competition = SummerLeagueCompetition(
+        year=2024,
+        league_id="trend-archive-wins",
+        venue_slug="las_vegas",
+        display_name="Trend Archive Wins",
+    )
+    player = make_player("Archive", "Wins")
+    db_session.add_all([competition, player])
+    await db_session.flush()
+    assert competition.id is not None and player.id is not None
+    day = date(2024, 7, 12)
+    db_session.add_all(
+        [
+            SummerLeaguePlayerSeason(
+                competition_id=competition.id,
+                player_id=player.id,
+                year=2024,
+                venue_slug="las_vegas",
+                version=1,
+                is_archival=True,
+                gmsc=4.0,
+                effective_day=day,
+                published_at=datetime(2026, 8, 1, 11),
+                trend_competition_bands=_single_value_bands(gmsc=4.0),
+            ),
+            SummerLeaguePlayerSeason(
+                competition_id=competition.id,
+                player_id=player.id,
+                year=2024,
+                venue_slug="las_vegas",
+                version=2,
+                gmsc=10.0,
+                effective_day=day,
+                published_at=datetime(2026, 8, 1, 12),
+                trend_competition_bands=_single_value_bands(gmsc=10.0),
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    points = await get_daily_trend(
+        db_session,
+        scope_key=f"competition:{competition.id}",
+        player_id=player.id,
+        metric_keys=("gmsc",),
+    )
+
+    assert len(points) == 1
+    assert points[0].value == 4.0
+
+
+@pytest.mark.asyncio
 async def test_trend_does_not_mix_partial_later_version_with_older_cohort(
     db_session: AsyncSession,
 ) -> None:

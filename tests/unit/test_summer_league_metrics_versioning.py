@@ -63,6 +63,7 @@ def _result(*, seasons: list[metrics.PlayerSeason]) -> SimpleNamespace:
         assisted_fg={},
         competition_trend_bands={},
         season_trend_bands={},
+        season_trend_as_of=datetime(2026, 7, 28, 12, 0),
         as_of=datetime(2026, 7, 28, 12, 0),
     )
 
