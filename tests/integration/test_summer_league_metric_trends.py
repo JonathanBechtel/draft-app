@@ -84,6 +84,46 @@ async def test_archival_close_wins_over_later_normal_same_day_version(
 
 
 @pytest.mark.asyncio
+async def test_trend_ignores_legacy_rows_without_an_event_day(
+    db_session: AsyncSession,
+) -> None:
+    """A job publication timestamp cannot fabricate a historical event close."""
+    competition = SummerLeagueCompetition(
+        year=2024,
+        league_id="trend-no-publication-day",
+        venue_slug="las_vegas",
+        display_name="Trend No Publication Day",
+    )
+    player = make_player("Legacy", "Projection")
+    db_session.add_all([competition, player])
+    await db_session.flush()
+    assert competition.id is not None and player.id is not None
+    db_session.add(
+        SummerLeaguePlayerSeason(
+            competition_id=competition.id,
+            player_id=player.id,
+            year=2024,
+            venue_slug="las_vegas",
+            version=1,
+            gmsc=8.0,
+            effective_day=None,
+            published_at=datetime(2026, 8, 1, 12),
+            trend_competition_bands=_single_value_bands(gmsc=8.0),
+        )
+    )
+    await db_session.commit()
+
+    points = await get_daily_trend(
+        db_session,
+        scope_key=f"competition:{competition.id}",
+        player_id=player.id,
+        metric_keys=("gmsc",),
+    )
+
+    assert points == []
+
+
+@pytest.mark.asyncio
 async def test_trend_does_not_mix_partial_later_version_with_older_cohort(
     db_session: AsyncSession,
 ) -> None:

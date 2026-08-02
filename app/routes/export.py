@@ -35,7 +35,7 @@ class ExportContext(BaseModel):
     competition_id: Optional[int] = None
     # Scope-parameterized trend card fields
     scope_key: Optional[str] = None
-    metric_keys: Optional[list[str]] = None
+    metric_keys: Optional[list[str]] = Field(default=None, max_length=3)
 
 
 class ExportRequest(BaseModel):

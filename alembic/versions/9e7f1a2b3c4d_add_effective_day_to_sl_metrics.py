@@ -2,14 +2,14 @@
 
 ``as_of`` is source currency and therefore cannot identify the event calendar
 day for a historical snapshot. The nullable ``effective_day`` column carries
-that day explicitly (Eastern). Existing published rows are backfilled from
-their publication timestamp; rows without a publication timestamp remain
-NULL and retain the read-path legacy fallback.
+that day explicitly (Eastern). Existing rows remain NULL because publication
+timestamps are job times, not event evidence; the archival backfill creates
+cutoff-bound daily closes with truthful event dates.
 
 The guards deliberately make this safe on databases initialized from SQLModel
 metadata first: a fresh database already has the columns and indexes, while a
 database upgraded from the previous head receives the same objects exactly
-once. The UPDATE predicates make the timestamp-derived backfill idempotent.
+once.
 """
 
 from typing import Sequence, Union
@@ -70,36 +70,14 @@ def _index_is_invalid(index_name: str) -> bool:
     )
 
 
-def _backfill_effective_day(table_name: str) -> None:
-    """Derive the Eastern publication date without overwriting known stamps."""
-    # Timestamps are stored as naive UTC throughout the application. Attach UTC
-    # before converting to America/New_York so a late-night UTC publish receives
-    # the preceding Eastern calendar date where appropriate.
-    op.execute(
-        sa.text(
-            f"""
-            UPDATE {table_name}
-               SET effective_day = (
-                   ((published_at AT TIME ZONE 'UTC')
-                    AT TIME ZONE 'America/New_York')::date
-               )
-             WHERE effective_day IS NULL
-               AND published_at IS NOT NULL
-            """
-        )
-    )
-
-
 def upgrade() -> None:
-    """Add, backfill, and index ``effective_day`` on both projections."""
+    """Add and index ``effective_day`` on both projections."""
     for table_name in _TABLES:
         if not _column_exists(table_name):
             op.add_column(
                 table_name,
                 sa.Column("effective_day", sa.Date(), nullable=True),
             )
-        _backfill_effective_day(table_name)
-
     # Indexes are declared on the SQLModel tables as well.  The projection
     # tables are populated in production, so use CIC inside an autocommit block
     # and recover an INVALID catalog entry left by an interrupted build.

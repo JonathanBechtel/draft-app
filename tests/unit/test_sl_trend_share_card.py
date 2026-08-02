@@ -115,6 +115,66 @@ async def test_trend_builder_compacts_lanes_when_middle_metric_is_missing(
 
 
 @pytest.mark.asyncio
+async def test_trend_builder_deduplicates_metric_keys_before_loading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated requested keys produce one query key and one rendered lane."""
+    day = date(2026, 7, 20)
+    load_trend = AsyncMock(
+        return_value=[
+            TrendPoint(
+                metric_key="gmsc",
+                effective_day=day,
+                value=8.0,
+                cohort_band=TrendCohortBand(median=8.0, q1=7.0, q3=9.0),
+            )
+        ]
+    )
+    monkeypatch.setattr(model_builders, "get_daily_trend", load_trend)
+    monkeypatch.setattr(
+        model_builders,
+        "_resolve_player_info",
+        AsyncMock(return_value=("Test Player", "test-player", "G", None, [], 2026)),
+    )
+    monkeypatch.setattr(
+        model_builders,
+        "_build_player_badge",
+        AsyncMock(return_value=PlayerBadge(name="Test Player", subtitle="G")),
+    )
+
+    model = await model_builders.build_sl_trend_model(
+        AsyncMock(),
+        [7],
+        {"scope_key": "competition:42", "metric_keys": ["gmsc"] * 3},
+    )
+
+    assert load_trend.await_args is not None
+    assert load_trend.await_args.kwargs["metric_keys"] == ("gmsc",)
+    assert [line.key for line in model.lines] == ["gmsc"]
+
+
+@pytest.mark.asyncio
+async def test_trend_builder_rejects_more_than_three_unique_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fixed three-lane card rejects excess work before querying trends."""
+    load_trend = AsyncMock()
+    monkeypatch.setattr(model_builders, "get_daily_trend", load_trend)
+
+    with pytest.raises(ValueError, match="at most 3 unique"):
+        await model_builders.build_sl_trend_model(
+            AsyncMock(),
+            [7],
+            {
+                "scope_key": "competition:42",
+                "metric_keys": ["gmsc", "ts_pct", "bpm", "minutes"],
+            },
+        )
+
+    load_trend.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_trend_export_versions_url_by_rendered_daily_close(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

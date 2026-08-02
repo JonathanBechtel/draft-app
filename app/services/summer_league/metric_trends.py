@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import Date, and_, cast, func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.summer_league_trends import TrendCohortBand, TrendPoint
@@ -73,25 +73,9 @@ def _validate_metric_keys(metric_keys: Sequence[str]) -> tuple[str, ...]:
     return keys
 
 
-def _legacy_effective_day() -> Any:
-    """Return the Eastern calendar date of a legacy publication timestamp."""
-    # Stored timestamps are naive UTC.  ``timezone('UTC', timestamp)`` attaches
-    # the source zone and the outer call converts to an Eastern wall-clock date.
-    return cast(
-        func.timezone(
-            "America/New_York",
-            func.timezone("UTC", SummerLeaguePlayerSeason.published_at),
-        ),
-        Date,
-    )
-
-
 def _effective_day_expression() -> Any:
-    """Coalesce the explicit event day with the legacy publish-date fallback."""
-    return func.coalesce(
-        SummerLeaguePlayerSeason.effective_day,
-        _legacy_effective_day(),
-    )
+    """Return the explicit event day; job timestamps are not event evidence."""
+    return SummerLeaguePlayerSeason.effective_day
 
 
 def _shape_trend_points(

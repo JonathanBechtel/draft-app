@@ -29,6 +29,7 @@ from app.services.summer_league.metric_publish import (
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from scripts.backfill_sl_daily_trend_versions import (
     _has_complete_archival_close,
+    _load_targets,
     run_backfill,
 )
 from tests.integration.conftest import make_player
@@ -83,6 +84,78 @@ async def test_backfill_guard_rejects_ordinary_demoted_publications(
     assert await _has_complete_archival_close(
         db_session, competition_id=competition.id, effective_day=day
     )
+
+
+@pytest.mark.asyncio
+async def test_backfill_targets_only_metric_eligible_game_statuses(
+    db_session: AsyncSession,
+) -> None:
+    """Stale logs on unresolved game statuses cannot create archival closes."""
+    competition = SummerLeagueCompetition(
+        year=2022,
+        league_id="archive-status-filter",
+        venue_slug="las_vegas",
+        display_name="Archive Status Filter",
+    )
+    player = make_player("Status", "Filter")
+    db_session.add_all([competition, player])
+    await db_session.flush()
+    assert competition.id is not None and player.id is not None
+    team = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id="status-filter-team",
+        raw_team_name="Status Filter Team",
+        team_slug="status-filter-team",
+    )
+    source_player = SummerLeagueSourcePlayer(
+        nba_stats_person_id="status-filter-player",
+        raw_player_name="Status Filter",
+        normalized_name="status-filter",
+    )
+    db_session.add_all([team, source_player])
+    await db_session.flush()
+    assert team.id is not None and source_player.id is not None
+
+    statuses = (
+        SummerLeagueGameStatus.FINAL,
+        SummerLeagueGameStatus.UNKNOWN,
+        SummerLeagueGameStatus.SCHEDULED,
+        SummerLeagueGameStatus.IN_PROGRESS,
+        SummerLeagueGameStatus.POSTPONED,
+        SummerLeagueGameStatus.CANCELED,
+    )
+    expected_days: set[date] = set()
+    for offset, status in enumerate(statuses, start=1):
+        day = date(2022, 7, offset)
+        game = SummerLeagueGame(
+            competition_id=competition.id,
+            nba_stats_game_id=f"status-filter-{offset}",
+            game_date=day,
+            home_team_entry_id=team.id,
+            status=status,
+        )
+        db_session.add(game)
+        await db_session.flush()
+        assert game.id is not None
+        db_session.add(
+            SummerLeaguePlayerGameLog(
+                competition_id=competition.id,
+                game_id=game.id,
+                team_entry_id=team.id,
+                source_player_id=source_player.id,
+                player_id=player.id,
+                nba_stats_person_id=source_player.nba_stats_person_id,
+                raw_player_name=source_player.raw_player_name,
+                minutes_seconds=60,
+            )
+        )
+        if status in {SummerLeagueGameStatus.FINAL, SummerLeagueGameStatus.UNKNOWN}:
+            expected_days.add(day)
+    await db_session.commit()
+
+    targets = await _load_targets(db_session, year=2022)
+
+    assert {target.effective_day for target in targets} == expected_days
 
 
 @pytest.mark.asyncio

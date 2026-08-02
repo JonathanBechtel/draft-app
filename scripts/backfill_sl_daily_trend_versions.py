@@ -39,6 +39,7 @@ from app.services.summer_league.metric_publish import (
 )
 from app.services.summer_league.metrics import (
     rebuild_staged,
+    season_game_status_clause,
 )
 from app.services.summer_league.write_lock import (
     acquire_summer_league_writer_lock_bounded,
@@ -137,6 +138,7 @@ async def _load_targets(
             game_date.is_not(None),  # type: ignore[attr-defined]
             player_id.is_not(None),  # type: ignore[attr-defined]
             minutes_seconds > 0,  # type: ignore[operator]
+            season_game_status_clause(),
         )
         .distinct()
         .order_by(

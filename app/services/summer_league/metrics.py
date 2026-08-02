@@ -157,7 +157,7 @@ require_rollup_class(
 )
 
 
-def _season_game_status_clause() -> Any:
+def season_game_status_clause() -> Any:
     """Return the SQL predicate selecting games eligible for season aggregates."""
     game_status: Any = SummerLeagueGame.status
     return game_status.notin_(_SEASON_EXCLUDED_GAME_STATUSES)
@@ -497,7 +497,7 @@ async def _load_shot_diet(
         )
         .where(SummerLeagueShotEvent.player_id.isnot(None))  # type: ignore[union-attr]
         .where(SummerLeagueShotEvent.shot_zone_basic.isnot(None))  # type: ignore[union-attr]
-        .where(_season_game_status_clause())
+        .where(season_game_status_clause())
         .where(
             SummerLeagueShotEvent.shot_zone_basic.notin_(list(_EXCLUDED_ZONES))  # type: ignore[union-attr]
         )
@@ -556,7 +556,7 @@ async def _load_assisted_fg(
         .where(
             SummerLeaguePlayByPlayEvent.event_msg_type == 1,  # type: ignore[arg-type]
             SummerLeaguePlayByPlayEvent.person1_id.isnot(None),  # type: ignore[union-attr]
-            _season_game_status_clause(),
+            season_game_status_clause(),
         )
         .group_by(
             SummerLeaguePlayByPlayEvent.person1_id,
@@ -616,7 +616,7 @@ async def _load(
         c.id: (c.year, c.venue_slug) for c in (await db.execute(comps_stmt)).scalars()
     }
 
-    games_stmt = select(SummerLeagueGame).where(_season_game_status_clause())
+    games_stmt = select(SummerLeagueGame).where(season_game_status_clause())
     if scope is not None:
         games_stmt = games_stmt.where(
             SummerLeagueGame.competition_id.in_(scope)  # type: ignore[attr-defined]
@@ -634,7 +634,7 @@ async def _load(
             SummerLeagueGame,
             SummerLeagueGame.id == tgl.game_id,  # type: ignore[arg-type]
         )
-        .where(_season_game_status_clause())
+        .where(season_game_status_clause())
     )
     if scope is not None:
         team_stmt = team_stmt.where(tgl.competition_id.in_(scope))  # type: ignore[attr-defined]
@@ -646,7 +646,7 @@ async def _load(
             SummerLeagueGame,
             SummerLeagueGame.id == pgl.game_id,  # type: ignore[arg-type]
         )
-        .where(_season_game_status_clause())
+        .where(season_game_status_clause())
         .group_by(pgl.team_entry_id)
     )
     if scope is not None:
@@ -692,7 +692,7 @@ async def _load(
         .where(
             pgl_player_id.isnot(None),
             sec > 0,
-            _season_game_status_clause(),
+            season_game_status_clause(),
         )
         .group_by(pgl.competition_id, pgl.player_id, pgl.team_entry_id)
     )

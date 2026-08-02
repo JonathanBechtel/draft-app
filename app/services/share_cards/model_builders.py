@@ -1123,7 +1123,9 @@ async def build_sl_trend_model(
     raw_keys = context.get("metric_keys") or ("gmsc", "ts_pct", "bpm")
     if not isinstance(raw_keys, list | tuple):
         raise ValueError("sl_trend metric_keys must be a list")
-    keys = tuple(str(key) for key in raw_keys)
+    keys = tuple(dict.fromkeys(str(key) for key in raw_keys))
+    if len(keys) > 3:
+        raise ValueError("sl_trend supports at most 3 unique metric_keys")
     points = await get_daily_trend(
         db,
         scope_key=scope_key,

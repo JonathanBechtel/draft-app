@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.services.summer_league.metric_trends import (
-    _legacy_effective_day,
+    _effective_day_expression,
     get_daily_trend,
 )
 
@@ -93,9 +93,11 @@ async def test_unknown_metric_key_is_rejected_before_query() -> None:
     db.execute.assert_not_awaited()
 
 
-def test_legacy_fallback_uses_published_at_in_eastern_timezone() -> None:
-    """NULL effective-day fallback cannot accidentally order by source currency."""
-    sql = str(_legacy_effective_day().compile(compile_kwargs={"literal_binds": True}))
+def test_effective_day_expression_does_not_use_publication_time() -> None:
+    """Only explicit event evidence can supply the daily-close calendar key."""
+    sql = str(
+        _effective_day_expression().compile(compile_kwargs={"literal_binds": True})
+    )
 
-    assert "published_at" in sql
-    assert "America/New_York" in sql
+    assert "effective_day" in sql
+    assert "published_at" not in sql
