@@ -1,8 +1,12 @@
 """Unit coverage for cumulative trend SVG share-card rendering."""
 
 from dataclasses import asdict
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from app.services.share_cards.cache_keys import generate_filename, generate_title
+from app.services.share_cards.export_service import ImageExportService
 from app.services.share_cards.render_models import (
     PlayerBadge,
     TrendChartLine,
@@ -61,3 +65,33 @@ def test_trend_share_card_cache_metadata() -> None:
     """Trend exports use stable, recognizable download metadata."""
     assert generate_filename("sl_trend", ["Test Player"]).endswith("-trend.png")
     assert generate_title("sl_trend", ["Test Player"]) == "Test Player — Trend"
+
+
+@pytest.mark.asyncio
+async def test_trend_export_bypasses_persistent_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later daily close always rebuilds instead of returning yesterday's PNG."""
+    service = ImageExportService.__new__(ImageExportService)
+    service.db = AsyncMock()
+    service.storage = MagicMock()
+    service.storage.check_cache.side_effect = AssertionError(
+        "trend exports must not consult the persistent cache"
+    )
+    service.storage.upload.return_value = "https://example.test/trend.png"
+    service.renderer = MagicMock()
+    service.rasterizer = MagicMock()
+    service.rasterizer.rasterize.return_value = b"png"
+    build_model = AsyncMock(return_value=_model())
+    monkeypatch.setattr(service, "_build_model", build_model)
+
+    result = await service.export(
+        "sl_trend",
+        [7],
+        {"scope_key": "competition:42", "metric_keys": ["gmsc", "ts_pct", "bpm"]},
+    )
+
+    service.storage.check_cache.assert_not_called()
+    build_model.assert_awaited_once()
+    service.storage.upload.assert_called_once()
+    assert result["cached"] is False

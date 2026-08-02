@@ -95,8 +95,13 @@ class ImageExportService:
         # Generate cache key
         cache_key = generate_cache_key(component, player_ids, context)
 
-        # Check cache first
-        cached = self.storage.check_cache(cache_key)
+        # Trend cards are backed by a newly published daily close while their
+        # request context remains stable. Reusing the generic persistent key
+        # would freeze the first exported day indefinitely, so rebuild and
+        # overwrite this low-volume component on every explicit share action.
+        cached = (
+            None if component == "sl_trend" else self.storage.check_cache(cache_key)
+        )
         if cached:
             export_id = Path(cache_key).stem
             if cached.title and cached.filename:

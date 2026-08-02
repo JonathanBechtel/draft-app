@@ -604,6 +604,46 @@ async def test_scoped_compute_reuses_fit_and_matches_full_recompute(
         assert _scoped_projection(full, comp_a) == _scoped_projection(scoped, comp_a)
 
 
+async def test_historical_scoped_compute_refits_only_through_cutoff(
+    db_session: AsyncSession,
+) -> None:
+    """A historical close cannot reuse a fit trained on later-season games."""
+    historical_comp = await _seed_pool(
+        db_session,
+        year=2025,
+        venue="las_vegas",
+        league_id="historical-fit",
+        players_per_team=6,
+        n_games=4,
+    )
+    await _seed_pool(
+        db_session,
+        year=2026,
+        venue="orlando",
+        league_id="future-fit",
+        players_per_team=6,
+        n_games=4,
+    )
+    await db_session.commit()
+
+    await metrics.rebuild(db_session)
+    await db_session.commit()
+    active_fit = await metrics._load_active_fit(db_session)
+    assert active_fit is not None
+    assert active_fit.model_version is not None
+    assert active_fit.bpm_n_fit == 24
+
+    historical = await metrics.compute(
+        db_session,
+        competition_ids=[historical_comp],
+        through_day=date(2025, 7, 6),
+    )
+
+    assert historical.fit.model_version is None
+    assert historical.fit.bpm_n_fit == 12
+    assert {season.competition_id for season in historical.seasons} == {historical_comp}
+
+
 async def test_scoped_rebuild_empty_scope_is_a_noop(db_session: AsyncSession) -> None:
     """An empty ``competition_ids`` sequence changes nothing.
 

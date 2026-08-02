@@ -854,7 +854,15 @@ async def compute(
     """
     scope = frozenset(competition_ids) if competition_ids is not None else None
     pooled_fit = fit
-    if scope is not None and pooled_fit is None and _can_reuse_pooled_fit():
+    # A retained historical close must be fit only from information available
+    # through that event day. The active fit may include later games or later
+    # seasons, so it is reusable for live scoped ticks only.
+    if (
+        scope is not None
+        and through_day is None
+        and pooled_fit is None
+        and _can_reuse_pooled_fit()
+    ):
         pooled_fit = await _load_active_fit(db)
 
     (
