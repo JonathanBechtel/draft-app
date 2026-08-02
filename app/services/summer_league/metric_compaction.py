@@ -4,7 +4,7 @@ Metric rebuilds are append-only so readers can keep using the last coherent
 published version while a new projection is staged. The resulting history is
 valuable, but hourly rebuilds during an event are operational churn rather than
 analytical granularity. This module keeps the latest published and latest
-unpublished projection for each scope and UTC source day, plus every current row,
+unpublished projection for each scope and Eastern event day, plus every current row,
 and removes only older closed-day duplicates.
 
 Compaction is intentionally separate from the rebuild path. It runs in its
@@ -17,7 +17,7 @@ published daily close if it is abandoned.
 Retention rationale (abandoned candidates): ``_delete_superseded_closed_day_rows``
 partitions by ``(*scope_columns, source_day, publication_state)`` and keeps rank 1
 of each partition, so at most one unpublished ("abandoned") candidate survives
-per scope per closed UTC day -- alongside the one published daily close. A
+per scope per closed event day -- alongside the one published daily close. A
 candidate is "abandoned" when a rebuild staged rows for a day but a later
 publish never promoted them (superseded by a newer rebuild, or the run never
 reached the publish step). This is a deliberate, amended-spec trade-off, not an
@@ -36,13 +36,14 @@ from dataclasses import dataclass
 from datetime import datetime, time, timezone
 from typing import Any
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Date, cast, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
+from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.write_lock import (
     acquire_summer_league_writer_lock_bounded,
 )
@@ -83,9 +84,22 @@ async def _delete_superseded_closed_day_rows(
     model: Any,
     scope_columns: tuple[Any, ...],
     cutoff: datetime,
+    event_day_cutoff: Any | None = None,
 ) -> int:
     """Delete superseded published/unpublished rows from closed source days."""
-    source_day = func.date_trunc("day", model.as_of)
+    # ``effective_day`` is the event calendar day and is the primary history
+    # partition. Legacy published rows predate that column, so derive their
+    # day from the publication stamp in Eastern time. ``as_of`` is source
+    # currency and must never influence trend ordering/retention.
+    legacy_day = cast(
+        func.timezone("America/New_York", func.timezone("UTC", model.published_at)),
+        Date,
+    )
+    source_day = func.coalesce(model.effective_day, legacy_day)
+    # ``cutoff`` is normalized to UTC midnight for the existing job contract;
+    # compare event days against that instant's Eastern calendar date so a run
+    # just after UTC midnight does not close the still-current Eastern day.
+    event_day_cutoff = event_day_cutoff or to_eastern_date(cutoff)
     publication_state = model.published_at.is_(None)
     ranked = (
         select(
@@ -99,8 +113,7 @@ async def _delete_superseded_closed_day_rows(
         )
         .where(
             model.is_current.is_(False),
-            model.as_of.isnot(None),
-            model.as_of < cutoff,
+            source_day < event_day_cutoff,
         )
         .cte("closed_day_rows")
     )
@@ -123,11 +136,11 @@ async def compact_metric_versions(
 ) -> MetricCompactionSummary:
     """Compact closed-day metric versions while preserving published closes/candidates.
 
-    as_of is source currency, so the UTC calendar day of that column—not
-    process time or row creation time—defines a daily history point. The
-    current UTC day is left untouched because its final version is not known
-    until the day closes. Rows with no as_of value are also retained: they
-    predate dated publication and cannot be safely assigned to a day. Within a
+    ``effective_day`` is the event calendar day and defines a daily history
+    point. Legacy published rows use the Eastern date of ``published_at``;
+    ``as_of`` is source currency and never drives retention. The current day is
+    left untouched because its final version is not known until the day closes.
+    Rows with no effective day or publication stamp are retained. Within a
     closed day, the latest published row and latest unpublished candidate are
     retained independently.
 
@@ -143,7 +156,9 @@ async def compact_metric_versions(
     Returns:
         Counts of deleted context and player-season rows plus the cutoff.
     """
-    cutoff = _closed_day_cutoff(now)
+    reference_now = now or datetime.now(timezone.utc)
+    cutoff = _closed_day_cutoff(reference_now)
+    event_day_cutoff = to_eastern_date(reference_now)
     await acquire_summer_league_writer_lock_bounded(
         db, max_wait_seconds=max_wait_seconds
     )
@@ -152,6 +167,7 @@ async def compact_metric_versions(
         model=SummerLeagueMetricContext,
         scope_columns=(SummerLeagueMetricContext.competition_id,),
         cutoff=cutoff,
+        event_day_cutoff=event_day_cutoff,
     )
     season_rows_deleted = await _delete_superseded_closed_day_rows(
         db,
@@ -161,6 +177,7 @@ async def compact_metric_versions(
             SummerLeaguePlayerSeason.player_id,
         ),
         cutoff=cutoff,
+        event_day_cutoff=event_day_cutoff,
     )
     return MetricCompactionSummary(
         cutoff=cutoff,

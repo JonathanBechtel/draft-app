@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -116,6 +116,7 @@ async def test_rebuild_staged_writes_an_inactive_candidate_version(
         "version": 7,
         "model_version": "candidate",
         "as_of": datetime(2026, 7, 28, 12, 0),
+        "effective_day": date.today(),
         "published": False,
     }
     publish_model.assert_awaited_once_with(
@@ -154,6 +155,7 @@ async def test_scoped_rebuild_publishes_only_the_requested_candidate_scope(
         competition_ids=frozenset({1}),
         model_version=None,
         as_of=datetime(2026, 7, 28, 12, 0),
+        effective_day=date.today(),
     )
     idle_timeout.assert_awaited_once_with(db)
     assert db.add.call_count == 2

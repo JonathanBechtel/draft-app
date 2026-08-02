@@ -16,6 +16,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
 
+from app.models.summer_league_trends import TrendPoint
+
 from app.services.summer_league_games_service import (
     GamesPage,
     get_game_box_score,
@@ -51,6 +53,7 @@ from app.services.summer_league_environment_service import (
     get_current_profile_by_scope_key,
     season_scope_key,
 )
+from app.services.summer_league.metric_trends import get_daily_trend
 from app.services.summer_league_franchise_service import get_franchise_history
 from app.services.summer_league_leaders_service import get_leaders
 from app.services.summer_league_season_service import (
@@ -80,6 +83,29 @@ FOOTER_LINKS = [
     {"text": "Privacy Policy", "url": "/privacy"},
     {"text": "Cookie Policy", "url": "/cookies"},
 ]
+
+
+@router.get(
+    "/api/summer-league/trends",
+    response_model=list[TrendPoint],
+    status_code=200,
+)
+async def summer_league_daily_trends(
+    scope_key: str = Query(..., min_length=1),
+    player_id: int | None = Query(default=None, ge=1),
+    metric_keys: list[str] = Query(default=["gmsc", "ts_pct", "bpm"]),
+    db: AsyncSession = Depends(get_session),
+) -> list[TrendPoint]:
+    """Return ordered daily-close trend points for a stable event scope."""
+    try:
+        return await get_daily_trend(
+            db,
+            scope_key=scope_key,
+            player_id=player_id,
+            metric_keys=metric_keys,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/stats/summer-league/games", response_class=HTMLResponse)

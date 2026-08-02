@@ -40,7 +40,7 @@ import math
 from collections import defaultdict
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import case, func, select, text
@@ -53,6 +53,7 @@ from app.services.summer_league.metric_publish import (
     next_metric_version,
     publish_metric_version,
 )
+from app.services.event_desk.timeutils import to_eastern_date
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
@@ -379,6 +380,7 @@ class RebuildOptions:
     model_version: Optional[str] = None
     competition_ids: Optional[Sequence[int]] = None
     publish: bool = True
+    effective_day: Optional[date] = None
 
 
 @dataclass(frozen=True)
@@ -388,6 +390,7 @@ class SeasonProjectionContext:
     model_version: str
     publication_version: int
     as_of: Optional[datetime]
+    effective_day: Optional[date]
     adv_eligible: bool
 
 
@@ -868,6 +871,7 @@ def _season_columns(
         "registry_version": METRIC_REGISTRY_VERSION,
         "calculation_version": METRIC_CALCULATION_VERSION,
         "as_of": projection.as_of,
+        "effective_day": projection.effective_day,
         "published_at": None,
     }
 
@@ -924,6 +928,11 @@ async def _rebuild_with_options(
     model_version = options.model_version
     competition_ids = options.competition_ids
     publish = options.publish
+    # The run's input day is an event-calendar day in Eastern time. Callers that
+    # replay a historical input can provide it explicitly; live rebuilds use the
+    # day on which the rebuild starts. This stamp is intentionally independent
+    # from ``result.as_of`` (source-row currency).
+    effective_day = options.effective_day or to_eastern_date(datetime.now(timezone.utc))
     if competition_ids is not None and not competition_ids:
         return {
             "seasons": 0,
@@ -1007,6 +1016,7 @@ async def _rebuild_with_options(
                 calculation_version=METRIC_CALCULATION_VERSION,
                 as_of=result.as_of,
                 published_at=None,
+                effective_day=effective_day,
             )
         )
 
@@ -1020,6 +1030,7 @@ async def _rebuild_with_options(
                 model_version=generated_model_version,
                 publication_version=publication_version,
                 as_of=result.as_of,
+                effective_day=effective_day,
                 adv_eligible=ps.competition_id in adv_cids,
             ),
             zone_fga,
@@ -1043,10 +1054,12 @@ async def _rebuild_with_options(
             competition_ids=scope,
             model_version=generated_model_version if scope is None else None,
             as_of=result.as_of,
+            effective_day=effective_day,
         )
     # Keep the source watermark alongside the row counts so the gate can carry the
     # exact input currency into the final publication transaction.
     summary["as_of"] = result.as_of
+    summary["effective_day"] = effective_day
     return summary
 
 
@@ -1055,6 +1068,7 @@ async def rebuild(
     *,
     model_version: Optional[str] = None,
     competition_ids: Optional[Sequence[int]] = None,
+    effective_day: Optional[date] = None,
 ) -> dict[str, Any]:
     """Build and publish a full or scoped metric projection."""
     return await _rebuild_with_options(
@@ -1062,6 +1076,7 @@ async def rebuild(
         RebuildOptions(
             model_version=model_version,
             competition_ids=competition_ids,
+            effective_day=effective_day,
         ),
     )
 
@@ -1071,6 +1086,7 @@ async def rebuild_staged(
     *,
     model_version: Optional[str] = None,
     competition_ids: Optional[Sequence[int]] = None,
+    effective_day: Optional[date] = None,
 ) -> dict[str, Any]:
     """Build an inactive metric projection for a later atomic publication."""
     return await _rebuild_with_options(
@@ -1079,5 +1095,6 @@ async def rebuild_staged(
             model_version=model_version,
             competition_ids=competition_ids,
             publish=False,
+            effective_day=effective_day,
         ),
     )

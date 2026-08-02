@@ -20,7 +20,7 @@ Three tables:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import (
@@ -113,6 +113,13 @@ class SummerLeagueMetricContext(DatedVersionMixin, SQLModel, table=True):  # typ
             postgresql_where=text("is_current = true"),
         ),
         Index("ix_summer_league_metric_contexts_year_venue", "year", "venue_slug"),
+        Index(
+            "ix_summer_league_metric_contexts_trend",
+            "competition_id",
+            "effective_day",
+            "version",
+            "published_at",
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -127,6 +134,10 @@ class SummerLeagueMetricContext(DatedVersionMixin, SQLModel, table=True):  # typ
     # Set when this projection version is exposed to readers. A nullable value
     # distinguishes an abandoned/in-flight candidate from a published daily close.
     published_at: Optional[datetime] = Field(default=None)
+    # Event calendar day (Eastern), deliberately separate from ``as_of`` source
+    # currency. Legacy rows may leave this NULL; the trend read/compaction paths
+    # fall back to the historical ``published_at`` day until they are backfilled.
+    effective_day: Optional[date] = Field(default=None)
     competition_id: int = Field(
         sa_column=Column(
             Integer,
@@ -178,6 +189,20 @@ class SummerLeaguePlayerSeason(DatedVersionMixin, SQLModel, table=True):  # type
         Index("ix_summer_league_player_seasons_player_id", "player_id"),
         Index("ix_summer_league_player_seasons_year_venue", "year", "venue_slug"),
         Index("ix_summer_league_player_seasons_competition", "competition_id"),
+        Index(
+            "ix_summer_league_player_seasons_trend",
+            "competition_id",
+            "effective_day",
+            "version",
+            "published_at",
+        ),
+        Index(
+            "ix_summer_league_player_seasons_year_trend",
+            "year",
+            "effective_day",
+            "version",
+            "published_at",
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -192,6 +217,10 @@ class SummerLeaguePlayerSeason(DatedVersionMixin, SQLModel, table=True):  # type
     # Set when this projection version is exposed to readers. A nullable value
     # distinguishes an abandoned/in-flight candidate from a published daily close.
     published_at: Optional[datetime] = Field(default=None)
+    # Event calendar day (Eastern), deliberately separate from ``as_of`` source
+    # currency. Legacy rows may leave this NULL; the trend read/compaction paths
+    # fall back to the historical ``published_at`` day until they are backfilled.
+    effective_day: Optional[date] = Field(default=None)
     competition_id: int = Field(
         sa_column=Column(
             Integer,

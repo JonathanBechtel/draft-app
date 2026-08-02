@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -117,11 +117,14 @@ async def test_publish_metric_version_stamps_input_watermark_on_promoted_rows() 
         version=9,
         model_version="candidate",
         as_of=watermark,
+        effective_day=date(2026, 7, 28),
     )
 
     statements = [call.args[0] for call in db.execute.await_args_list]
     assert "as_of" in str(statements[3])
     assert "as_of" in str(statements[4])
+    assert "effective_day" in str(statements[3])
+    assert "effective_day" in str(statements[4])
 
 
 @pytest.mark.asyncio

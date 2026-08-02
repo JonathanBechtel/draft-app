@@ -16,7 +16,7 @@ See ``docs/plans/programmatic-code-discipline.md`` §1.4 and stat-engine §5.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import logging
 from typing import TYPE_CHECKING
 
@@ -178,13 +178,14 @@ async def _newer_current_competition_ids(
     return {int(competition_id) for competition_id in rows}
 
 
-async def publish_metric_version(
+async def publish_metric_version(  # noqa: PLR0913
     db: AsyncSession,
     *,
     version: int,
     competition_ids: set[int] | frozenset[int] | None = None,
     model_version: str | None = None,
     as_of: datetime | None = None,
+    effective_day: date | None = None,
 ) -> set[int]:
     """Atomically expose one staged metric version to all eligible readers.
 
@@ -195,8 +196,9 @@ async def publish_metric_version(
     flip. Demoted rows retain their original ``published_at``; only newly promoted rows
     receive the flip timestamp. When supplied, ``as_of`` is also written to promoted
     rows so source currency is stamped at publication rather than inherited from an
-    incomplete candidate. A failed caller transaction therefore leaves the previous
-    current version untouched.
+    incomplete candidate. ``effective_day`` carries the Eastern event-calendar day
+    from the rebuild input and never substitutes for ``as_of``. A failed caller
+    transaction therefore leaves the previous current version untouched.
 
     Returns:
         Competition IDs whose newer current publication prevented this candidate
@@ -278,6 +280,9 @@ async def publish_metric_version(
         "published_at": published_at,
     }
     promotion_values.update({"as_of": as_of} if as_of is not None else {})
+    promotion_values.update(
+        {"effective_day": effective_day} if effective_day is not None else {}
+    )
     await db.execute(season_promote.values(**promotion_values))
     await db.execute(context_promote.values(**promotion_values))
 
