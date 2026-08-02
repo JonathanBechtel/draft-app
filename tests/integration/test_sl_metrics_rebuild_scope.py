@@ -740,6 +740,9 @@ async def test_unscoped_rebuild_retains_projection_history(
     current_seasons = [season for season in seasons if season.is_current]
     assert len(seasons) == 48
     assert len(current_seasons) == 24
+    assert {season.effective_day for season in current_seasons} == {date(2025, 7, 6)}
+    assert first["effective_day"] is None
+    assert second["effective_day"] is None
 
     # Projections are replaced; fits accumulate. Each unscoped rebuild retains the
     # prior model row and deactivates it rather than deleting it (P2).

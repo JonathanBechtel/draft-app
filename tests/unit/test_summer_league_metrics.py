@@ -79,15 +79,21 @@ async def test_load_selects_nba_source_rate_aggregates() -> None:
         ]
     )
 
-    comps, games, team_rows, team_minutes, player_rows = await metrics_service._load(  # type: ignore[arg-type]
-        db
-    )
+    (
+        comps,
+        games,
+        team_rows,
+        team_minutes,
+        player_rows,
+        competition_effective_days,
+    ) = await metrics_service._load(db)  # type: ignore[arg-type]
 
     assert comps == {1: (2026, "las_vegas")}
     assert games == {}
     assert team_rows == []
     assert team_minutes == {2: 1.0}
     assert player_rows == []
+    assert competition_effective_days == {}
 
 
 @pytest.mark.asyncio
@@ -146,7 +152,7 @@ async def test_compute_persists_minute_weighted_nba_source_rates(
     raw_row.tov = 3
 
     async def fake_load(_db: object) -> tuple[object, ...]:
-        return ({1: (2026, "las_vegas")}, {}, [], {}, [raw_row])
+        return ({1: (2026, "las_vegas")}, {}, [], {}, [raw_row], {})
 
     async def empty_dict(_db: object) -> dict[object, object]:
         return {}

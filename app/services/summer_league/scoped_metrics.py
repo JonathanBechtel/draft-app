@@ -11,6 +11,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from datetime import date
 from typing import Any, Optional
 
 from app.services.stats.inputs import (
@@ -50,6 +51,7 @@ class ComputeResult:
     season_trend_bands: dict[int, dict[str, dict[str, float]]] = field(
         default_factory=dict
     )
+    competition_effective_days: dict[int, date] = field(default_factory=dict)
     as_of: Optional[datetime] = None
 
     @property

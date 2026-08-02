@@ -581,6 +581,18 @@ def _through_day_filter(
     return statement.where(game_date <= through_day)
 
 
+def _latest_competition_game_days(game_rows: Sequence[Any]) -> dict[int, date]:
+    """Return each competition's latest included normalized game date."""
+    latest: dict[int, date] = {}
+    for game in game_rows:
+        if game.game_date is not None:
+            latest[game.competition_id] = max(
+                game.game_date,
+                latest.get(game.competition_id, game.game_date),
+            )
+    return latest
+
+
 async def _load(
     db: AsyncSession,
     competition_ids: Optional[Collection[int]] = None,
@@ -607,10 +619,12 @@ async def _load(
             SummerLeagueGame.competition_id.in_(scope)  # type: ignore[attr-defined]
         )
     games_stmt = _through_day_filter(games_stmt, game_date, through_day)
+    game_rows = list((await db.execute(games_stmt)).scalars())
     games = {
         g.id: (g.home_team_entry_id, g.away_team_entry_id, g.home_score, g.away_score)
-        for g in (await db.execute(games_stmt)).scalars()
+        for g in game_rows
     }
+    competition_effective_days = _latest_competition_game_days(game_rows)
     team_stmt = (
         select(tgl)
         .join(
@@ -683,7 +697,7 @@ async def _load(
         player_stmt = player_stmt.where(pgl.competition_id.in_(scope))  # type: ignore[attr-defined]
     player_stmt = _through_day_filter(player_stmt, game_date, through_day)
     player_rows = (await db.execute(player_stmt)).all()
-    return comps, games, team_rows, team_mp, player_rows
+    return comps, games, team_rows, team_mp, player_rows, competition_effective_days
 
 
 def _build(comps, games, team_rows, team_mp):
@@ -819,7 +833,14 @@ async def _load_compute_inputs(
     load_scope = scope if pooled_fit is not None else None
     if load_scope is None and through_day is None and competition_ids is None:
         as_of = await _source_as_of(db)
-        comps, games, team_rows, team_mp, player_rows = await _load(db)
+        (
+            comps,
+            games,
+            team_rows,
+            team_mp,
+            player_rows,
+            competition_effective_days,
+        ) = await _load(db)
         shot_diet = await _load_shot_diet(db)
         assisted_fg = await _load_assisted_fg(db)
     elif load_scope is None:
@@ -829,19 +850,39 @@ async def _load_compute_inputs(
         # must cover that same pool even though only the requested projections
         # are retained below.
         as_of = await _source_as_of(db, through_day=through_day)
-        comps, games, team_rows, team_mp, player_rows = await _load(
-            db, through_day=through_day
-        )
+        (
+            comps,
+            games,
+            team_rows,
+            team_mp,
+            player_rows,
+            competition_effective_days,
+        ) = await _load(db, through_day=through_day)
         shot_diet = await _load_shot_diet(db, through_day=through_day)
         assisted_fg = await _load_assisted_fg(db, through_day=through_day)
     else:
         as_of = await _source_as_of(db, load_scope, through_day=through_day)
-        comps, games, team_rows, team_mp, player_rows = await _load(
-            db, load_scope, through_day=through_day
-        )
+        (
+            comps,
+            games,
+            team_rows,
+            team_mp,
+            player_rows,
+            competition_effective_days,
+        ) = await _load(db, load_scope, through_day=through_day)
         shot_diet = await _load_shot_diet(db, load_scope, through_day=through_day)
         assisted_fg = await _load_assisted_fg(db, load_scope, through_day=through_day)
-    return as_of, comps, games, team_rows, team_mp, player_rows, shot_diet, assisted_fg
+    return (
+        as_of,
+        comps,
+        games,
+        team_rows,
+        team_mp,
+        player_rows,
+        competition_effective_days,
+        shot_diet,
+        assisted_fg,
+    )
 
 
 async def compute(
@@ -876,6 +917,7 @@ async def compute(
         team_rows,
         team_mp,
         player_rows,
+        competition_effective_days,
         shot_diet,
         assisted_fg,
     ) = await _load_compute_inputs(
@@ -915,6 +957,7 @@ async def compute(
         assisted_fg=assisted_fg,
         competition_trend_bands=competition_trend_bands,
         season_trend_bands=season_trend_bands,
+        competition_effective_days=competition_effective_days,
         as_of=as_of,
     )
 
@@ -1042,11 +1085,10 @@ async def _rebuild_with_options(
     model_version = options.model_version
     competition_ids = options.competition_ids
     publish = options.publish
-    # The run's input day is an event-calendar day in Eastern time. Callers that
-    # replay a historical input can provide it explicitly; live rebuilds use the
-    # day on which the rebuild starts. This stamp is intentionally independent
-    # from ``result.as_of`` (source-row currency).
-    effective_day = options.effective_day or to_eastern_date(datetime.now(timezone.utc))
+    # Explicit historical callers provide one cutoff day. Normal rebuilds stamp
+    # each competition from its latest included game, with the Eastern process
+    # day only as a fallback for a malformed pool that has no dated game.
+    fallback_effective_day = to_eastern_date(datetime.now(timezone.utc))
     if competition_ids is not None and not competition_ids:
         return {
             "seasons": 0,
@@ -1068,6 +1110,7 @@ async def _rebuild_with_options(
         competition_ids=competition_ids,
         through_day=options.through_day,
     )
+    competition_effective_days = getattr(result, "competition_effective_days", {})
     adv_cids = {cid for cid, ctx in result.contexts.items() if ctx.adv_eligible}
     scope = frozenset(competition_ids) if competition_ids is not None else None
     publication_version = await next_metric_version(db)
@@ -1134,7 +1177,11 @@ async def _rebuild_with_options(
                 calculation_version=METRIC_CALCULATION_VERSION,
                 as_of=result.as_of,
                 published_at=None,
-                effective_day=effective_day,
+                effective_day=(
+                    options.effective_day
+                    or competition_effective_days.get(ctx.competition_id)
+                    or fallback_effective_day
+                ),
             )
         )
 
@@ -1148,7 +1195,11 @@ async def _rebuild_with_options(
                 model_version=generated_model_version,
                 publication_version=publication_version,
                 as_of=result.as_of,
-                effective_day=effective_day,
+                effective_day=(
+                    options.effective_day
+                    or competition_effective_days.get(ps.competition_id)
+                    or fallback_effective_day
+                ),
                 adv_eligible=ps.competition_id in adv_cids,
             ),
             zone_fga,
@@ -1176,12 +1227,15 @@ async def _rebuild_with_options(
             competition_ids=scope,
             model_version=generated_model_version if scope is None else None,
             as_of=result.as_of,
-            effective_day=effective_day,
+            effective_day=options.effective_day,
         )
     # Keep the source watermark alongside the row counts so the gate can carry the
     # exact input currency into the final publication transaction.
     summary["as_of"] = result.as_of
-    summary["effective_day"] = effective_day
+    # A full build contains independent event calendars. Omitting a single
+    # run-wide stamp preserves each candidate row's competition-derived day at
+    # publication; explicit historical/scoped callers still carry one exact day.
+    summary["effective_day"] = options.effective_day
     return summary
 
 
