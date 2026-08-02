@@ -107,7 +107,10 @@ async def test_rebuild_staged_writes_an_inactive_candidate_version(
     monkeypatch.setattr(metrics, "set_rebuild_idle_timeout", idle_timeout)
 
     db = MagicMock()
-    summary = await metrics.rebuild_staged(db, model_version="candidate")
+    effective_day = date(2026, 7, 28)
+    summary = await metrics.rebuild_staged(
+        db, model_version="candidate", effective_day=effective_day
+    )
 
     assert summary == {
         "seasons": 1,
@@ -116,7 +119,7 @@ async def test_rebuild_staged_writes_an_inactive_candidate_version(
         "version": 7,
         "model_version": "candidate",
         "as_of": datetime(2026, 7, 28, 12, 0),
-        "effective_day": date.today(),
+        "effective_day": effective_day,
         "published": False,
     }
     publish_model.assert_awaited_once_with(
@@ -143,7 +146,10 @@ async def test_scoped_rebuild_publishes_only_the_requested_candidate_scope(
     monkeypatch.setattr(metrics, "publish_metric_version", publish_version)
 
     db = MagicMock()
-    summary = await metrics.rebuild(db, competition_ids=[1])
+    effective_day = date(2026, 7, 28)
+    summary = await metrics.rebuild(
+        db, competition_ids=[1], effective_day=effective_day
+    )
 
     assert summary["seasons"] == 1
     assert summary["contexts"] == 1
@@ -155,7 +161,7 @@ async def test_scoped_rebuild_publishes_only_the_requested_candidate_scope(
         competition_ids=frozenset({1}),
         model_version=None,
         as_of=datetime(2026, 7, 28, 12, 0),
-        effective_day=date.today(),
+        effective_day=effective_day,
     )
     idle_timeout.assert_awaited_once_with(db)
     assert db.add.call_count == 2
