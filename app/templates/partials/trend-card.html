@@ -1,0 +1,33 @@
+{# Scope-parameterized cumulative trend card.  The payload is produced by the
+   read service and intentionally contains no event-specific table names. #}
+{% macro trend_card(trend, title='Within-event trend') %}
+{% if trend %}
+<section class="trend-card" data-trend-root data-trend-scope="{{ trend.scope_key }}" data-trend-player-id="{{ trend.player_id or '' }}">
+  <div class="trend-card__head">
+    <div>
+      <p class="trend-card__eyebrow">{{ trend.scope_label }}</p>
+      <h2 class="trend-card__title">{{ title }}</h2>
+      <p class="trend-card__note">Cumulative through-day performance · cohort median + IQR</p>
+    </div>
+    {% if trend.player_id %}<button class="trend-card__share" type="button" data-trend-share aria-label="Share this trend card">Share PNG</button>{% endif %}
+  </div>
+  <div class="trend-card__meta">
+    <span>Source as of <time data-trend-as-of>{{ trend.latest_as_of or '—' }}</time></span>
+    <span>Through <time data-trend-effective-day>{{ trend.latest_effective_day }}</time></span>
+  </div>
+  <div class="trend-card__chart-wrap">
+    <svg class="trend-card__chart" data-trend-chart viewBox="0 0 760 330" role="img" aria-label="Cumulative through-day trend chart"></svg>
+  </div>
+  <div class="trend-card__legend" data-trend-legend aria-label="Trend metrics">
+    {% for metric in trend.metrics %}
+    <button class="trend-card__legend-item" type="button" data-trend-metric="{{ metric.key }}">
+      <span class="trend-card__legend-swatch trend-card__legend-swatch--{{ metric.key }}"></span>{{ metric.label }}
+    </button>
+    {% endfor %}
+  </div>
+  {% if trend.single_point %}<p class="trend-card__single-point" data-trend-single>Single-point state · one published event day</p>{% endif %}
+  <p class="trend-card__tooltip" data-trend-tooltip role="status" aria-live="polite"></p>
+  <script type="application/json" data-trend-payload>{{ trend | tojson | safe }}</script>
+</section>
+{% endif %}
+{% endmacro %}

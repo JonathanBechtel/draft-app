@@ -20,6 +20,12 @@ from app.models.summer_league_trends import TrendCohortBand, TrendPoint
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.stats.registry import get_metric
 
+TREND_METRIC_LABELS: dict[str, str] = {
+    "gmsc": "GmSc",
+    "ts_pct": "TS%",
+    "bpm": "BPM",
+}
+
 
 def _scope_filter(scope_key: str) -> tuple[str, int]:
     """Parse a stable scope key into its kind and numeric value."""
@@ -244,3 +250,44 @@ async def get_daily_trend(  # noqa: C901
     # the contract even when the database returns rows in a different plan order.
     points.sort(key=lambda point: (point.effective_day, metric_order[point.metric_key]))
     return points
+
+
+def trend_points_to_context(
+    points: Sequence[TrendPoint],
+    *,
+    scope_key: str,
+    scope_label: str,
+    player_id: int | None = None,
+) -> dict[str, Any] | None:
+    """Build the small JSON contract consumed by the trend chart component.
+
+    The read service owns ordering and daily-close selection; this adapter only
+    serializes the already-selected points and computes display metadata.  It is
+    deliberately scope/event-parameterized so the same component can be reused
+    by another event spoke without changing its template or JavaScript contract.
+    """
+    if not points:
+        return None
+    ordered = sorted(points, key=lambda point: (point.effective_day, point.metric_key))
+    metric_keys = [
+        key for key in TREND_METRIC_LABELS if any(p.metric_key == key for p in ordered)
+    ]
+    if not metric_keys:
+        metric_keys = list(dict.fromkeys(p.metric_key for p in ordered))
+    as_of_values = [point.as_of for point in ordered if point.as_of is not None]
+    latest_day = max(point.effective_day for point in ordered)
+    latest_as_of = max(as_of_values) if as_of_values else None
+    return {
+        "scope_key": scope_key,
+        "scope_label": scope_label,
+        "player_id": player_id,
+        "metric_keys": metric_keys,
+        "metrics": [
+            {"key": key, "label": TREND_METRIC_LABELS.get(key, key.upper())}
+            for key in metric_keys
+        ],
+        "points": [point.model_dump(mode="json") for point in ordered],
+        "latest_effective_day": latest_day.isoformat(),
+        "latest_as_of": latest_as_of.isoformat() if latest_as_of else None,
+        "single_point": len({point.effective_day for point in ordered}) == 1,
+    }

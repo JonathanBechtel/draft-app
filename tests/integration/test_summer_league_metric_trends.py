@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.summer_league import SummerLeagueCompetition
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league.metric_trends import get_daily_trend
+from app.services.share_cards.model_builders import build_sl_trend_model
 from tests.integration.conftest import make_player
 
 
@@ -206,3 +207,49 @@ async def test_season_scope_chooses_one_version_for_all_competitions(
     assert len(points) == 1
     assert points[0].value == 10.0
     assert points[0].cohort_band.median == 10.0
+
+
+@pytest.mark.asyncio
+async def test_trend_share_model_reads_real_daily_close_rows(
+    db_session: AsyncSession,
+) -> None:
+    """The share-card model uses the same published trend read as the page."""
+    competition = SummerLeagueCompetition(
+        year=2024,
+        league_id="trend-share-model",
+        venue_slug="las_vegas",
+        display_name="Trend Share Model",
+    )
+    player = make_player("Share", "Trend")
+    db_session.add_all([competition, player])
+    await db_session.flush()
+    assert competition.id and player.id
+    db_session.add(
+        SummerLeaguePlayerSeason(
+            competition_id=competition.id,
+            player_id=player.id,
+            year=2024,
+            venue_slug="las_vegas",
+            version=1,
+            gmsc=7.0,
+            ts_pct=0.55,
+            bpm=1.0,
+            effective_day=date(2024, 7, 10),
+            as_of=datetime(2026, 7, 20, 12),
+            published_at=datetime(2026, 7, 20, 13),
+        )
+    )
+    await db_session.commit()
+
+    model = await build_sl_trend_model(
+        db_session,
+        [player.id],
+        {
+            "scope_key": f"competition:{competition.id}",
+            "metric_keys": ["gmsc", "ts_pct", "bpm"],
+        },
+    )
+
+    assert model.single_point is True
+    assert {line.key for line in model.lines} == {"gmsc", "ts_pct", "bpm"}
+    assert model.as_of == "2026-07-20"

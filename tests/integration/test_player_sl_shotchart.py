@@ -12,7 +12,7 @@ Cases:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from httpx import AsyncClient
@@ -71,9 +71,7 @@ async def _make_competition(
     return comp
 
 
-async def _make_team(
-    db: AsyncSession, *, comp_id: int
-) -> SummerLeagueTeamEntry:
+async def _make_team(db: AsyncSession, *, comp_id: int) -> SummerLeagueTeamEntry:
     team = SummerLeagueTeamEntry(
         competition_id=comp_id,
         nba_stats_team_id=_uid(),
@@ -151,7 +149,7 @@ async def _make_game_and_log(
     return game
 
 
-def _make_shot_event(
+def _make_shot_event(  # noqa: PLR0913
     *,
     player: PlayerMaster,
     source_player: SummerLeagueSourcePlayer,
@@ -201,12 +199,16 @@ async def _seed_rich_player(
     # Seed 25 shot events across two zones (above the MIN_FGA_FOR_CHART=20
     # threshold so the chart is NOT suppressed).
     home_entry = (
-        await db.execute(
-            select(SummerLeagueTeamEntry).where(  # type: ignore[call-overload]
-                SummerLeagueTeamEntry.competition_id == comp.id  # type: ignore[arg-type]
+        (
+            await db.execute(
+                select(SummerLeagueTeamEntry).where(  # type: ignore[call-overload]
+                    SummerLeagueTeamEntry.competition_id == comp.id  # type: ignore[arg-type]
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     assert home_entry is not None and home_entry.id is not None
 
     events = []
@@ -247,8 +249,15 @@ async def _seed_rich_player(
         year=year,
         venue_slug="las_vegas",
         is_current=True,
+        version=1,
+        published_at=datetime(2026, 7, 20, 12),
+        as_of=datetime(2026, 7, 20, 11),
+        effective_day=date(year, 7, 10),
         gp=1,
         minutes=30.0,
+        gmsc=8.0,
+        ts_pct=0.58,
+        bpm=1.2,
         rim_rate=0.60,
         mid_rate=0.00,
         three_rate=0.40,
@@ -298,6 +307,13 @@ async def test_player_detail_with_shots_shows_shotchart(
     # JS loaded conditionally.
     assert "summer-league-shotchart.js" in html
 
+    # Cumulative trend module and the one-game state are present from the
+    # published daily-close row seeded above.
+    assert "trend-card" in html
+    assert "GmSc" in html and "TS%" in html and "BPM" in html
+    assert "Single-point state" in html
+    assert "Source as of" in html and "2026-07-20" in html
+
 
 @pytest.mark.asyncio
 async def test_player_detail_no_shots_omits_shotchart(
@@ -329,6 +345,7 @@ async def test_player_detail_no_shots_omits_shotchart(
     # SL section shows (game logs), but no shot chart.
     assert "summerLeagueSection" in html
     assert 'id="sl-shotchart-root"' not in html
+    assert "trend-card" not in html
     assert "SL_SHOTCHART = null" in html
 
 
@@ -350,6 +367,7 @@ async def test_player_detail_no_sl_data_omits_all(
 
     assert "summerLeagueSection" not in html
     assert 'id="sl-shotchart-root"' not in html
+    assert "trend-card" not in html
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +404,26 @@ async def test_season_page_with_shots_shows_shotchart(
 
     # Game log table present.
     assert "slg-logs-table" in html
+    assert "trend-card" in html
+    assert "Source as of" in html and "2026-07-20" in html
+
+
+@pytest.mark.asyncio
+async def test_competition_page_renders_scope_trend(
+    app_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """The competition page uses a scope-level cohort trend without player export."""
+    _, comp = await _seed_rich_player(db_session)
+    await db_session.commit()
+
+    response = await app_client.get("/stats/summer-league/2024/las_vegas")
+    assert response.status_code == 200
+    html = response.text
+    assert "trend-card" in html
+    assert 'data-trend-player-id=""' in html
+    assert "data-trend-share" not in html
+    assert "GmSc" in html and "TS%" in html and "BPM" in html
 
 
 @pytest.mark.asyncio
@@ -487,7 +525,9 @@ async def test_competition_resolver_honors_venue(db_session: AsyncSession) -> No
     await db_session.flush()
 
     # Default → marquee (Las Vegas).
-    assert await get_competition_id_for_player_year(db_session, player.id, 2024) == lv.id
+    assert (
+        await get_competition_id_for_player_year(db_session, player.id, 2024) == lv.id
+    )
     # Venue-scoped → the exact competition.
     assert (
         await get_competition_id_for_player_year(
@@ -531,7 +571,15 @@ async def test_season_page_shows_advanced_metrics_for_eligible_year(
     assert resp.status_code == 200
     html = resp.text
     assert "Advanced Metrics" in html
-    for header in (">PER<", ">3PAr<", ">FTr<", ">AST'd%<", ">TOV%<", ">OWS<", ">WS/40<"):
+    for header in (
+        ">PER<",
+        ">3PAr<",
+        ">FTr<",
+        ">AST'd%<",
+        ">TOV%<",
+        ">OWS<",
+        ">WS/40<",
+    ):
         assert header in html, f"missing header {header}"
     assert "21.4" in html
     assert "0.417" in html  # FTr as 3-decimal fraction

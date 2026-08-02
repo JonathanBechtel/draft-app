@@ -33,6 +33,9 @@ class ExportContext(BaseModel):
     position: Optional[str] = None
     # SL shot-chart specific field
     competition_id: Optional[int] = None
+    # Scope-parameterized trend card fields
+    scope_key: Optional[str] = None
+    metric_keys: Optional[list[str]] = None
 
 
 class ExportRequest(BaseModel):
@@ -46,6 +49,7 @@ class ExportRequest(BaseModel):
         "metric_leaders",
         "draft_year",
         "sl_shot_chart",
+        "sl_trend",
     ]
     player_ids: list[int] = Field(default_factory=list, max_length=2)
     context: ExportContext = Field(default_factory=ExportContext)
@@ -69,7 +73,7 @@ class ExportResponse(BaseModel):
 
 
 @router.post("/image", response_model=ExportResponse, status_code=200)
-async def export_image(
+async def export_image(  # noqa: C901
     request: ExportRequest,
     http_request: Request,
     db: AsyncSession = Depends(get_session),
@@ -97,6 +101,11 @@ async def export_image(
     elif request.component in ("metric_leaders", "draft_year"):
         # Stats-based cards don't require player_ids
         pass
+    elif request.component == "sl_trend":
+        if len(request.player_ids) != 1:
+            raise HTTPException(
+                status_code=400, detail="sl_trend requires exactly 1 player_id"
+            )
     else:
         if len(request.player_ids) != 1:
             raise HTTPException(

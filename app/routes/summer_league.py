@@ -53,7 +53,10 @@ from app.services.summer_league_environment_service import (
     get_current_profile_by_scope_key,
     season_scope_key,
 )
-from app.services.summer_league.metric_trends import get_daily_trend
+from app.services.summer_league.metric_trends import (
+    get_daily_trend,
+    trend_points_to_context,
+)
 from app.services.summer_league_franchise_service import get_franchise_history
 from app.services.summer_league_leaders_service import get_leaders
 from app.services.summer_league_season_service import (
@@ -75,6 +78,7 @@ from app.utils.db_async import get_session
 SCHEDULE_PAGE_SIZE = 20
 
 LANDING_RECENT_GAMES = 8
+TREND_METRIC_KEYS = ("gmsc", "ts_pct", "bpm")
 
 router = APIRouter(tags=["summer-league"])
 
@@ -83,6 +87,28 @@ FOOTER_LINKS = [
     {"text": "Privacy Policy", "url": "/privacy"},
     {"text": "Cookie Policy", "url": "/cookies"},
 ]
+
+
+async def _trend_context(
+    db: AsyncSession,
+    *,
+    scope_key: str,
+    scope_label: str,
+    player_id: int | None = None,
+) -> dict | None:
+    """Fetch all trend metrics in one daily-close read for a page scope."""
+    points = await get_daily_trend(
+        db,
+        scope_key=scope_key,
+        player_id=player_id,
+        metric_keys=TREND_METRIC_KEYS,
+    )
+    return trend_points_to_context(
+        points,
+        scope_key=scope_key,
+        scope_label=scope_label,
+        player_id=player_id,
+    )
 
 
 @router.get(
@@ -529,6 +555,16 @@ async def player_summer_league_season(
         sl_shotchart = await get_player_shotchart_context(
             db, player_id=ref.id, competition_id=comp_id
         )
+    sl_trend = (
+        await _trend_context(
+            db,
+            scope_key=f"competition:{comp_id}",
+            scope_label=f"{year} trend",
+            player_id=ref.id,
+        )
+        if comp_id is not None
+        else None
+    )
 
     return request.app.state.templates.TemplateResponse(
         "players/summer-league-season.html",
@@ -544,6 +580,7 @@ async def player_summer_league_season(
             "total_games": total_games,
             "sl_adv_seasons": sl_adv_seasons,
             "sl_shotchart": sl_shotchart,
+            "sl_trend": sl_trend,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },
@@ -613,6 +650,11 @@ async def summer_league_season(
         if season_profile_row is not None
         else None
     )
+    season_trend = await _trend_context(
+        db,
+        scope_key=f"season:{year}",
+        scope_label=f"{year} all competitions",
+    )
 
     return request.app.state.templates.TemplateResponse(
         "stats/summer-league/season.html",
@@ -624,6 +666,7 @@ async def summer_league_season(
             "leaders": leaders,
             "schedule": schedule,
             "season_profile": season_profile,
+            "sl_trend": season_trend,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },
@@ -662,6 +705,11 @@ async def summer_league_venue(
         if venue_profile_row is not None
         else None
     )
+    venue_trend = await _trend_context(
+        db,
+        scope_key=f"competition:{detail.competition_id}",
+        scope_label=f"{detail.venue} {year}",
+    )
 
     return request.app.state.templates.TemplateResponse(
         "stats/summer-league/venue.html",
@@ -672,6 +720,7 @@ async def summer_league_venue(
             "leaders": leaders,
             "schedule": schedule,
             "venue_profile": venue_profile,
+            "sl_trend": venue_trend,
             "footer_links": FOOTER_LINKS,
             "current_year": datetime.now().year,
         },

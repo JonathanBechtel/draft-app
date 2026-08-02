@@ -86,9 +86,14 @@ from app.services.summer_league.desk_read import (
 )
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from app.services.summer_league_stats_service import (
+    get_competition_id_for_player_year,
     get_player_shotchart_context,
     get_summer_league_profile_by_player_id,
     summer_league_to_context,
+)
+from app.services.summer_league.metric_trends import (
+    get_daily_trend,
+    trend_points_to_context,
 )
 from app.utils.db_async import get_session
 from app.utils.sparkline import build_sparkline_path, sparkline_direction
@@ -1070,12 +1075,36 @@ async def player_detail(
     # Fetch Summer League production for the SL scoreboard section.
     # None (player not resolved to any SL game log) => omit the section.
     summer_league = None
+    sl_trend = None
     if player_profile.id is not None:
         sl_profile = await get_summer_league_profile_by_player_id(
             db, player_id=player_profile.id
         )
         if sl_profile is not None:
             summer_league = summer_league_to_context(sl_profile)
+            # The chart is intentionally scoped to one concrete event: the
+            # newest competition represented in the player's profile.  All
+            # three registry metrics are fetched in one daily-close query.
+            latest = sl_profile.seasons[0]
+            competition_id = await get_competition_id_for_player_year(
+                db,
+                player_id=player_profile.id,
+                year=latest.year or 0,
+                venue_slug=latest.venue_slug,
+            )
+            if competition_id is not None:
+                trend_points = await get_daily_trend(
+                    db,
+                    scope_key=f"competition:{competition_id}",
+                    player_id=player_profile.id,
+                    metric_keys=("gmsc", "ts_pct", "bpm"),
+                )
+                sl_trend = trend_points_to_context(
+                    trend_points,
+                    scope_key=f"competition:{competition_id}",
+                    scope_label=f"{latest.year} trend",
+                    player_id=player_profile.id,
+                )
 
     # SL-calibrated advanced metrics (PER / WS / BPM / VORP / ratings) from the
     # materialized per-competition table. None when the player has no
@@ -1293,6 +1322,7 @@ async def player_detail(
             "consensus": consensus,
             "college_stats": college_stats,
             "summer_league": summer_league,
+            "sl_trend": sl_trend,
             "sl_metrics": sl_metrics,
             "sl_shotchart": sl_shotchart,
             "percentile_data": percentile_data,

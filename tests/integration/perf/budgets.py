@@ -87,7 +87,10 @@ ROUTE_BUDGETS: dict[str, int] = {
     # one indexed lookup on summer_league_shot_events by player_id.  When the
     # player has no shot events (total_fga == 0) the function returns None
     # immediately without issuing the shot-diet follow-up query.
-    "/players/{slug}": 26,
+    # +1 for resolving the newest concrete event scope used by the cumulative
+    # trend module (the trend read itself is dormant in this fixture because it
+    # has no published daily-close rows).
+    "/players/{slug}": 27,
     "/players/{slug}/summer-league": 2,
     # Per-season page: resolve_player_ref (1) + get_player_game_logs (1) +
     # get_player_metric_seasons for the advanced table (1, indexed player_id) +
@@ -122,8 +125,9 @@ ROUTE_BUDGETS: dict[str, int] = {
     # read; the venue page keys it off the competition_id get_venue's header
     # lookup already resolved) — contract §9's "at most one
     # indexed profile read, max expected budget 9" for season/venue reuse.
-    "/stats/summer-league/{year}": 9,
-    "/stats/summer-league/{year}/{venue}": 9,
+    # +1 for the one batched daily-close trend read on each page.
+    "/stats/summer-league/{year}": 10,
+    "/stats/summer-league/{year}/{venue}": 10,
     # Header + schedule + stats roster + announced roster (A4 pre-event preview,
     # one indexed read on summer_league_participation by team_entry_id) = 4.
     "/stats/summer-league/{year}/{venue}/{team}": 4,

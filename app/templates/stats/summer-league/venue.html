@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-competitions.css') }}">
+{% if sl_trend %}<link rel="stylesheet" href="{{ url_for('static', path='css/sl-trend.css') }}">{% endif %}
 {% endblock %}
 
 {% from 'stats/summer-league/_sl_macros.html' import leader_board, game_rows, pager, team_logo, competition_context_module %}
@@ -33,6 +34,11 @@
        venue_profile,
        'A Competition Context profile has not been published for this competition yet.'
   ) }}
+
+  {% if sl_trend %}
+  {% from "partials/trend-card.html" import trend_card %}
+  {{ trend_card(sl_trend) }}
+  {% endif %}
 
   {# Championship bracket (Las Vegas only) #}
   {% macro bracket_match(g, year) %}
@@ -154,4 +160,5 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', path='summer-league-games.js') }}"></script>
+{% if sl_trend %}<script src="{{ url_for('static', path='js/sl-trend.js') }}"></script>{% endif %}
 {% endblock %}

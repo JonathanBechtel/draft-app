@@ -5,6 +5,7 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
+{% if sl_trend %}<link rel="stylesheet" href="{{ url_for('static', path='css/sl-trend.css') }}">{% endif %}
 {% if sl_shotchart %}<link rel="stylesheet" href="{{ url_for('static', path='summer-league-shotchart.css') }}">{% endif %}
 {% endblock %}
 
@@ -164,6 +165,11 @@
   </section>
   {% endif %}
 
+  {% if sl_trend %}
+  {% from "partials/trend-card.html" import trend_card %}
+  {{ trend_card(sl_trend) }}
+  {% endif %}
+
   {# Shot chart section #}
   {% if sl_shotchart %}
   <section class="slg-season sl-shotchart-section">
@@ -258,4 +264,5 @@
 </script>
 <script src="{{ url_for('static', path='summer-league-shotchart.js') }}"></script>
 {% endif %}
+{% if sl_trend %}<script src="{{ url_for('static', path='js/sl-trend.js') }}"></script>{% endif %}
 {% endblock %}

@@ -1,0 +1,45 @@
+/* Scope-parameterized cumulative trend card. */
+.trend-card {
+  --trend-ink: var(--color-slate-900, #0f172a);
+  --trend-muted: var(--color-slate-500, #64748b);
+  --trend-border: var(--color-slate-200, #e2e8f0);
+  --trend-surface: var(--color-white, #fff);
+  margin: 1.2rem 0;
+  padding: 1.1rem 1.2rem 1rem;
+  border: 1px solid var(--trend-border);
+  border-left: 4px solid var(--color-accent-cyan, #06b6d4);
+  border-radius: 10px;
+  background: var(--trend-surface);
+  box-shadow: 0 7px 20px rgb(15 23 42 / 8%);
+  color: var(--trend-ink);
+  overflow: hidden;
+}
+.trend-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.trend-card__eyebrow, .trend-card__note, .trend-card__meta, .trend-card__tooltip { margin: 0; color: var(--trend-muted); font-family: var(--font-mono, 'Azeret Mono', monospace); font-size: .72rem; letter-spacing: .02em; }
+.trend-card__eyebrow { color: var(--color-accent-cyan, #0891b2); text-transform: uppercase; }
+.trend-card__title { margin: .2rem 0 .2rem; font-family: var(--font-display, 'Russo One', sans-serif); font-size: 1.3rem; letter-spacing: .02em; }
+.trend-card__note { font-size: .68rem; }
+.trend-card__share { flex: 0 0 auto; border: 1px solid var(--color-accent-cyan, #06b6d4); border-radius: 5px; padding: .4rem .6rem; color: var(--color-accent-cyan, #0891b2); background: transparent; font-family: var(--font-mono, monospace); font-size: .7rem; cursor: pointer; }
+.trend-card__share:hover, .trend-card__share:focus-visible { color: #fff; background: var(--color-accent-cyan, #06b6d4); }
+.trend-card__meta { display: flex; flex-wrap: wrap; gap: .8rem; margin-top: .8rem; }
+.trend-card__chart-wrap { width: 100%; min-width: 0; margin: .45rem 0 .15rem; }
+.trend-card__chart { display: block; width: 100%; height: auto; min-width: 0; overflow: visible; }
+.trend-card__legend { display: flex; flex-wrap: wrap; gap: .35rem .8rem; margin-top: .35rem; }
+.trend-card__legend-item { display: inline-flex; align-items: center; gap: .3rem; border: 0; padding: .25rem 0; color: var(--trend-muted); background: transparent; font-family: var(--font-mono, monospace); font-size: .72rem; cursor: pointer; }
+.trend-card__legend-item.is-muted { opacity: .35; }
+.trend-card__legend-swatch { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; background: #06b6d4; }
+.trend-card__legend-swatch--gmsc { background: #2563eb; }
+.trend-card__legend-swatch--ts_pct { background: #d97706; }
+.trend-card__legend-swatch--bpm { background: #e11d48; }
+.trend-card__single-point { margin: .55rem 0 0; color: var(--color-accent-amber, #b45309); font-family: var(--font-mono, monospace); font-size: .72rem; }
+.trend-card__tooltip { min-height: 1.1rem; margin-top: .35rem; }
+.trend-card [data-trend-point] { cursor: pointer; }
+@media (prefers-color-scheme: dark) {
+  .trend-card { --trend-ink: #f8fafc; --trend-muted: #94a3b8; --trend-border: #334155; --trend-surface: #111827; box-shadow: 0 7px 20px rgb(0 0 0 / 25%); }
+}
+@media (max-width: 480px) {
+  .trend-card { margin-inline: 0; padding: .85rem .75rem .8rem; border-radius: 7px; }
+  .trend-card__title { font-size: 1.08rem; }
+  .trend-card__share { padding: .36rem .45rem; font-size: .62rem; }
+  .trend-card__meta { font-size: .62rem; gap: .45rem; }
+}
