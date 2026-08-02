@@ -102,7 +102,10 @@ from app.services.stats.registry import (
     rollup_class_matches,
 )
 from app.services.summer_league import scoped_metrics
-from app.services.summer_league.metric_trend_projection import materialize_trend_bands
+from app.services.summer_league.metric_trend_projection import (
+    materialize_scoped_season_trend_bands,
+    materialize_trend_bands,
+)
 
 ComputeResult = scoped_metrics.ComputeResult
 MetricFit = scoped_metrics.MetricFit
@@ -940,6 +943,12 @@ async def compute(
         seasons,
         include_season_scope=load_scope is None,
     )
+    if load_scope is not None:
+        season_trend_bands = await materialize_scoped_season_trend_bands(
+            db,
+            seasons,
+            scoped_competition_ids=scope or frozenset(),
+        )
 
     if scope is not None and load_scope is None:
         contexts = {cid: ctx for cid, ctx in contexts.items() if cid in scope}

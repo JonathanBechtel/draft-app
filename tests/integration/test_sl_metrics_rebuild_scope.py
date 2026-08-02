@@ -396,6 +396,10 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
     )
     assert len(a_seasons_after) == 12
     assert all(s.gp == 5 for s in a_seasons_after)
+    assert all(
+        season.trend_season_bands and "gmsc" in season.trend_season_bands
+        for season in a_seasons_after
+    )
 
     # B is untouched: same row ids, same values, same context row.
     b_seasons_after = (

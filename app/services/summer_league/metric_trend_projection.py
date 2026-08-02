@@ -5,8 +5,12 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Sequence
 from math import floor
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.stats.inputs import PlayerSeason
 
 TREND_METRIC_KEYS = ("gmsc", "ts_pct", "bpm")
@@ -30,13 +34,20 @@ def percentile(values: Sequence[float], probability: float) -> float:
 
 def _bands_for_seasons(seasons: Sequence[PlayerSeason]) -> TrendBands:
     """Compute the supported metric bands for one already-bounded cohort."""
-    bands: TrendBands = {}
+    values_by_metric: dict[str, list[float]] = defaultdict(list)
     for metric_key in TREND_METRIC_KEYS:
-        values = [
+        values_by_metric[metric_key].extend(
             float(value)
             for season in seasons
             if (value := season.metrics.get(metric_key)) is not None
-        ]
+        )
+    return _bands_for_values(values_by_metric)
+
+
+def _bands_for_values(values_by_metric: dict[str, list[float]]) -> TrendBands:
+    """Compute bands from already grouped metric values."""
+    bands: TrendBands = {}
+    for metric_key, values in values_by_metric.items():
         if values:
             bands[metric_key] = {
                 "median": percentile(values, 0.5),
@@ -44,6 +55,50 @@ def _bands_for_seasons(seasons: Sequence[PlayerSeason]) -> TrendBands:
                 "q3": percentile(values, 0.75),
             }
     return bands
+
+
+async def materialize_scoped_season_trend_bands(
+    db: AsyncSession,
+    seasons: Sequence[PlayerSeason],
+    *,
+    scoped_competition_ids: frozenset[int],
+) -> dict[int, TrendBands]:
+    """Merge a scoped tick with other current competitions in the same years."""
+    years = {season.year for season in seasons}
+    values_by_year: dict[int, dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    if years:
+        rows = (
+            await db.execute(
+                select(  # type: ignore[call-overload]
+                    SummerLeaguePlayerSeason.year,
+                    SummerLeaguePlayerSeason.gmsc,
+                    SummerLeaguePlayerSeason.ts_pct,
+                    SummerLeaguePlayerSeason.bpm,
+                ).where(
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                    SummerLeaguePlayerSeason.year.in_(years),  # type: ignore[attr-defined]
+                    SummerLeaguePlayerSeason.competition_id.not_in(  # type: ignore[attr-defined]
+                        scoped_competition_ids
+                    ),
+                )
+            )
+        ).all()
+        for row in rows:
+            for metric_key in TREND_METRIC_KEYS:
+                value: Any = getattr(row, metric_key)
+                if value is not None:
+                    values_by_year[int(row.year)][metric_key].append(float(value))
+    for season in seasons:
+        for metric_key in TREND_METRIC_KEYS:
+            value = season.metrics.get(metric_key)
+            if value is not None:
+                values_by_year[season.year][metric_key].append(float(value))
+    return {
+        year: _bands_for_values(metric_values)
+        for year, metric_values in values_by_year.items()
+    }
 
 
 def materialize_trend_bands(

@@ -1,7 +1,15 @@
 """Unit coverage for offline Summer League trend-band materialization."""
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
 from app.services.stats.inputs import PlayerSeason, StatInputs
-from app.services.summer_league.metric_trend_projection import materialize_trend_bands
+from app.services.summer_league.metric_trend_projection import (
+    materialize_scoped_season_trend_bands,
+    materialize_trend_bands,
+)
 
 
 def _season(
@@ -41,3 +49,20 @@ def test_scoped_live_projection_omits_partial_season_band() -> None:
     )
 
     assert season == {}
+
+
+@pytest.mark.asyncio
+async def test_scoped_season_band_merges_other_current_competitions() -> None:
+    """A scoped live tick retains an accurate year-wide materialized band."""
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(
+        all=lambda: [SimpleNamespace(year=2026, gmsc=8.0, ts_pct=None, bpm=None)]
+    )
+
+    bands = await materialize_scoped_season_trend_bands(
+        db,
+        [_season(1, 10, 2026, 4.0)],
+        scoped_competition_ids=frozenset({10}),
+    )
+
+    assert bands[2026]["gmsc"] == {"median": 6.0, "q1": 5.0, "q3": 7.0}
