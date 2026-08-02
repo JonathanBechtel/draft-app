@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 1260" width="2400" height="1260">
+  <defs>
+    <style>
+      .title { font: 92px 'Russo One', sans-serif; fill: #0f172a; }
+      .subtitle, .meta, .day, .value { font-family: 'Azeret Mono', monospace; fill: #64748b; }
+      .subtitle { font-size: 38px; } .meta { font-size: 30px; }
+      .label { font: 600 36px 'Azeret Mono', monospace; }
+      .day { font-size: 27px; } .value { font-size: 27px; fill: #334155; }
+      .note { font-size: 27px; font-family: 'Azeret Mono', monospace; fill: #b45309; }
+    </style>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="1" fill="#64748b" opacity=".1"/></pattern>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse"><line x1="0" y1="0" x2="4" y2="0" stroke="#0f172a" stroke-width="1" opacity=".03"/></pattern>
+  </defs>
+  <rect width="2400" height="1260" fill="#f8fafc"/><rect width="2400" height="1260" fill="url(#dots)"/><rect width="2400" height="1260" fill="url(#scan)"/>
+  <rect width="2400" height="12" fill="{{ accent_color }}"/>
+  <g transform="translate(96, 78)">
+    {% if player.has_photo and player.photo_data_uri %}<clipPath id="photo"><rect x="0" y="20" width="180" height="180" rx="12"/></clipPath><image href="{{ player.photo_data_uri }}" x="0" y="20" width="180" height="180" clip-path="url(#photo)" preserveAspectRatio="xMidYMid slice"/>{% else %}<rect x="0" y="20" width="180" height="180" rx="12" fill="#e2e8f0"/>{% endif %}
+    <text x="220" y="72" class="title">{{ title }}</text><text x="220" y="130" class="subtitle">{{ subtitle }}</text><text x="220" y="194" class="label" fill="#0f172a">{{ player.name }}</text>
+    <rect x="1940" y="20" width="360" height="76" rx="8" fill="{{ accent_color }}" opacity=".12" stroke="{{ accent_color }}" stroke-width="2"/><text x="2120" y="70" text-anchor="middle" class="label" fill="{{ accent_color }}">THROUGH-DAY</text>
+  </g>
+  <line x1="96" y1="300" x2="2304" y2="300" stroke="#e2e8f0" stroke-width="2"/>
+  {% for line in lines %}
+  <g>
+    <text x="100" y="{{ 474 + loop.index0 * 225 }}" class="label" fill="{{ line.color }}">{{ line.label }}</text>
+    <line x1="170" y1="{{ 580 + loop.index0 * 225 }}" x2="2270" y2="{{ 580 + loop.index0 * 225 }}" stroke="#cbd5e1" stroke-width="2"/>
+    <polygon points="{% for point in line.points %}{{ point.x }},{{ point.band_top }} {% endfor %}{% for point in line.points|reverse %}{{ point.x }},{{ point.band_bottom }} {% endfor %}" fill="{{ line.color }}" fill-opacity=".15"/>
+    <path d="{% for point in line.points %}{{ 'M' if loop.first else 'L' }}{{ point.x }},{{ point.y }} {% endfor %}" fill="none" stroke="{{ line.color }}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    {% for point in line.points %}<circle cx="{{ point.x }}" cy="{{ point.y }}" r="10" fill="{{ line.color }}" stroke="#fff" stroke-width="4"/><text x="{{ point.x }}" y="{{ point.y - 20 }}" text-anchor="middle" class="value">{{ point.value_display }}</text>{% endfor %}
+    {% if line.points %}<text x="170" y="{{ 620 + loop.index0 * 225 }}" class="day">{{ line.points[0].day }}</text><text x="2270" y="{{ 620 + loop.index0 * 225 }}" text-anchor="end" class="day">{{ line.points[-1].day }}</text>{% endif %}
+  </g>
+  {% endfor %}
+  <text x="100" y="1180" class="meta">Source as of {{ as_of }} · same-snapshot cohort median / IQR band</text>
+  {% if single_point %}<text x="2300" y="1180" text-anchor="end" class="note">Single-point state</text>{% endif %}
+  <text x="1200" y="1230" text-anchor="middle" class="meta">DRAFTGURU · cumulative through-day trend</text>
+</svg>

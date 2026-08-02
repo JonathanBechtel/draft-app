@@ -63,6 +63,22 @@
   </p>
   {% endif %}
 
+  {# Read-path disclosure: snapshots carry source currency; recombinable rows
+     are calculated from the live engine and must never borrow a snapshot date. #}
+  <p class="slg-explorer-freshness{{ ' slg-explorer-freshness--live' if not result.is_snapshot else '' }}"
+     data-read-source="{{ result.read_source }}" role="status">
+    <span class="slg-explorer-freshness__mode">
+      {{ 'SNAPSHOT' if result.is_snapshot else 'LIVE ENGINE' }}
+    </span>
+    {% if result.is_snapshot %}
+      <span class="slg-explorer-freshness__as-of">
+        Source as of {{ result.as_of.strftime('%Y-%m-%d %H:%M UTC') if result.as_of else 'not reported' }}
+      </span>
+    {% else %}
+      <span class="slg-explorer-freshness__as-of">Calculated from current game logs</span>
+    {% endif %}
+  </p>
+
   {# ── Eligibility banners ─────────────────────────────────────────────── #}
 
   {# Career grain: N-of-M banner explaining pooled averages. #}

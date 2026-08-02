@@ -16,9 +16,10 @@ See ``docs/plans/programmatic-code-discipline.md`` §1.4 and stat-engine §5.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import logging
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +38,20 @@ METRIC_REGISTRY_VERSION = DEFAULT_METRIC_REGISTRY_VERSION
 METRIC_CALCULATION_VERSION = DEFAULT_METRIC_CALCULATION_VERSION
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ArchivalPublication:
+    """Counts written by a non-promoting archival publication."""
+
+    contexts: int
+    seasons: int
+
+    @property
+    def rows(self) -> int:
+        """Return the total number of projection rows stamped published."""
+        return self.contexts + self.seasons
+
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard, types only
     from app.services.summer_league.metrics import ComputeResult
@@ -178,12 +193,14 @@ async def _newer_current_competition_ids(
     return {int(competition_id) for competition_id in rows}
 
 
-async def publish_metric_version(
+async def publish_metric_version(  # noqa: PLR0913
     db: AsyncSession,
     *,
     version: int,
     competition_ids: set[int] | frozenset[int] | None = None,
     model_version: str | None = None,
+    as_of: datetime | None = None,
+    effective_day: date | None = None,
 ) -> set[int]:
     """Atomically expose one staged metric version to all eligible readers.
 
@@ -192,8 +209,11 @@ async def publish_metric_version(
     candidate rows promoted. If a newer version is already current for a competition,
     both projections leave that competition untouched while older scopes may still
     flip. Demoted rows retain their original ``published_at``; only newly promoted rows
-    receive the flip timestamp. A failed caller transaction therefore leaves the
-    previous current version untouched.
+    receive the flip timestamp. When supplied, ``as_of`` is also written to promoted
+    rows so source currency is stamped at publication rather than inherited from an
+    incomplete candidate. ``effective_day`` carries the Eastern event-calendar day
+    from the rebuild input and never substitutes for ``as_of``. A failed caller
+    transaction therefore leaves the previous current version untouched.
 
     Returns:
         Competition IDs whose newer current publication prevented this candidate
@@ -214,14 +234,14 @@ async def publish_metric_version(
             sorted(newer_competition_ids),
         )
 
-    season_scope = (
+    season_scope: Any = (
         SummerLeaguePlayerSeason.competition_id.in_(  # type: ignore[attr-defined]
             competition_ids
         )
         if competition_ids is not None
         else None
     )
-    context_scope = (
+    context_scope: Any = (
         SummerLeagueMetricContext.competition_id.in_(  # type: ignore[attr-defined]
             competition_ids
         )
@@ -270,8 +290,16 @@ async def publish_metric_version(
         context_promote = context_promote.where(
             SummerLeagueMetricContext.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
         )
-    await db.execute(season_promote.values(is_current=True, published_at=published_at))
-    await db.execute(context_promote.values(is_current=True, published_at=published_at))
+    promotion_values: dict[str, object] = {
+        "is_current": True,
+        "published_at": published_at,
+    }
+    promotion_values.update({"as_of": as_of} if as_of is not None else {})
+    promotion_values.update(
+        {"effective_day": effective_day} if effective_day is not None else {}
+    )
+    await db.execute(season_promote.values(**promotion_values))
+    await db.execute(context_promote.values(**promotion_values))
 
     # The global fit is staged inactive alongside a full rebuild. Scoped ticks reuse the
     # already-active fit and therefore do not touch this table.
@@ -291,3 +319,114 @@ async def publish_metric_version(
             )
 
     return newer_competition_ids
+
+
+async def publish_archival_metric_version(  # noqa: PLR0913
+    db: AsyncSession,
+    *,
+    version: int,
+    competition_ids: set[int] | frozenset[int] | None = None,
+    as_of: datetime | None = None,
+    effective_day: date,
+) -> ArchivalPublication:
+    """Stamp an inactive candidate as a published historical daily close.
+
+    This is intentionally a separate publication path from
+    :func:`publish_metric_version`.  Archival rows are reader-visible only to the
+    daily-trend query, which selects ``published_at`` rows by ``effective_day``;
+    every normal reader filters ``is_current``.  The helper therefore updates only
+    rows for the supplied candidate ``version`` that are already inactive and not
+    yet published.  It never executes a demotion or promotion update, and refuses
+    a malformed candidate that contains a current row.
+
+    The caller owns the transaction and should hold the Summer League writer lock
+    for the complete candidate-build + stamp sequence.  Re-running a version is a
+    no-op because already-published rows are excluded by the update predicate.
+
+    Args:
+        db: Active async session; the caller controls commit/rollback.
+        version: Candidate publication sequence to stamp.
+        competition_ids: Optional competition scope. ``None`` means all scopes.
+        as_of: Source-row watermark carried by the candidate.
+        effective_day: Event calendar day (Eastern) for this archival close.
+
+    Raises:
+        ValueError: If the candidate contains a current row in the requested scope.
+    """
+    if competition_ids is not None and not competition_ids:
+        return ArchivalPublication(contexts=0, seasons=0)
+
+    season_scope = (
+        SummerLeaguePlayerSeason.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
+        if competition_ids is not None
+        else None
+    )
+    context_scope = (
+        SummerLeagueMetricContext.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
+        if competition_ids is not None
+        else None
+    )
+
+    # A current candidate is a publication-path violation.  Refusing it is safer
+    # than silently stamping it: a future reader could otherwise observe a row that
+    # archival code was never allowed to create.
+    season_version: Any = getattr(SummerLeaguePlayerSeason, "version")
+    season_current: Any = getattr(SummerLeaguePlayerSeason, "is_current")
+    context_version: Any = getattr(SummerLeagueMetricContext, "version")
+    context_current: Any = getattr(SummerLeagueMetricContext, "is_current")
+    season_published_at: Any = getattr(SummerLeaguePlayerSeason, "published_at")
+    context_published_at: Any = getattr(SummerLeagueMetricContext, "published_at")
+    current_queries = [
+        select(func.count())
+        .select_from(SummerLeaguePlayerSeason)
+        .where(
+            season_version == version,
+            season_current.is_(True),
+        ),
+        select(func.count())
+        .select_from(SummerLeagueMetricContext)
+        .where(
+            context_version == version,
+            context_current.is_(True),
+        ),
+    ]
+    if season_scope is not None and context_scope is not None:
+        current_queries[0] = current_queries[0].where(season_scope)
+        current_queries[1] = current_queries[1].where(context_scope)
+    current_rows = [int(await db.scalar(query) or 0) for query in current_queries]
+    if any(current_rows):
+        raise ValueError(
+            "archival publication candidate contains current rows; refusing to "
+            f"stamp version {version}"
+        )
+
+    published_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    season_update = update(SummerLeaguePlayerSeason).where(
+        season_version == version,
+        season_current.is_(False),
+        season_published_at.is_(None),
+    )
+    context_update = update(SummerLeagueMetricContext).where(
+        context_version == version,
+        context_current.is_(False),
+        context_published_at.is_(None),
+    )
+    if season_scope is not None and context_scope is not None:
+        season_update = season_update.where(season_scope)
+        context_update = context_update.where(context_scope)
+
+    values: dict[str, object] = {
+        "published_at": published_at,
+        "effective_day": effective_day,
+        "is_archival": True,
+    }
+    if as_of is not None:
+        values["as_of"] = as_of
+
+    season_result = await db.execute(season_update.values(**values))
+    context_result = await db.execute(context_update.values(**values))
+    await db.flush()
+    return ArchivalPublication(
+        contexts=int(getattr(context_result, "rowcount", 0) or 0),
+        seasons=int(getattr(season_result, "rowcount", 0) or 0),
+    )

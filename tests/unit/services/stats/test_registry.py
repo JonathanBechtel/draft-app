@@ -14,16 +14,14 @@ Covers the Definition of Done's acceptance criteria directly:
 * the frozen environment ``turnover_rate`` exemption is declared with a distinct
   ``metric_key``/``definition_version`` and a non-empty justification, and is never
   silently absorbed into the engine's own ``tov_pct``;
-* ``METRIC_REGISTRY_VERSION`` matches the existing
-  ``app.schemas.summer_league_metrics.DEFAULT_METRIC_REGISTRY_VERSION`` constant --
-  a regression guard against the exact "second declaration of the same value drifts
-  apart" duplication this phase exists to remove, pending Phase 3's re-point of that
-  schema constant to import this module's value directly.
+* The materialized schema imports both version stamps from this module, so a registry
+  bump cannot leave newly published rows carrying stale literals.
 """
 
 from __future__ import annotations
 
 from app.services.stats.registry import (
+    METRIC_CALCULATION_VERSION,
     METRIC_DEFINITIONS,
     METRIC_REGISTRY_VERSION,
     METRICS_BY_KEY,
@@ -68,7 +66,9 @@ def test_every_entry_has_no_silent_none_in_required_fields() -> None:
         assert d.metric_family is not None, d.metric_key
         assert d.grain_validity, f"{d.metric_key} has empty grain_validity"
         assert d.comparison_semantics, f"{d.metric_key} has empty comparison_semantics"
-        assert d.allowed_reference_kinds, f"{d.metric_key} has empty allowed_reference_kinds"
+        assert d.allowed_reference_kinds, (
+            f"{d.metric_key} has empty allowed_reference_kinds"
+        )
         assert d.minimum_sample_rule, f"{d.metric_key} has empty minimum_sample_rule"
         assert d.coverage_requirement, f"{d.metric_key} has empty coverage_requirement"
         assert d.interpretation_note, f"{d.metric_key} has empty interpretation_note"
@@ -89,9 +89,7 @@ def test_recombinable_and_additive_metrics_are_valid_at_career_grain() -> None:
         and d.metric_key != "environment_turnover_rate"
     }
     assert rollupable
-    assert all(
-        Grain.CAREER in get_metric(key).grain_validity for key in rollupable
-    )
+    assert all(Grain.CAREER in get_metric(key).grain_validity for key in rollupable)
 
 
 def test_allowed_reference_kinds_are_known_reference_kinds() -> None:
@@ -228,7 +226,9 @@ def test_frozen_turnover_rate_is_declared_as_its_own_exempt_entry() -> None:
     assert "environment_service" in frozen.exemption_reason
 
 
-def test_frozen_turnover_rate_has_its_own_definition_version_distinct_from_engine() -> None:
+def test_frozen_turnover_rate_has_its_own_definition_version_distinct_from_engine() -> (
+    None
+):
     """The frozen entry's definition_version does not track METRIC_REGISTRY_VERSION.
 
     It must never move just because the pooled engine's tov_pct/possession
@@ -269,32 +269,31 @@ def test_engine_tov_pct_and_frozen_environment_rate_are_declared_separately() ->
 
 
 # --------------------------------------------------------------------------- #
-# METRIC_REGISTRY_VERSION -- source of the existing constant, not a second one.
+# Version stamps -- the registry is the only source for materialized rows.
 # --------------------------------------------------------------------------- #
 
 
-def test_registry_version_matches_existing_schema_constant() -> None:
-    """This registry's version agrees with the pre-existing schema constant.
+def test_schema_version_stamps_are_sourced_from_registry() -> None:
+    """Materialized defaults re-export the registry's canonical values."""
+    from app.schemas.summer_league_metrics import (
+        DEFAULT_METRIC_CALCULATION_VERSION,
+        DEFAULT_METRIC_REGISTRY_VERSION,
+    )
 
-    Phase 1 (#697) already shipped ``DEFAULT_METRIC_REGISTRY_VERSION`` in
-    ``app.schemas.summer_league_metrics``. This ticket (T7) is scoped to new files
-    only, so it does not yet re-point that schema constant to import this module's
-    value (Phase 3 materialization work, doc #2 §5) -- but it must never mint a
-    second, independent version string. This test is the drift guard in the
-    meantime: if the two literals are ever bumped out of sync, this fails instead
-    of silently diverging, which is exactly the failure mode
-    ``registry_version`` exists to prevent one level up (in the materialized
-    rows themselves).
-    """
-    from app.schemas.summer_league_metrics import DEFAULT_METRIC_REGISTRY_VERSION
-
-    assert METRIC_REGISTRY_VERSION == DEFAULT_METRIC_REGISTRY_VERSION
+    assert DEFAULT_METRIC_REGISTRY_VERSION == METRIC_REGISTRY_VERSION
+    assert DEFAULT_METRIC_CALCULATION_VERSION == METRIC_CALCULATION_VERSION
 
 
 def test_registry_version_is_readable_by_an_external_caller() -> None:
     """The version is a plain importable module-level constant (Phase 3 will read it)."""
     assert isinstance(METRIC_REGISTRY_VERSION, str)
     assert METRIC_REGISTRY_VERSION
+
+
+def test_calculation_version_tracks_pipeline_independently() -> None:
+    """Pipeline behavior changes are distinguishable from metric definitions."""
+    assert METRIC_CALCULATION_VERSION == "2026.07.2"
+    assert METRIC_CALCULATION_VERSION != METRIC_REGISTRY_VERSION
 
 
 # --------------------------------------------------------------------------- #

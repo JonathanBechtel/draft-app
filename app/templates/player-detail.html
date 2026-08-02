@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/feed.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/film-room.css') }}">
+{% if sl_trend %}<link rel="stylesheet" href="{{ url_for('static', path='css/sl-trend.css') }}">{% endif %}
 {% if sl_shotchart %}<link rel="stylesheet" href="{{ url_for('static', path='summer-league-shotchart.css') }}">{% endif %}
 {% endblock %}
 
@@ -641,6 +642,11 @@
     </div>
   </section>
 
+  {% if sl_trend %}
+  {% from "partials/trend-card.html" import trend_card %}
+  {{ trend_card(sl_trend) }}
+  {% endif %}
+
   <div class="section-divider"></div>
   {% endif %}
 
@@ -1121,8 +1127,10 @@
   window.SUMMER_LEAGUE_DATA = {{ summer_league | tojson | safe }};
   // Shot chart payload (career zone rollup); null when no shot data.
   window.SL_SHOTCHART = {{ sl_shotchart | tojson | safe }};
+  window.DRAFTGURU_TREND = {{ sl_trend | tojson | safe }};
 </script>
 <script src="{{ url_for('static', path='js/player-detail.js') }}"></script>
 <script src="{{ url_for('static', path='js/film-room.js') }}"></script>
 {% if sl_shotchart %}<script src="{{ url_for('static', path='summer-league-shotchart.js') }}"></script>{% endif %}
+{% if sl_trend %}<script src="{{ url_for('static', path='js/sl-trend.js') }}"></script>{% endif %}
 {% endblock %}

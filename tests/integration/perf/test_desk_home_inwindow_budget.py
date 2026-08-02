@@ -201,6 +201,7 @@ async def _seed_active_desk(
             player_id=player.id,
             year=year,
             venue_slug=comp.venue_slug,
+            is_current=True,
             gp=3,
             minutes=90.0,
             gmsc=72.0,

@@ -10,6 +10,7 @@ Run:
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from app.services.event_desk.render_snapshots import upsert_render_snapshots
 from app.services.event_desk.snapshot_materialization import (
@@ -47,10 +48,15 @@ async def main() -> None:
             await acquire_summer_league_writer_lock_bounded(
                 db, max_wait_seconds=DEFAULT_REBUILD_LOCK_MAX_WAIT_SECONDS
             )
+            publication_kwargs: dict[str, Any] = {
+                "version": int(summary["version"]),
+                "model_version": str(summary["model_version"]),
+            }
+            if summary.get("effective_day") is not None:
+                publication_kwargs["effective_day"] = summary["effective_day"]
             skipped_competition_ids = await publish_metric_version(
                 db,
-                version=int(summary["version"]),
-                model_version=str(summary["model_version"]),
+                **publication_kwargs,
             )
             if skipped_competition_ids:
                 snapshot_writes = []

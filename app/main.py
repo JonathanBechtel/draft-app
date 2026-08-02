@@ -23,6 +23,7 @@ from app.routes import (
     share,
     stats,
     summer_league,
+    summer_league_trends,
     ui,
     videos,
 )
@@ -125,6 +126,7 @@ app.include_router(videos.router)
 app.include_router(players.router)
 app.include_router(share.router)
 app.include_router(summer_league.router)
+app.include_router(summer_league_trends.router)
 app.include_router(stats.router)
 app.include_router(seo.router)
 app.include_router(ui.router)

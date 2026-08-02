@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import pytest
 from sqlalchemy import select
@@ -155,3 +155,140 @@ async def test_compaction_keeps_published_close_current_and_inflight_candidate(
             now=datetime(2026, 7, 6, 12, tzinfo=timezone.utc),
         )
     assert rerun.rows_deleted == 0
+
+
+@pytest.mark.asyncio
+async def test_effective_day_cutoff_uses_eastern_calendar_boundary(
+    db_session: AsyncSession,
+) -> None:
+    """A UTC run just after midnight does not close the still-current ET day."""
+    competition = SummerLeagueCompetition(
+        year=2026,
+        league_id="compaction-effective-day",
+        venue_slug="las_vegas",
+        display_name="Compaction Effective Day",
+    )
+    player = make_player("Effective", "Day")
+    db_session.add_all([competition, player])
+    await db_session.flush()
+    assert competition.id is not None
+    assert player.id is not None
+    effective_day = date(2026, 7, 6)
+    for version, is_current in ((1, False), (2, False), (3, True)):
+        db_session.add(
+            SummerLeaguePlayerSeason(
+                competition_id=competition.id,
+                player_id=player.id,
+                year=2026,
+                venue_slug="las_vegas",
+                version=version,
+                is_current=is_current,
+                effective_day=effective_day,
+                as_of=datetime(2026, 8, version, 12),
+                published_at=datetime(2026, 8, version, 13),
+                gmsc=float(version),
+            )
+        )
+    await db_session.commit()
+
+    async with db_session.begin():
+        still_open = await compact_metric_versions(
+            db_session,
+            now=datetime(2026, 7, 7, 1, tzinfo=timezone.utc),
+        )
+    assert still_open.season_rows_deleted == 0
+
+    await db_session.commit()
+    async with db_session.begin():
+        closed = await compact_metric_versions(
+            db_session,
+            now=datetime(2026, 7, 7, 5, tzinfo=timezone.utc),
+        )
+    assert closed.season_rows_deleted == 1
+
+
+@pytest.mark.asyncio
+async def test_compaction_preserves_archive_over_later_ordinary_rebuild(
+    db_session: AsyncSession,
+) -> None:
+    """A historical close survives two later ordinary rebuilds of its event day."""
+    competition = SummerLeagueCompetition(
+        year=2026,
+        league_id="compaction-archive",
+        venue_slug="las_vegas",
+        display_name="Compaction Archive",
+    )
+    player = make_player("Archive", "Close")
+    db_session.add_all([competition, player])
+    await db_session.flush()
+    assert competition.id is not None
+    assert player.id is not None
+
+    effective_day = date(2026, 7, 10)
+    for version, is_archival, is_current in (
+        (1, True, False),
+        (2, False, False),
+        (3, False, True),
+    ):
+        published_at = datetime(2026, 7, 11, version)
+        db_session.add(
+            SummerLeagueMetricContext(
+                competition_id=competition.id,
+                year=2026,
+                venue_slug="las_vegas",
+                version=version,
+                is_current=is_current,
+                is_archival=is_archival,
+                effective_day=effective_day,
+                published_at=published_at,
+            )
+        )
+        db_session.add(
+            SummerLeaguePlayerSeason(
+                competition_id=competition.id,
+                player_id=player.id,
+                year=2026,
+                venue_slug="las_vegas",
+                version=version,
+                is_current=is_current,
+                is_archival=is_archival,
+                effective_day=effective_day,
+                published_at=published_at,
+            )
+        )
+    await db_session.commit()
+
+    async with db_session.begin():
+        summary = await compact_metric_versions(
+            db_session,
+            now=datetime(2026, 7, 12, 12, tzinfo=timezone.utc),
+        )
+
+    assert summary.context_rows_deleted == 1
+    assert summary.season_rows_deleted == 1
+    context_versions = (
+        (
+            await db_session.execute(
+                select(
+                    SummerLeagueMetricContext.version,
+                    SummerLeagueMetricContext.is_archival,
+                ).where(SummerLeagueMetricContext.competition_id == competition.id)
+            )
+        )
+        .tuples()
+        .all()
+    )
+    season_versions = (
+        (
+            await db_session.execute(
+                select(
+                    SummerLeaguePlayerSeason.version,
+                    SummerLeaguePlayerSeason.is_archival,
+                ).where(SummerLeaguePlayerSeason.competition_id == competition.id)
+            )
+        )
+        .tuples()
+        .all()
+    )
+    assert set(context_versions) == {(1, True), (3, False)}
+    assert set(season_versions) == {(1, True), (3, False)}

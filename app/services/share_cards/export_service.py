@@ -20,6 +20,7 @@ from app.services.share_cards.model_builders import (
     build_metric_leaders_model,
     build_performance_model,
     build_sl_shot_chart_model,
+    build_sl_trend_model,
 )
 from app.services.share_cards.rasterizer import get_rasterizer
 from app.services.share_cards.render_models import RenderModel
@@ -36,6 +37,7 @@ ComponentType = Literal[
     "metric_leaders",
     "draft_year",
     "sl_shot_chart",
+    "sl_trend",
 ]
 
 # Map component types to template files
@@ -48,6 +50,7 @@ COMPONENT_TEMPLATES = {
     "metric_leaders": "metric_leaders.svg",
     "draft_year": "draft_year.svg",
     "sl_shot_chart": "sl_shot_chart.svg",
+    "sl_trend": "sl_trend.svg",
 }
 
 
@@ -89,10 +92,19 @@ class ImageExportService:
         """
         start_time = time.perf_counter()
 
-        # Generate cache key
-        cache_key = generate_cache_key(component, player_ids, context)
+        model: RenderModel | None = None
+        model_duration = 0.0
+        cache_context = context
+        if component == "sl_trend":
+            # The request context is stable across daily closes. Fingerprint the
+            # selected render model so changed trend bytes always receive a new
+            # public URL instead of overwriting a browser/CDN-cached object.
+            model_start = time.perf_counter()
+            model = await self._build_model(component, player_ids, context)
+            model_duration = time.perf_counter() - model_start
+            cache_context = {**context, "_render_model": asdict(model)}
 
-        # Check cache first
+        cache_key = generate_cache_key(component, player_ids, cache_context)
         cached = self.storage.check_cache(cache_key)
         if cached:
             export_id = Path(cache_key).stem
@@ -111,7 +123,8 @@ class ImageExportService:
                 }
 
             # Back-compat: older cached exports may not have stored metadata.
-            model = await self._build_model(component, player_ids, context)
+            if model is None:
+                model = await self._build_model(component, player_ids, context)
             player_names = self._extract_player_names(model)
 
             logger.info(
@@ -129,9 +142,10 @@ class ImageExportService:
 
         # Cache miss - generate image
         export_id = Path(cache_key).stem
-        model_start = time.perf_counter()
-        model = await self._build_model(component, player_ids, context)
-        model_duration = time.perf_counter() - model_start
+        if model is None:
+            model_start = time.perf_counter()
+            model = await self._build_model(component, player_ids, context)
+            model_duration = time.perf_counter() - model_start
 
         # Enrich context with display name from model for title/filename
         context = self._enrich_context(component, model, context)
@@ -209,6 +223,8 @@ class ImageExportService:
             return await build_draft_year_model(self.db, player_ids, context)
         elif component == "sl_shot_chart":
             return await build_sl_shot_chart_model(self.db, player_ids, context)
+        elif component == "sl_trend":
+            return await build_sl_trend_model(self.db, player_ids, context)
         else:
             raise ValueError(f"Unknown component: {component}")
 
@@ -257,6 +273,7 @@ class ImageExportService:
             MetricLeadersRenderModel,
             PerformanceRenderModel,
             SLShotChartRenderModel,
+            TrendRenderModel,
         )
 
         if isinstance(model, H2HRenderModel):
@@ -266,6 +283,8 @@ class ImageExportService:
         elif isinstance(model, MetricLeadersRenderModel):
             return [model.metric_label]
         elif isinstance(model, SLShotChartRenderModel):
+            return [model.player.name]
+        elif isinstance(model, TrendRenderModel):
             return [model.player.name]
         else:
             return ["Player"]

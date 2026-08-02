@@ -78,6 +78,9 @@ def generate_filename(
     if component == "sl_shot_chart":
         slug = _slugify(player_names[0]) if player_names else "player"
         return f"{slug}-sl-shot-chart.png"
+    if component == "sl_trend":
+        slug = _slugify(player_names[0]) if player_names else "player"
+        return f"{slug}-trend.png"
 
     slugified = [_slugify(name) for name in player_names]
 
@@ -89,7 +92,7 @@ def generate_filename(
         return f"{slugified[0]}-{component.replace('_', '-')}.png"
 
 
-def generate_title(
+def generate_title(  # noqa: C901
     component: str,
     player_names: list[str],
     context: dict[str, Any] | None = None,
@@ -132,6 +135,8 @@ def generate_title(
         return f"{player_names[0]} — Comparisons"
     elif component == "sl_shot_chart":
         return f"{player_names[0]} — SL Shot Chart"
+    elif component == "sl_trend":
+        return f"{player_names[0]} — Trend"
     else:
         return player_names[0]
 

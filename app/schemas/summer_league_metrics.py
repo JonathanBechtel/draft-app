@@ -20,7 +20,7 @@ Three tables:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import (
@@ -35,9 +35,15 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
 from app.schemas.base import DatedVersionMixin
+from app.services.stats.registry import (
+    METRIC_CALCULATION_VERSION,
+    METRIC_REGISTRY_VERSION,
+)
 
-DEFAULT_METRIC_REGISTRY_VERSION = "2026.07.1"
-DEFAULT_METRIC_CALCULATION_VERSION = "2026.07.1"
+# Backwards-compatible schema names for callers that import the defaults directly.
+# The stat-engine registry owns the values; this module must not mint a second pair.
+DEFAULT_METRIC_REGISTRY_VERSION = METRIC_REGISTRY_VERSION
+DEFAULT_METRIC_CALCULATION_VERSION = METRIC_CALCULATION_VERSION
 
 
 class SummerLeagueMetricModel(SQLModel, table=True):  # type: ignore[call-arg]
@@ -107,14 +113,17 @@ class SummerLeagueMetricContext(DatedVersionMixin, SQLModel, table=True):  # typ
             postgresql_where=text("is_current = true"),
         ),
         Index("ix_summer_league_metric_contexts_year_venue", "year", "venue_slug"),
+        Index(
+            "ix_summer_league_metric_contexts_trend",
+            "competition_id",
+            "effective_day",
+            "version",
+            "published_at",
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    # Direct fixture/manual construction predates dated metrics. The rebuild path
-    # always supplies an inactive candidate explicitly; these defaults keep legacy
-    # seed helpers readable while the migration backfills their equivalent v1 row.
     version: int = Field(default=1, nullable=False)
-    is_current: bool = Field(default=True, nullable=False)
     registry_version: str = Field(
         default=DEFAULT_METRIC_REGISTRY_VERSION, nullable=False
     )
@@ -125,6 +134,11 @@ class SummerLeagueMetricContext(DatedVersionMixin, SQLModel, table=True):  # typ
     # Set when this projection version is exposed to readers. A nullable value
     # distinguishes an abandoned/in-flight candidate from a published daily close.
     published_at: Optional[datetime] = Field(default=None)
+    # Event calendar day (Eastern), deliberately separate from ``as_of`` source
+    # currency. Legacy rows may leave this NULL; the trend read/compaction paths
+    # fall back to the historical ``published_at`` day until they are backfilled.
+    effective_day: Optional[date] = Field(default=None)
+    is_archival: bool = Field(default=False, nullable=False)
     competition_id: int = Field(
         sa_column=Column(
             Integer,
@@ -176,14 +190,24 @@ class SummerLeaguePlayerSeason(DatedVersionMixin, SQLModel, table=True):  # type
         Index("ix_summer_league_player_seasons_player_id", "player_id"),
         Index("ix_summer_league_player_seasons_year_venue", "year", "venue_slug"),
         Index("ix_summer_league_player_seasons_competition", "competition_id"),
+        Index(
+            "ix_summer_league_player_seasons_trend",
+            "competition_id",
+            "effective_day",
+            "version",
+            "published_at",
+        ),
+        Index(
+            "ix_summer_league_player_seasons_year_trend",
+            "year",
+            "effective_day",
+            "version",
+            "published_at",
+        ),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    # See the compatibility note on SummerLeagueMetricContext above. Candidate
-    # rows written by the versioned rebuild override these defaults with
-    # is_current=False and their publication metadata.
     version: int = Field(default=1, nullable=False)
-    is_current: bool = Field(default=True, nullable=False)
     registry_version: str = Field(
         default=DEFAULT_METRIC_REGISTRY_VERSION, nullable=False
     )
@@ -194,6 +218,21 @@ class SummerLeaguePlayerSeason(DatedVersionMixin, SQLModel, table=True):  # type
     # Set when this projection version is exposed to readers. A nullable value
     # distinguishes an abandoned/in-flight candidate from a published daily close.
     published_at: Optional[datetime] = Field(default=None)
+    # Event calendar day (Eastern), deliberately separate from ``as_of`` source
+    # currency. Legacy rows may leave this NULL; the trend read/compaction paths
+    # fall back to the historical ``published_at`` day until they are backfilled.
+    effective_day: Optional[date] = Field(default=None)
+    is_archival: bool = Field(default=False, nullable=False)
+    # Daily-close cohort distributions are derived offline with the player
+    # projection. Public trend pages read these JSON payloads directly instead
+    # of re-aggregating every retained player row on each request.
+    trend_competition_bands: Optional[dict[str, dict[str, float]]] = Field(
+        default=None, sa_column=Column(JSONB, nullable=True)
+    )
+    trend_season_bands: Optional[dict[str, dict[str, float]]] = Field(
+        default=None, sa_column=Column(JSONB, nullable=True)
+    )
+    trend_season_as_of: Optional[datetime] = Field(default=None)
     competition_id: int = Field(
         sa_column=Column(
             Integer,

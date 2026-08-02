@@ -238,6 +238,42 @@ class SLShotChartRenderModel:
     template_version: str = TEMPLATE_VERSION
 
 
+@dataclass
+class TrendChartPoint:
+    """One projected point positioned for the trend share-card SVG."""
+
+    day: str
+    value_display: str
+    x: float
+    y: float
+    band_top: float
+    band_bottom: float
+
+
+@dataclass
+class TrendChartLine:
+    """One metric line plus its same-snapshot cohort band."""
+
+    key: str
+    label: str
+    color: str
+    points: list[TrendChartPoint] = field(default_factory=list)
+
+
+@dataclass
+class TrendRenderModel:
+    """Cumulative-through-day trend share card."""
+
+    title: str
+    subtitle: str
+    player: PlayerBadge
+    lines: list[TrendChartLine] = field(default_factory=list)
+    single_point: bool = False
+    as_of: str = ""
+    accent_color: str = "#06b6d4"
+    template_version: str = TEMPLATE_VERSION
+
+
 # Type alias for all render model types
 RenderModel = (
     VSArenaRenderModel
@@ -247,4 +283,5 @@ RenderModel = (
     | MetricLeadersRenderModel
     | DraftYearRenderModel
     | SLShotChartRenderModel
+    | TrendRenderModel
 )

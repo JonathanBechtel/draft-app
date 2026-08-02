@@ -128,6 +128,38 @@ async def test_cohort_baseline_requires_unique_version_and_cohort_key(
 
 
 @pytest.mark.asyncio
+async def test_cohort_baseline_active_index_rejects_duplicate_cohort(
+    db_session: AsyncSession,
+) -> None:
+    """Different baseline versions cannot both be active for one cohort."""
+    common = dict(
+        cohort_key="status:undrafted",
+        cohort_kind=SummerLeagueDeskCohortKind.STATUS,
+        grain=SummerLeagueDeskGrain.EVENT,
+        season_range="2017-2025",
+    )
+    db_session.add(
+        SummerLeagueCohortBaseline(
+            baseline_version="2026.1",
+            is_active=True,
+            **common,
+        )
+    )
+    await db_session.commit()
+
+    db_session.add(
+        SummerLeagueCohortBaseline(
+            baseline_version="2026.2",
+            is_active=True,
+            **common,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+@pytest.mark.asyncio
 async def test_player_grade_roundtrip(db_session: AsyncSession) -> None:
     """T2 player grade rows persist facts json and enforce the per-player-event-version key."""
     competition, _game = await _seed_game_context(db_session)

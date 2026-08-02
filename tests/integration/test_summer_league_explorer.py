@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.schemas.player_status import PlayerStatus
@@ -30,6 +31,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
+from app.services import summer_league_explorer_service as explorer_service
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     PER_GAME_FILTERABLE_COLUMNS,
@@ -547,6 +549,8 @@ async def test_explorer_page_renders(
     assert "Explorer" in body
     assert "explorer-form" in body
     assert "Big Scorer" in body
+    assert 'data-read-source="snapshot"' in body
+    assert "Source as of" in body
 
 
 @pytest.mark.asyncio
@@ -876,6 +880,7 @@ async def _season(
             player_id=player.id,
             year=year,
             venue_slug=venue_slug,
+            is_current=True,
             gp=gp,
             minutes=minutes,
             pts=pts,
@@ -1394,6 +1399,91 @@ async def test_grain_career_default_unchanged(
 
 
 @pytest.mark.asyncio
+async def test_snapshot_freshness_uses_oldest_current_watermark(
+    db_session: AsyncSession,
+) -> None:
+    """A pooled career result never overstates currency from a newer row."""
+    await _seed_grain(db_session)
+    seasons = (
+        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
+    )
+    newest = datetime(2026, 8, 1, 12, 0)
+    oldest = newest - timedelta(days=3)
+    seasons[0].as_of = newest
+    seasons[1].as_of = oldest
+    await db_session.flush()
+
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
+    assert result.read_source == "snapshot"
+    assert result.as_of == oldest
+
+
+@pytest.mark.asyncio
+async def test_snapshot_freshness_is_unknown_when_any_watermark_is_missing(
+    db_session: AsyncSession,
+) -> None:
+    """A dated row cannot mask degraded currency elsewhere in the scope."""
+    await _seed_grain(db_session)
+    seasons = (
+        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
+    )
+    seasons[0].as_of = datetime(2026, 8, 1, 12, 0)
+    seasons[1].as_of = None
+    await db_session.flush()
+
+    career = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
+    per_competition = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+
+    assert career.as_of is None
+    assert per_competition.as_of is None
+
+
+@pytest.mark.asyncio
+async def test_per_competition_freshness_is_stable_across_pages(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pagination cannot hide an older watermark elsewhere in the same scope."""
+    await _seed_grain(db_session)
+    seasons = (
+        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
+    )
+    newest = datetime(2026, 8, 1, 12, 0)
+    oldest = newest - timedelta(days=3)
+    seasons[0].as_of = newest
+    seasons[1].as_of = oldest
+    await db_session.flush()
+    monkeypatch.setattr(explorer_service, "PAGE_SIZE", 1)
+
+    results = [
+        await run_explorer_query(
+            db_session,
+            ExplorerQuery(
+                subject="players",
+                grain="per_competition",
+                page=page,
+                sort="gmsc",
+                min_games=1,
+                min_minutes=1,
+            ),
+        )
+        for page in (1, 2, 3)
+    ]
+
+    assert all(result.as_of == oldest for result in results)
+    assert results[2].total == 2
+    assert results[2].rows == []
+
+
+@pytest.mark.asyncio
 async def test_gmsc_sorts_on_career_and_per_game_grains(
     db_session: AsyncSession,
 ) -> None:
@@ -1793,6 +1883,7 @@ async def _seed_per_comp_filters(db: AsyncSession) -> None:
             player_id=player.id,
             year=2024,
             venue_slug="las_vegas",
+            is_current=True,
             gp=2,
             minutes=60.0,
             pts=pts,
@@ -2381,6 +2472,7 @@ async def _metric_context(
         competition_id=comp_id,
         year=year,
         venue_slug=venue_slug,
+        is_current=True,
         adv_eligible=adv_eligible,
     )
     db.add(ctx)
@@ -2413,6 +2505,7 @@ async def _season_with_composites(
             player_id=player.id,
             year=year,
             venue_slug=venue_slug,
+            is_current=True,
             gp=gp,
             minutes=minutes,
             pts=pts,
@@ -3056,6 +3149,7 @@ async def _seed_age_filter_per_comp(
                 player_id=player.id,
                 year=2023,
                 venue_slug="las_vegas",
+                is_current=True,
                 gp=2,
                 minutes=60.0,
                 pts=pts,
@@ -3707,6 +3801,7 @@ async def test_career_box_parity_after_source_switch(
             player_id=player.id,
             year=2024,
             venue_slug="las_vegas",
+            is_current=True,
             gp=3,
             minutes=95.0,  # ≠ 90 (3 × 30 min log sum)
             pts=20,  # ≠ 15 (log sum)
@@ -5161,7 +5256,9 @@ _BOX_LINE = dict(
 assert _BOX_LINE["minutes"] >= MIN_COMPLETE_TEAM_MP
 
 
-async def _cc_team_log(db: AsyncSession, *, comp_id: int, game_id: int, team_id: int) -> None:
+async def _cc_team_log(
+    db: AsyncSession, *, comp_id: int, game_id: int, team_id: int
+) -> None:
     db.add(
         SummerLeagueTeamGameLog(
             competition_id=comp_id, game_id=game_id, team_entry_id=team_id, **_BOX_LINE
@@ -5259,10 +5356,18 @@ async def _seed_competition_context(db: AsyncSession) -> dict[str, int]:
         await _cc_team_log(db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=home.id)  # type: ignore[arg-type]
         await _cc_team_log(db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=away.id)  # type: ignore[arg-type]
         await _cc_player_log(
-            db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=home.id, player=scorer  # type: ignore[arg-type]
+            db,
+            comp_id=comp_vegas_24.id,  # type: ignore[arg-type]
+            game_id=g.id,  # type: ignore[arg-type]
+            team_id=home.id,  # type: ignore[arg-type]
+            player=scorer,  # type: ignore[arg-type]
         )
         await _cc_shots(
-            db, comp_id=comp_vegas_24.id, game_id=g.id, team_id=home.id, player=scorer  # type: ignore[arg-type]
+            db,
+            comp_id=comp_vegas_24.id,  # type: ignore[arg-type]
+            game_id=g.id,  # type: ignore[arg-type]
+            team_id=home.id,  # type: ignore[arg-type]
+            player=scorer,  # type: ignore[arg-type]
         )
 
     # -- 2024 Salt Lake City: box-incomplete (one team-box row only) --
@@ -5274,7 +5379,11 @@ async def _seed_competition_context(db: AsyncSession) -> dict[str, int]:
     await _cc_team_log(db, comp_id=comp_slc_24.id, game_id=g2.id, team_id=home2.id)  # type: ignore[arg-type]
     # No away team-box row -> pairing fails -> box_complete_games stays 0 here.
     await _cc_player_log(
-        db, comp_id=comp_slc_24.id, game_id=g2.id, team_id=home2.id, player=scorer  # type: ignore[arg-type]
+        db,
+        comp_id=comp_slc_24.id,  # type: ignore[arg-type]
+        game_id=g2.id,  # type: ignore[arg-type]
+        team_id=home2.id,  # type: ignore[arg-type]
+        player=scorer,  # type: ignore[arg-type]
     )
 
     # -- 2023 Las Vegas: no box, no shots at all (unavailable coverage) --
@@ -5284,7 +5393,11 @@ async def _seed_competition_context(db: AsyncSession) -> dict[str, int]:
     away3 = await _cc_team(db, comp_vegas_23.id)  # type: ignore[arg-type]
     g3 = await _cc_game(db, comp_id=comp_vegas_23.id, home=home3, away=away3)  # type: ignore[arg-type]
     await _cc_player_log(
-        db, comp_id=comp_vegas_23.id, game_id=g3.id, team_id=home3.id, player=scorer  # type: ignore[arg-type]
+        db,
+        comp_id=comp_vegas_23.id,  # type: ignore[arg-type]
+        game_id=g3.id,  # type: ignore[arg-type]
+        team_id=home3.id,  # type: ignore[arg-type]
+        player=scorer,  # type: ignore[arg-type]
     )
 
     await db.commit()
@@ -5300,7 +5413,9 @@ async def _seed_competition_context(db: AsyncSession) -> dict[str, int]:
 
 
 @pytest.mark.asyncio
-async def test_competitions_season_list_pools_across_venues(db_session: AsyncSession) -> None:
+async def test_competitions_season_list_pools_across_venues(
+    db_session: AsyncSession,
+) -> None:
     """Season scope returns one row per year, pooling every venue in it."""
     await _seed_competition_context(db_session)
     result = await run_explorer_query(
@@ -5347,13 +5462,17 @@ async def test_competitions_competition_scope_one_row_per_edition(
     assert (2024, "Salt Lake City") in labels
     assert (2023, "Las Vegas") in labels
     vegas_2024 = next(
-        r for r in result.rows if r.values["year"] == 2024 and r.values["venue"] == "Las Vegas"
+        r
+        for r in result.rows
+        if r.values["year"] == 2024 and r.values["venue"] == "Las Vegas"
     )
     assert vegas_2024.values["final_games"] == 2
 
 
 @pytest.mark.asyncio
-async def test_competitions_venue_filters_competition_scope(db_session: AsyncSession) -> None:
+async def test_competitions_venue_filters_competition_scope(
+    db_session: AsyncSession,
+) -> None:
     await _seed_competition_context(db_session)
     result = await run_explorer_query(
         db_session,
@@ -5413,7 +5532,9 @@ async def test_competitions_min_gp_default_zero_shows_zero_game_rows(
 
 
 @pytest.mark.asyncio
-async def test_competitions_coverage_box_complete_filter(db_session: AsyncSession) -> None:
+async def test_competitions_coverage_box_complete_filter(
+    db_session: AsyncSession,
+) -> None:
     """coverage=box_complete keeps only rows whose overall box input is complete."""
     await _seed_competition_context(db_session)
     result = await run_explorer_query(
@@ -5490,7 +5611,12 @@ async def test_competitions_sort_and_pagination(db_session: AsyncSession) -> Non
     desc = await run_explorer_query(
         db_session,
         parse_query(
-            {"subject": "competitions", "profile_scope": "season", "sort": "year", "dir": "desc"}
+            {
+                "subject": "competitions",
+                "profile_scope": "season",
+                "sort": "year",
+                "dir": "desc",
+            }
         ),
     )
     assert [r.values["year"] for r in desc.rows] == [2024, 2023]
@@ -5498,7 +5624,12 @@ async def test_competitions_sort_and_pagination(db_session: AsyncSession) -> Non
     asc = await run_explorer_query(
         db_session,
         parse_query(
-            {"subject": "competitions", "profile_scope": "season", "sort": "year", "dir": "asc"}
+            {
+                "subject": "competitions",
+                "profile_scope": "season",
+                "sort": "year",
+                "dir": "asc",
+            }
         ),
     )
     assert [r.values["year"] for r in asc.rows] == [2023, 2024]
@@ -5514,7 +5645,11 @@ async def test_competitions_season_detail_by_detail_year_includes_membership(
     result = await run_explorer_query(
         db_session,
         parse_query(
-            {"subject": "competitions", "profile_scope": "season", "detail_year": "2024"}
+            {
+                "subject": "competitions",
+                "profile_scope": "season",
+                "detail_year": "2024",
+            }
         ),
     )
     detail = result.competition_detail
@@ -5572,13 +5707,16 @@ async def test_competitions_unknown_competition_id_yields_no_detail(
 
 
 @pytest.mark.asyncio
-async def test_competitions_facets_are_year_and_venue_only(db_session: AsyncSession) -> None:
+async def test_competitions_facets_are_year_and_venue_only(
+    db_session: AsyncSession,
+) -> None:
     """Competitions facets never load draft/country/position/team/round-type
     values — those are player/team-only (contract §9).
     """
     await _seed_competition_context(db_session)
     result = await run_explorer_query(
-        db_session, parse_query({"subject": "competitions", "profile_scope": "competition"})
+        db_session,
+        parse_query({"subject": "competitions", "profile_scope": "competition"}),
     )
     assert set(result.facets.years) == {2023, 2024}
     assert {v for v, _label in result.facets.venues} == {"las_vegas", "salt_lake_city"}
@@ -5626,7 +5764,9 @@ async def test_competitions_csv_and_table_values_agree(
         parse_query({"subject": "competitions", "profile_scope": "competition"}),
     )
     vegas_row = next(
-        r for r in result.rows if r.values["year"] == 2024 and r.values["venue"] == "Las Vegas"
+        r
+        for r in result.rows
+        if r.values["year"] == 2024 and r.values["venue"] == "Las Vegas"
     )
 
     resp = await app_client.get(
@@ -5646,7 +5786,8 @@ async def test_competitions_csv_and_table_values_agree(
             break
         data_rows.append(row)
     matching = [
-        row for row in data_rows
+        row
+        for row in data_rows
         if len(row) > year_idx and row[year_idx] == "2024" and "Las Vegas" in row
     ]
     assert matching, "expected a 2024 Las Vegas CSV row"

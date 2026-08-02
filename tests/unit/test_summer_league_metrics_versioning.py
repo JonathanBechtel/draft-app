@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -61,6 +61,9 @@ def _result(*, seasons: list[metrics.PlayerSeason]) -> SimpleNamespace:
         bpm_n_fit=20,
         shot_diet={},
         assisted_fg={},
+        competition_trend_bands={},
+        season_trend_bands={},
+        season_trend_as_of=datetime(2026, 7, 28, 12, 0),
         as_of=datetime(2026, 7, 28, 12, 0),
     )
 
@@ -107,7 +110,10 @@ async def test_rebuild_staged_writes_an_inactive_candidate_version(
     monkeypatch.setattr(metrics, "set_rebuild_idle_timeout", idle_timeout)
 
     db = MagicMock()
-    summary = await metrics.rebuild_staged(db, model_version="candidate")
+    effective_day = date(2026, 7, 28)
+    summary = await metrics.rebuild_staged(
+        db, model_version="candidate", effective_day=effective_day
+    )
 
     assert summary == {
         "seasons": 1,
@@ -115,6 +121,8 @@ async def test_rebuild_staged_writes_an_inactive_candidate_version(
         "adv_pools": 1,
         "version": 7,
         "model_version": "candidate",
+        "as_of": datetime(2026, 7, 28, 12, 0),
+        "effective_day": effective_day,
         "published": False,
     }
     publish_model.assert_awaited_once_with(
@@ -141,14 +149,22 @@ async def test_scoped_rebuild_publishes_only_the_requested_candidate_scope(
     monkeypatch.setattr(metrics, "publish_metric_version", publish_version)
 
     db = MagicMock()
-    summary = await metrics.rebuild(db, competition_ids=[1])
+    effective_day = date(2026, 7, 28)
+    summary = await metrics.rebuild(
+        db, competition_ids=[1], effective_day=effective_day
+    )
 
     assert summary["seasons"] == 1
     assert summary["contexts"] == 1
     assert summary["version"] == 8
     assert summary["model_version"] == "active-fit"
     publish_version.assert_awaited_once_with(
-        db, version=8, competition_ids=frozenset({1}), model_version=None
+        db,
+        version=8,
+        competition_ids=frozenset({1}),
+        model_version=None,
+        as_of=datetime(2026, 7, 28, 12, 0),
+        effective_day=effective_day,
     )
     idle_timeout.assert_awaited_once_with(db)
     assert db.add.call_count == 2

@@ -57,6 +57,7 @@ from app.services.summer_league.audit import audit_summer_league_raw
 from app.services.summer_league import metrics
 from app.services.summer_league.metrics import game_score_line, rebuild
 from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.summer_league.metric_publish import publish_metric_version
 from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.conftest import make_player
 
@@ -395,6 +396,10 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
     )
     assert len(a_seasons_after) == 12
     assert all(s.gp == 5 for s in a_seasons_after)
+    assert all(
+        season.trend_season_bands and "gmsc" in season.trend_season_bands
+        for season in a_seasons_after
+    )
 
     # B is untouched: same row ids, same values, same context row.
     b_seasons_after = (
@@ -459,6 +464,90 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
     }
 
 
+async def test_metric_publish_stamps_source_watermark_and_hides_candidates(
+    db_session: AsyncSession,
+) -> None:
+    """Candidates stay invisible until publication stamps their source currency."""
+    comp_id = await _seed_pool(
+        db_session,
+        year=2026,
+        venue="las_vegas",
+        league_id="15",
+        players_per_team=6,
+        n_games=4,
+    )
+    await db_session.commit()
+
+    staged = await metrics.rebuild_staged(db_session, model_version="watermark-fit")
+    watermark = staged["as_of"]
+    assert watermark is not None
+    version = staged["version"]
+    await db_session.commit()
+
+    staged_contexts = (
+        (
+            await db_session.execute(
+                select(SummerLeagueMetricContext).where(
+                    SummerLeagueMetricContext.competition_id == comp_id,
+                    SummerLeagueMetricContext.version == version,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    staged_seasons = (
+        (
+            await db_session.execute(
+                select(SummerLeaguePlayerSeason).where(
+                    SummerLeaguePlayerSeason.competition_id == comp_id,
+                    SummerLeaguePlayerSeason.version == version,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert staged_contexts and staged_seasons
+    assert all(row.is_current is False for row in [*staged_contexts, *staged_seasons])
+    await db_session.commit()
+
+    async with db_session.begin():
+        await publish_metric_version(
+            db_session,
+            version=version,
+            model_version="watermark-fit",
+            as_of=watermark,
+        )
+
+    current_context = (
+        (
+            await db_session.execute(
+                select(SummerLeagueMetricContext).where(
+                    SummerLeagueMetricContext.competition_id == comp_id,
+                    SummerLeagueMetricContext.is_current.is_(True),  # type: ignore[attr-defined]
+                )
+            )
+        )
+        .scalars()
+        .one()
+    )
+    current_seasons = (
+        (
+            await db_session.execute(
+                select(SummerLeaguePlayerSeason).where(
+                    SummerLeaguePlayerSeason.competition_id == comp_id,
+                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert current_context.as_of == watermark
+    assert current_seasons and all(row.as_of == watermark for row in current_seasons)
+
+
 def _scoped_projection(result: metrics.ComputeResult, competition_id: int) -> tuple:
     """Return the comparable projection portion for one competition."""
     seasons = sorted(
@@ -517,6 +606,69 @@ async def test_scoped_compute_reuses_fit_and_matches_full_recompute(
     ) + 1.0
     with pytest.raises(AssertionError):
         assert _scoped_projection(full, comp_a) == _scoped_projection(scoped, comp_a)
+
+
+async def test_historical_scoped_compute_refits_only_through_cutoff(
+    db_session: AsyncSession,
+) -> None:
+    """A historical close cannot reuse a fit trained on later-season games."""
+    historical_comp = await _seed_pool(
+        db_session,
+        year=2025,
+        venue="las_vegas",
+        league_id="historical-fit",
+        players_per_team=6,
+        n_games=4,
+    )
+    peer_comp = await _seed_pool(
+        db_session,
+        year=2025,
+        venue="salt_lake_city",
+        league_id="historical-peer-fit",
+        players_per_team=6,
+        n_games=4,
+    )
+    await _seed_pool(
+        db_session,
+        year=2026,
+        venue="orlando",
+        league_id="future-fit",
+        players_per_team=6,
+        n_games=4,
+    )
+    peer_game = (
+        (
+            await db_session.execute(
+                select(SummerLeagueGame).where(
+                    SummerLeagueGame.competition_id == peer_comp
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert peer_game is not None
+    peer_watermark = datetime(2030, 1, 1, 12)
+    peer_game.updated_at = peer_watermark
+    await db_session.commit()
+
+    await metrics.rebuild(db_session)
+    await db_session.commit()
+    active_fit = await metrics._load_active_fit(db_session)
+    assert active_fit is not None
+    assert active_fit.model_version is not None
+    assert active_fit.bpm_n_fit == 36
+
+    historical = await metrics.compute(
+        db_session,
+        competition_ids=[historical_comp],
+        through_day=date(2025, 7, 6),
+    )
+
+    assert historical.fit.model_version is None
+    assert historical.fit.bpm_n_fit == 24
+    assert historical.as_of == peer_watermark
+    assert {season.competition_id for season in historical.seasons} == {historical_comp}
 
 
 async def test_scoped_rebuild_empty_scope_is_a_noop(db_session: AsyncSession) -> None:
@@ -592,6 +744,9 @@ async def test_unscoped_rebuild_retains_projection_history(
     current_seasons = [season for season in seasons if season.is_current]
     assert len(seasons) == 48
     assert len(current_seasons) == 24
+    assert {season.effective_day for season in current_seasons} == {date(2025, 7, 6)}
+    assert first["effective_day"] is None
+    assert second["effective_day"] is None
 
     # Projections are replaced; fits accumulate. Each unscoped rebuild retains the
     # prior model row and deactivates it rather than deleting it (P2).
@@ -954,6 +1109,7 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
         player_id=player.id,
         year=year,
         venue_slug="vegas-tick-stale",
+        is_current=True,
         gp=99,
         minutes=1.0,
         gmsc=-999.0,
@@ -991,6 +1147,7 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
         player_id=other_player.id,
         year=year - 1,
         venue_slug="vegas-untouched",
+        is_current=True,
         gp=7,
         minutes=123.0,
         gmsc=55.5,
@@ -1127,6 +1284,7 @@ async def test_desk_tick_off_window_never_touches_player_seasons(
         player_id=player.id,
         year=year,
         venue_slug="off-window",
+        is_current=True,
         gp=3,
         minutes=42.0,
         gmsc=12.3,

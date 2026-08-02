@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="{{ url_for('static', path='css/player-detail.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-games.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', path='css/summer-league-competitions.css') }}">
+{% if sl_trend %}<link rel="stylesheet" href="{{ url_for('static', path='css/sl-trend.css') }}">{% endif %}
 {% endblock %}
 
 {% from 'stats/summer-league/_sl_macros.html' import year_strip, leader_board, game_rows, pager, competition_context_module %}
@@ -53,6 +54,11 @@
        'Competition Context profiles have not been published for ' ~ year ~ ' yet.'
   ) }}
 
+  {% if sl_trend %}
+  {% from "partials/trend-card.html" import trend_card %}
+  {{ trend_card(sl_trend) }}
+  {% endif %}
+
   {# Leaderboards #}
   <section class="slg-leaders">
     <div class="slg-leaders__head">
@@ -93,4 +99,5 @@
 
 {% block extra_js %}
 <script src="{{ url_for('static', path='summer-league-games.js') }}"></script>
+{% if sl_trend %}<script src="{{ url_for('static', path='js/sl-trend.js') }}"></script>{% endif %}
 {% endblock %}

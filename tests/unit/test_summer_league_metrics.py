@@ -7,6 +7,7 @@ gating that blanks league-relative stats for ineligible pools.
 
 from __future__ import annotations
 
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
@@ -58,8 +59,10 @@ class _FakeSession:
 
     def __init__(self, results: list[_FakeResult]) -> None:
         self.results = iter(results)
+        self.statements: list[object] = []
 
     async def execute(self, _statement: object) -> _FakeResult:
+        self.statements.append(_statement)
         return next(self.results)
 
 
@@ -76,15 +79,45 @@ async def test_load_selects_nba_source_rate_aggregates() -> None:
         ]
     )
 
-    comps, games, team_rows, team_minutes, player_rows = await metrics_service._load(  # type: ignore[arg-type]
-        db
-    )
+    (
+        comps,
+        games,
+        team_rows,
+        team_minutes,
+        player_rows,
+        competition_effective_days,
+    ) = await metrics_service._load(db)  # type: ignore[arg-type]
 
     assert comps == {1: (2026, "las_vegas")}
     assert games == {}
     assert team_rows == []
     assert team_minutes == {2: 1.0}
     assert player_rows == []
+    assert competition_effective_days == {}
+
+
+@pytest.mark.asyncio
+async def test_load_through_day_scopes_every_game_backed_query() -> None:
+    """Historical builds constrain games, team rows, minutes, and player rows."""
+    db = _FakeSession(
+        [
+            _FakeResult([SimpleNamespace(id=1, year=2019, venue_slug="las_vegas")]),
+            _FakeResult([]),
+            _FakeResult([]),
+            _FakeResult([]),
+            _FakeResult([]),
+        ]
+    )
+
+    await metrics_service._load(  # type: ignore[arg-type]
+        db,
+        through_day=date(2019, 7, 9),
+    )
+
+    rendered = [str(statement) for statement in db.statements]
+    assert len(rendered) == 5
+    assert "game_date" not in rendered[0]
+    assert all("game_date" in statement for statement in rendered[1:])
 
 
 @pytest.mark.asyncio
@@ -119,7 +152,7 @@ async def test_compute_persists_minute_weighted_nba_source_rates(
     raw_row.tov = 3
 
     async def fake_load(_db: object) -> tuple[object, ...]:
-        return ({1: (2026, "las_vegas")}, {}, [], {}, [raw_row])
+        return ({1: (2026, "las_vegas")}, {}, [], {}, [raw_row], {})
 
     async def empty_dict(_db: object) -> dict[object, object]:
         return {}

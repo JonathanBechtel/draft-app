@@ -40,7 +40,7 @@ import math
 from collections import defaultdict
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import case, func, select, text
@@ -53,6 +53,7 @@ from app.services.summer_league.metric_publish import (
     next_metric_version,
     publish_metric_version,
 )
+from app.services.event_desk.timeutils import to_eastern_date
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
@@ -101,6 +102,10 @@ from app.services.stats.registry import (
     rollup_class_matches,
 )
 from app.services.summer_league import scoped_metrics
+from app.services.summer_league.metric_trend_projection import (
+    materialize_scoped_season_trend_bands,
+    materialize_trend_bands,
+)
 
 ComputeResult = scoped_metrics.ComputeResult
 MetricFit = scoped_metrics.MetricFit
@@ -152,7 +157,7 @@ require_rollup_class(
 )
 
 
-def _season_game_status_clause() -> Any:
+def season_game_status_clause() -> Any:
     """Return the SQL predicate selecting games eligible for season aggregates."""
     game_status: Any = SummerLeagueGame.status
     return game_status.notin_(_SEASON_EXCLUDED_GAME_STATUSES)
@@ -379,6 +384,8 @@ class RebuildOptions:
     model_version: Optional[str] = None
     competition_ids: Optional[Sequence[int]] = None
     publish: bool = True
+    effective_day: Optional[date] = None
+    through_day: Optional[date] = None
 
 
 @dataclass(frozen=True)
@@ -388,11 +395,14 @@ class SeasonProjectionContext:
     model_version: str
     publication_version: int
     as_of: Optional[datetime]
+    effective_day: Optional[date]
     adv_eligible: bool
 
 
 async def _source_as_of(
-    db: AsyncSession, competition_ids: Optional[Collection[int]] = None
+    db: AsyncSession,
+    competition_ids: Optional[Collection[int]] = None,
+    through_day: Optional[date] = None,
 ) -> Optional[datetime]:
     """Return the latest source update represented by a full or scoped build."""
     scope = frozenset(competition_ids) if competition_ids is not None else None
@@ -410,10 +420,35 @@ async def _source_as_of(
         SummerLeagueShotEvent,
         SummerLeaguePlayByPlayEvent,
     )
+    game_date: Any = getattr(SummerLeagueGame, "game_date")
+    game_id: Any = getattr(SummerLeagueGame, "id")
+    team_game_id: Any = getattr(SummerLeagueTeamGameLog, "game_id")
+    player_game_id: Any = getattr(SummerLeaguePlayerGameLog, "game_id")
+    shot_game_id: Any = getattr(SummerLeagueShotEvent, "game_id")
+    pbp_game_id: Any = getattr(SummerLeaguePlayByPlayEvent, "game_id")
     if scope is not None:
         statements = [
             statement.where(model.competition_id.in_(scope))  # type: ignore[attr-defined]
             for statement, model in zip(statements, models)
+        ]
+    if through_day is not None:
+        # Every non-game source table carries competition_id but not game_date;
+        # constrain it through its normalized game relation so ``as_of`` remains
+        # the true watermark of exactly the rows included in the through-day fit.
+        statements = [
+            statements[0].where(game_date <= through_day),
+            statements[1]
+            .join(SummerLeagueGame, game_id == team_game_id)
+            .where(game_date <= through_day),
+            statements[2]
+            .join(SummerLeagueGame, game_id == player_game_id)
+            .where(game_date <= through_day),
+            statements[3]
+            .join(SummerLeagueGame, game_id == shot_game_id)
+            .where(game_date <= through_day),
+            statements[4]
+            .join(SummerLeagueGame, game_id == pbp_game_id)
+            .where(game_date <= through_day),
         ]
     timestamps = [await db.scalar(statement) for statement in statements]
     return max((stamp for stamp in timestamps if stamp is not None), default=None)
@@ -439,13 +474,16 @@ async def set_repeatable_read_snapshot(db: AsyncSession) -> None:
 
 
 async def _load_shot_diet(
-    db: AsyncSession, competition_ids: Optional[Collection[int]] = None
+    db: AsyncSession,
+    competition_ids: Optional[Collection[int]] = None,
+    through_day: Optional[date] = None,
 ) -> dict[tuple[int, int], dict[str, int]]:
     """Query shot-zone FGA counts aggregated per (player_id, competition_id).
 
     Excludes backcourt shots and rows with NULL player_id (unresolved).
     Returns a mapping of ``(player_id, competition_id)`` → zone → FGA count.
     """
+    game_date: Any = getattr(SummerLeagueGame, "game_date")
     stmt = (
         select(  # type: ignore[call-overload]
             SummerLeagueShotEvent.player_id,
@@ -459,7 +497,7 @@ async def _load_shot_diet(
         )
         .where(SummerLeagueShotEvent.player_id.isnot(None))  # type: ignore[union-attr]
         .where(SummerLeagueShotEvent.shot_zone_basic.isnot(None))  # type: ignore[union-attr]
-        .where(_season_game_status_clause())
+        .where(season_game_status_clause())
         .where(
             SummerLeagueShotEvent.shot_zone_basic.notin_(list(_EXCLUDED_ZONES))  # type: ignore[union-attr]
         )
@@ -473,6 +511,7 @@ async def _load_shot_diet(
         stmt = stmt.where(
             SummerLeagueShotEvent.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
         )
+    stmt = _through_day_filter(stmt, game_date, through_day)
     rows = (await db.execute(stmt)).all()
     out: dict[tuple[int, int], dict[str, int]] = defaultdict(dict)
     for player_id, competition_id, zone, fga in rows:
@@ -481,7 +520,9 @@ async def _load_shot_diet(
 
 
 async def _load_assisted_fg(
-    db: AsyncSession, competition_ids: Optional[Collection[int]] = None
+    db: AsyncSession,
+    competition_ids: Optional[Collection[int]] = None,
+    through_day: Optional[date] = None,
 ) -> dict[tuple[int, int], tuple[int, int]]:
     """Query PBP made-FG events and count assisted vs unassisted per (player_id, competition_id).
 
@@ -496,6 +537,7 @@ async def _load_assisted_fg(
     Returns a mapping of ``(player_id, competition_id)`` → ``(ast_fgm, unast_fgm)``.
     The mapping is empty when no PBP made-FG data has been ingested.
     """
+    game_date: Any = getattr(SummerLeagueGame, "game_date")
     stmt = (
         select(  # type: ignore[call-overload]
             SummerLeaguePlayByPlayEvent.person1_id,
@@ -514,7 +556,7 @@ async def _load_assisted_fg(
         .where(
             SummerLeaguePlayByPlayEvent.event_msg_type == 1,  # type: ignore[arg-type]
             SummerLeaguePlayByPlayEvent.person1_id.isnot(None),  # type: ignore[union-attr]
-            _season_game_status_clause(),
+            season_game_status_clause(),
         )
         .group_by(
             SummerLeaguePlayByPlayEvent.person1_id,
@@ -525,6 +567,7 @@ async def _load_assisted_fg(
         stmt = stmt.where(
             SummerLeaguePlayByPlayEvent.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
         )
+    stmt = _through_day_filter(stmt, game_date, through_day)
     rows = (await db.execute(stmt)).all()
     return {
         (int(player_id), int(competition_id)): (int(ast_fgm), int(unast_fgm))
@@ -532,14 +575,38 @@ async def _load_assisted_fg(
     }
 
 
+def _through_day_filter(
+    statement: Any, game_date: Any, through_day: date | None
+) -> Any:
+    """Apply a historical game-date predicate when a cutoff is requested."""
+    if through_day is None:
+        return statement
+    return statement.where(game_date <= through_day)
+
+
+def _latest_competition_game_days(game_rows: Sequence[Any]) -> dict[int, date]:
+    """Return each competition's latest included normalized game date."""
+    latest: dict[int, date] = {}
+    for game in game_rows:
+        if game.game_date is not None:
+            latest[game.competition_id] = max(
+                game.game_date,
+                latest.get(game.competition_id, game.game_date),
+            )
+    return latest
+
+
 async def _load(
-    db: AsyncSession, competition_ids: Optional[Collection[int]] = None
+    db: AsyncSession,
+    competition_ids: Optional[Collection[int]] = None,
+    through_day: Optional[date] = None,
 ) -> tuple[Any, ...]:
     """Load the raw rows needed for a full build or selected competitions."""
     comp = SummerLeagueCompetition
     tgl = SummerLeagueTeamGameLog
     pgl = SummerLeaguePlayerGameLog
     scope = frozenset(competition_ids) if competition_ids is not None else None
+    game_date: Any = getattr(SummerLeagueGame, "game_date")
 
     comp_id: Any = comp.id
     comps_stmt = select(comp)
@@ -549,25 +616,29 @@ async def _load(
         c.id: (c.year, c.venue_slug) for c in (await db.execute(comps_stmt)).scalars()
     }
 
-    games_stmt = select(SummerLeagueGame).where(_season_game_status_clause())
+    games_stmt = select(SummerLeagueGame).where(season_game_status_clause())
     if scope is not None:
         games_stmt = games_stmt.where(
             SummerLeagueGame.competition_id.in_(scope)  # type: ignore[attr-defined]
         )
+    games_stmt = _through_day_filter(games_stmt, game_date, through_day)
+    game_rows = list((await db.execute(games_stmt)).scalars())
     games = {
         g.id: (g.home_team_entry_id, g.away_team_entry_id, g.home_score, g.away_score)
-        for g in (await db.execute(games_stmt)).scalars()
+        for g in game_rows
     }
+    competition_effective_days = _latest_competition_game_days(game_rows)
     team_stmt = (
         select(tgl)
         .join(
             SummerLeagueGame,
             SummerLeagueGame.id == tgl.game_id,  # type: ignore[arg-type]
         )
-        .where(_season_game_status_clause())
+        .where(season_game_status_clause())
     )
     if scope is not None:
         team_stmt = team_stmt.where(tgl.competition_id.in_(scope))  # type: ignore[attr-defined]
+    team_stmt = _through_day_filter(team_stmt, game_date, through_day)
     team_rows = (await db.execute(team_stmt)).scalars().all()
     team_mp_stmt = (
         select(pgl.team_entry_id, func.sum(pgl.minutes_seconds))  # type: ignore[call-overload]
@@ -575,13 +646,14 @@ async def _load(
             SummerLeagueGame,
             SummerLeagueGame.id == pgl.game_id,  # type: ignore[arg-type]
         )
-        .where(_season_game_status_clause())
+        .where(season_game_status_clause())
         .group_by(pgl.team_entry_id)
     )
     if scope is not None:
         team_mp_stmt = team_mp_stmt.where(
             pgl.competition_id.in_(scope)  # type: ignore[attr-defined]
         )
+    team_mp_stmt = _through_day_filter(team_mp_stmt, game_date, through_day)
     team_mp = {
         tid: (sec or 0) / 60.0 for tid, sec in (await db.execute(team_mp_stmt)).all()
     }
@@ -620,14 +692,15 @@ async def _load(
         .where(
             pgl_player_id.isnot(None),
             sec > 0,
-            _season_game_status_clause(),
+            season_game_status_clause(),
         )
         .group_by(pgl.competition_id, pgl.player_id, pgl.team_entry_id)
     )
     if scope is not None:
         player_stmt = player_stmt.where(pgl.competition_id.in_(scope))  # type: ignore[attr-defined]
+    player_stmt = _through_day_filter(player_stmt, game_date, through_day)
     player_rows = (await db.execute(player_stmt)).all()
-    return comps, games, team_rows, team_mp, player_rows
+    return comps, games, team_rows, team_mp, player_rows, competition_effective_days
 
 
 def _build(comps, games, team_rows, team_mp):
@@ -751,31 +824,112 @@ def _can_reuse_pooled_fit() -> bool:
     )
 
 
+async def _load_compute_inputs(
+    db: AsyncSession,
+    *,
+    competition_ids: Optional[Sequence[int]],
+    pooled_fit: Optional[MetricFit],
+    through_day: Optional[date],
+) -> tuple[Any, ...]:
+    """Load source rows for one compute call, preserving legacy test seams."""
+    scope = frozenset(competition_ids) if competition_ids is not None else None
+    load_scope = scope if pooled_fit is not None else None
+    if load_scope is None and through_day is None and competition_ids is None:
+        as_of = await _source_as_of(db)
+        (
+            comps,
+            games,
+            team_rows,
+            team_mp,
+            player_rows,
+            competition_effective_days,
+        ) = await _load(db)
+        shot_diet = await _load_shot_diet(db)
+        assisted_fg = await _load_assisted_fg(db)
+    elif load_scope is None:
+        # A first scoped call without an active fit bootstraps the fit from the full
+        # through-day source pool, then narrows projections after assembly.
+        # This branch fits against the full through-day pool, so its watermark
+        # must cover that same pool even though only the requested projections
+        # are retained below.
+        as_of = await _source_as_of(db, through_day=through_day)
+        (
+            comps,
+            games,
+            team_rows,
+            team_mp,
+            player_rows,
+            competition_effective_days,
+        ) = await _load(db, through_day=through_day)
+        shot_diet = await _load_shot_diet(db, through_day=through_day)
+        assisted_fg = await _load_assisted_fg(db, through_day=through_day)
+    else:
+        as_of = await _source_as_of(db, load_scope, through_day=through_day)
+        (
+            comps,
+            games,
+            team_rows,
+            team_mp,
+            player_rows,
+            competition_effective_days,
+        ) = await _load(db, load_scope, through_day=through_day)
+        shot_diet = await _load_shot_diet(db, load_scope, through_day=through_day)
+        assisted_fg = await _load_assisted_fg(db, load_scope, through_day=through_day)
+    return (
+        as_of,
+        comps,
+        games,
+        team_rows,
+        team_mp,
+        player_rows,
+        competition_effective_days,
+        shot_diet,
+        assisted_fg,
+    )
+
+
 async def compute(
     db: AsyncSession,
     *,
     competition_ids: Optional[Sequence[int]] = None,
     fit: Optional[MetricFit] = None,
+    through_day: Optional[date] = None,
 ) -> ComputeResult:
-    """Load and project metrics, reusing the active fit for scoped calls."""
+    """Load and project metrics, optionally through one historical event day.
+
+    ``through_day`` constrains every source query through the normalized game date;
+    all formulas and projection assembly remain the shared Summer League engine.
+    """
     scope = frozenset(competition_ids) if competition_ids is not None else None
     pooled_fit = fit
-    if scope is not None and pooled_fit is None and _can_reuse_pooled_fit():
+    # A retained historical close must be fit only from information available
+    # through that event day. The active fit may include later games or later
+    # seasons, so it is reusable for live scoped ticks only.
+    if (
+        scope is not None
+        and through_day is None
+        and pooled_fit is None
+        and _can_reuse_pooled_fit()
+    ):
         pooled_fit = await _load_active_fit(db)
 
-    # Bootstrap without a reusable fit; otherwise every source query is scoped.
+    (
+        as_of,
+        comps,
+        games,
+        team_rows,
+        team_mp,
+        player_rows,
+        competition_effective_days,
+        shot_diet,
+        assisted_fg,
+    ) = await _load_compute_inputs(
+        db,
+        competition_ids=competition_ids,
+        pooled_fit=pooled_fit,
+        through_day=through_day,
+    )
     load_scope = scope if pooled_fit is not None else None
-    if load_scope is None:
-        # Preserve the original one-argument shape for full-build test doubles.
-        as_of = await _source_as_of(db)
-        comps, games, team_rows, team_mp, player_rows = await _load(db)
-        shot_diet = await _load_shot_diet(db)
-        assisted_fg = await _load_assisted_fg(db)
-    else:
-        as_of = await _source_as_of(db, load_scope)
-        comps, games, team_rows, team_mp, player_rows = await _load(db, load_scope)
-        shot_diet = await _load_shot_diet(db, load_scope)
-        assisted_fg = await _load_assisted_fg(db, load_scope)
     team_box, opp_box, team_comp, contexts, records = _build(
         comps, games, team_rows, team_mp
     )
@@ -785,6 +939,20 @@ async def compute(
     projected_fit = scoped_metrics.project_metrics(
         seasons, contexts, records, team_comp, pooled_fit
     )
+    competition_trend_bands, season_trend_bands = materialize_trend_bands(
+        seasons,
+        include_season_scope=load_scope is None,
+    )
+    season_trend_as_of = as_of
+    if load_scope is not None:
+        scoped_season_projection = await materialize_scoped_season_trend_bands(
+            db,
+            seasons,
+            scoped_competition_ids=scope or frozenset(),
+            scoped_as_of=as_of,
+        )
+        season_trend_bands = scoped_season_projection.bands
+        season_trend_as_of = scoped_season_projection.as_of
 
     if scope is not None and load_scope is None:
         contexts = {cid: ctx for cid, ctx in contexts.items() if cid in scope}
@@ -800,6 +968,10 @@ async def compute(
         seasons=seasons,
         shot_diet=shot_diet,
         assisted_fg=assisted_fg,
+        competition_trend_bands=competition_trend_bands,
+        season_trend_bands=season_trend_bands,
+        competition_effective_days=competition_effective_days,
+        season_trend_as_of=season_trend_as_of,
         as_of=as_of,
     )
 
@@ -868,6 +1040,10 @@ def _season_columns(
         "registry_version": METRIC_REGISTRY_VERSION,
         "calculation_version": METRIC_CALCULATION_VERSION,
         "as_of": projection.as_of,
+        "effective_day": projection.effective_day,
+        "trend_competition_bands": None,
+        "trend_season_bands": None,
+        "trend_season_as_of": None,
         "published_at": None,
     }
 
@@ -924,6 +1100,10 @@ async def _rebuild_with_options(
     model_version = options.model_version
     competition_ids = options.competition_ids
     publish = options.publish
+    # Explicit historical callers provide one cutoff day. Normal rebuilds stamp
+    # each competition from its latest included game, with the Eastern process
+    # day only as a fallback for a malformed pool that has no dated game.
+    fallback_effective_day = to_eastern_date(datetime.now(timezone.utc))
     if competition_ids is not None and not competition_ids:
         return {
             "seasons": 0,
@@ -931,6 +1111,7 @@ async def _rebuild_with_options(
             "adv_pools": 0,
             "version": 0,
             "model_version": model_version or "",
+            "as_of": None,
             "published": publish,
         }
 
@@ -939,7 +1120,12 @@ async def _rebuild_with_options(
     # this path is called directly by the Desk tick without the full-ingestion
     # snapshot helper.
     await set_rebuild_idle_timeout(db)
-    result = await compute(db, competition_ids=competition_ids)
+    result = await compute(
+        db,
+        competition_ids=competition_ids,
+        through_day=options.through_day,
+    )
+    competition_effective_days = getattr(result, "competition_effective_days", {})
     adv_cids = {cid for cid, ctx in result.contexts.items() if ctx.adv_eligible}
     scope = frozenset(competition_ids) if competition_ids is not None else None
     publication_version = await next_metric_version(db)
@@ -1006,6 +1192,11 @@ async def _rebuild_with_options(
                 calculation_version=METRIC_CALCULATION_VERSION,
                 as_of=result.as_of,
                 published_at=None,
+                effective_day=(
+                    options.effective_day
+                    or competition_effective_days.get(ctx.competition_id)
+                    or fallback_effective_day
+                ),
             )
         )
 
@@ -1019,11 +1210,21 @@ async def _rebuild_with_options(
                 model_version=generated_model_version,
                 publication_version=publication_version,
                 as_of=result.as_of,
+                effective_day=(
+                    options.effective_day
+                    or competition_effective_days.get(ps.competition_id)
+                    or fallback_effective_day
+                ),
                 adv_eligible=ps.competition_id in adv_cids,
             ),
             zone_fga,
             pbp_counts,
         )
+        cols["trend_competition_bands"] = result.competition_trend_bands.get(
+            ps.competition_id
+        )
+        cols["trend_season_bands"] = result.season_trend_bands.get(ps.year)
+        cols["trend_season_as_of"] = getattr(result, "season_trend_as_of", result.as_of)
         db.add(SummerLeaguePlayerSeason(**cols))
         n_seasons += 1
 
@@ -1041,7 +1242,16 @@ async def _rebuild_with_options(
             version=publication_version,
             competition_ids=scope,
             model_version=generated_model_version if scope is None else None,
+            as_of=result.as_of,
+            effective_day=options.effective_day,
         )
+    # Keep the source watermark alongside the row counts so the gate can carry the
+    # exact input currency into the final publication transaction.
+    summary["as_of"] = result.as_of
+    # A full build contains independent event calendars. Omitting a single
+    # run-wide stamp preserves each candidate row's competition-derived day at
+    # publication; explicit historical/scoped callers still carry one exact day.
+    summary["effective_day"] = options.effective_day
     return summary
 
 
@@ -1050,6 +1260,8 @@ async def rebuild(
     *,
     model_version: Optional[str] = None,
     competition_ids: Optional[Sequence[int]] = None,
+    effective_day: Optional[date] = None,
+    through_day: Optional[date] = None,
 ) -> dict[str, Any]:
     """Build and publish a full or scoped metric projection."""
     return await _rebuild_with_options(
@@ -1057,6 +1269,8 @@ async def rebuild(
         RebuildOptions(
             model_version=model_version,
             competition_ids=competition_ids,
+            effective_day=effective_day,
+            through_day=through_day,
         ),
     )
 
@@ -1066,6 +1280,8 @@ async def rebuild_staged(
     *,
     model_version: Optional[str] = None,
     competition_ids: Optional[Sequence[int]] = None,
+    effective_day: Optional[date] = None,
+    through_day: Optional[date] = None,
 ) -> dict[str, Any]:
     """Build an inactive metric projection for a later atomic publication."""
     return await _rebuild_with_options(
@@ -1074,5 +1290,7 @@ async def rebuild_staged(
             model_version=model_version,
             competition_ids=competition_ids,
             publish=False,
+            effective_day=effective_day,
+            through_day=through_day,
         ),
     )

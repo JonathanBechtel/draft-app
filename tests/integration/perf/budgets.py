@@ -87,14 +87,15 @@ ROUTE_BUDGETS: dict[str, int] = {
     # one indexed lookup on summer_league_shot_events by player_id.  When the
     # player has no shot events (total_fga == 0) the function returns None
     # immediately without issuing the shot-diet follow-up query.
-    "/players/{slug}": 26,
+    # +2 for the cumulative trend module: resolve the newest concrete event
+    # scope, then read the populated published daily-close projection.
+    "/players/{slug}": 28,
     "/players/{slug}/summer-league": 2,
-    # Per-season page: resolve_player_ref (1) + get_player_game_logs (1) +
-    # get_player_metric_seasons for the advanced table (1, indexed player_id) +
-    # get_competition_id_for_player_year query on summer_league_player_seasons (1).
-    # Shot-chart queries only fire when a SummerLeaguePlayerSeason row exists;
-    # the perf dataset seeds game logs but no season rows, so the budget is 4.
-    "/players/{slug}/summer-league/{year}": 4,
+    # Populated per-season page: player resolution + logs + advanced season row +
+    # competition resolution (4), competition/career shot-zone reads (2), and the
+    # daily-close trend read (1). The representative fixture intentionally seeds
+    # the current projection so all seven production queries remain measured.
+    "/players/{slug}/summer-league/{year}": 7,
     "/consensus": 43,
     # Hub: combine-year coverage + SL-year coverage, one indexed read each.
     "/stats/": 2,
@@ -122,8 +123,9 @@ ROUTE_BUDGETS: dict[str, int] = {
     # read; the venue page keys it off the competition_id get_venue's header
     # lookup already resolved) — contract §9's "at most one
     # indexed profile read, max expected budget 9" for season/venue reuse.
-    "/stats/summer-league/{year}": 9,
-    "/stats/summer-league/{year}/{venue}": 9,
+    # +1 for the one batched daily-close trend read on each page.
+    "/stats/summer-league/{year}": 10,
+    "/stats/summer-league/{year}/{venue}": 10,
     # Header + schedule + stats roster + announced roster (A4 pre-event preview,
     # one indexed read on summer_league_participation by team_entry_id) = 4.
     "/stats/summer-league/{year}/{venue}/{team}": 4,

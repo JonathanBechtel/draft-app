@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -101,6 +102,32 @@ async def test_publish_metric_version_flips_full_projection_and_fit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_publish_metric_version_stamps_input_watermark_on_promoted_rows() -> None:
+    """The source watermark is written at the pointer flip, not left on candidates."""
+    db = MagicMock()
+    db.execute = AsyncMock()
+    db.flush = AsyncMock()
+    db.execute.return_value = SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: [])
+    )
+    watermark = datetime(2026, 7, 28, 12, 0)
+
+    await metric_publish.publish_metric_version(
+        db,
+        version=9,
+        model_version="candidate",
+        as_of=watermark,
+        effective_day=date(2026, 7, 28),
+    )
+
+    statements = [call.args[0] for call in db.execute.await_args_list]
+    assert "as_of" in str(statements[3])
+    assert "as_of" in str(statements[4])
+    assert "effective_day" in str(statements[3])
+    assert "effective_day" in str(statements[4])
+
+
+@pytest.mark.asyncio
 async def test_publish_metric_version_scopes_the_pointer_flip() -> None:
     """A scoped publication leaves the league-wide fit untouched."""
     db = MagicMock()
@@ -136,3 +163,37 @@ async def test_publish_metric_version_skips_newer_current_scope() -> None:
     assert "published_at" in str(statements[3])
     assert "published_at" in str(statements[4])
     assert all("NOT IN" in str(statement) for statement in statements[1:])
+
+
+@pytest.mark.asyncio
+async def test_publish_archival_metric_version_never_writes_current_flags() -> None:
+    """Archival updates stamp publication metadata without a pointer flip."""
+    db = MagicMock()
+    db.scalar = AsyncMock(side_effect=[0, 0])
+    db.execute = AsyncMock(return_value=SimpleNamespace(rowcount=2))
+    db.flush = AsyncMock()
+
+    result = await metric_publish.publish_archival_metric_version(
+        db,
+        version=42,
+        competition_ids={7},
+        as_of=datetime(2026, 8, 1, 12),
+        effective_day=date(2019, 7, 9),
+    )
+
+    assert result.contexts == 2
+    assert result.seasons == 2
+    assert db.flush.await_count == 1
+    updates = [
+        call.args[0]
+        for call in db.execute.await_args_list
+        if hasattr(call.args[0], "_values")
+    ]
+    assert len(updates) == 2
+    update_keys = [{str(key) for key in statement._values} for statement in updates]
+    assert all(
+        not any(key.endswith("is_current") for key in keys) for keys in update_keys
+    )
+    assert all(
+        any(key.endswith("published_at") for key in keys) for keys in update_keys
+    )

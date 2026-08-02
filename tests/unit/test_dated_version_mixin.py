@@ -4,10 +4,9 @@ The mixin encodes P2 (retain history by default) and P4 (freshness means source
 currency) as a type, so that longitudinal-first stops being a rule someone must
 remember and becomes something a table inherits.
 
-Nothing adopts it yet — it is defined in Phase 1 so the version-flip tables inherit it
-from day one instead of being retrofitted. That makes these tests deliberately narrow:
-they pin the properties a future adopter will depend on, and the one property that keeps
-the mixin free until then — that declaring it creates no table.
+Summer League metric projections adopt it directly. These tests pin the properties
+every adopter depends on, and the one property that keeps the mixin free — declaring it
+creates no table.
 """
 
 from __future__ import annotations
@@ -18,6 +17,10 @@ from typing import Optional
 from sqlmodel import SQLModel
 
 from app.schemas.base import DatedVersionMixin
+from app.schemas.summer_league_metrics import (
+    SummerLeagueMetricContext,
+    SummerLeaguePlayerSeason,
+)
 
 
 def test_mixin_declares_the_five_versioning_columns() -> None:
@@ -51,6 +54,8 @@ def test_is_current_defaults_to_false() -> None:
     inserted — precisely the torn read the version-flip exists to prevent.
     """
     assert DatedVersionMixin.model_fields["is_current"].default is False
+    assert SummerLeagueMetricContext.model_fields["is_current"].default is False
+    assert SummerLeaguePlayerSeason.model_fields["is_current"].default is False
 
 
 def test_as_of_is_optional_so_unknown_currency_is_representable() -> None:

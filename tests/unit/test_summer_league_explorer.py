@@ -26,6 +26,7 @@ from app.services.summer_league_explorer_service import (
     _build_player_career_stmt,
     _build_result,
     _compute_player_values,
+    explorer_read_source,
     _is_single_competition,
     _passes_coverage_filter,
     _passes_metric_filter,
@@ -46,6 +47,20 @@ from app.services.summer_league_explorer_service import (
 # --------------------------------------------------------------------------- #
 # Game Score (GmSc)
 # --------------------------------------------------------------------------- #
+
+
+def test_explorer_read_source_decision_table() -> None:
+    """Versioned player grains read current snapshots; game rows stay live."""
+    cases = [
+        (ExplorerQuery(subject="players"), "snapshot"),
+        (ExplorerQuery(subject="players", grain="career"), "snapshot"),
+        (ExplorerQuery(subject="players", grain="per_competition"), "snapshot"),
+        (ExplorerQuery(subject="players", grain="per_game"), "live"),
+        (ExplorerQuery(subject="teams"), "live"),
+        (ExplorerQuery(subject="games"), "live"),
+    ]
+    for query, expected in cases:
+        assert explorer_read_source(query) == expected
 
 
 def _player_row(**kw: float) -> SimpleNamespace:

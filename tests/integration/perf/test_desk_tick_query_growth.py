@@ -29,6 +29,7 @@ from pathlib import Path
 from time import perf_counter
 
 import pytest
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.schemas.player_affiliation import AffiliationStatus
@@ -179,11 +180,26 @@ async def _seed_roster_scenario(
                 player_id=player.id,
                 year=year,
                 venue_slug=comp.venue_slug,
+                is_current=True,
                 gp=4,
                 minutes=120.0,
                 gmsc=45.0 + i,
             )
         )
+    # The active-baseline guard (#756) intentionally permits only one
+    # published row per cohort.  This fixture runs both roster scenarios in
+    # one session, so model the newer scenario superseding the prior
+    # publication before inserting its replacement rows.
+    await db.execute(
+        update(SummerLeagueCohortBaseline)
+        .where(SummerLeagueCohortBaseline.is_active.is_(True))  # type: ignore[attr-defined]
+        .where(
+            SummerLeagueCohortBaseline.cohort_key.in_(  # type: ignore[attr-defined]
+                ("slot:1-4", "game:1-4")
+            )
+        )
+        .values(is_active=False)
+    )
     db.add(
         SummerLeagueCohortBaseline(
             baseline_version=f"growth-v{year}",

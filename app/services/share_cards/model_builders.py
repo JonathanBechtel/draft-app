@@ -36,11 +36,18 @@ from app.services.share_cards.render_models import (
     SLShotChartRenderModel,
     SLShotDiet,
     SLZoneRow,
+    TrendChartLine,
+    TrendChartPoint,
+    TrendRenderModel,
     VSArenaRenderModel,
     VSRow,
     WinnerSide,
 )
 from app.services.similarity_service import get_similar_players
+from app.services.summer_league.metric_trends import (
+    get_daily_trend,
+    latest_trend_as_of,
+)
 
 # discipline: file-size cross-cutting image-I/O boundary; no model logic added
 
@@ -1100,3 +1107,122 @@ async def build_sl_shot_chart_model(
         has_pool=has_pool,
         accent_color=COMPONENT_ACCENTS["sl_shot_chart"],
     )
+
+
+async def build_sl_trend_model(
+    db: AsyncSession,
+    player_ids: list[int],
+    context: dict[str, Any],
+) -> TrendRenderModel:
+    """Build an SVG-ready cumulative trend card from the retained read model."""
+    if len(player_ids) != 1:
+        raise ValueError("sl_trend requires exactly 1 player_id")
+    scope_key = context.get("scope_key")
+    if not isinstance(scope_key, str) or not scope_key:
+        raise ValueError("sl_trend requires a scope_key")
+    raw_keys = context.get("metric_keys") or ("gmsc", "ts_pct", "bpm")
+    if not isinstance(raw_keys, list | tuple):
+        raise ValueError("sl_trend metric_keys must be a list")
+    keys = tuple(dict.fromkeys(str(key) for key in raw_keys))
+    if len(keys) > 3:
+        raise ValueError("sl_trend supports at most 3 unique metric_keys")
+    points = await get_daily_trend(
+        db,
+        scope_key=scope_key,
+        player_id=player_ids[0],
+        metric_keys=keys,
+    )
+    if not points:
+        raise ValueError("sl_trend has no published points")
+    (
+        display_name,
+        _slug,
+        _subtitle,
+        _image_url,
+        _parents,
+        _draft_year,
+    ) = await _resolve_player_info(db, player_ids[0])
+    player_badge = await _build_player_badge(db, player_ids[0])
+    days = sorted({point.effective_day for point in points})
+    available_keys = {point.metric_key for point in points}
+    lines = [
+        _build_trend_chart_line(
+            [point for point in points if point.metric_key == key],
+            key=key,
+            lane=lane,
+            days=days,
+        )
+        for lane, key in enumerate(key for key in keys if key in available_keys)
+    ]
+    latest_as_of = latest_trend_as_of(points)
+    as_of = latest_as_of.date().isoformat() if latest_as_of else "—"
+    return TrendRenderModel(
+        title=f"{display_name.split()[0].upper()} — TREND",
+        subtitle=f"{scope_key} · cumulative through day",
+        player=player_badge,
+        lines=lines,
+        single_point=len(days) == 1,
+        as_of=as_of,
+        accent_color=COMPONENT_ACCENTS["sl_trend"],
+    )
+
+
+def _build_trend_chart_line(
+    metric_points: list[Any],
+    *,
+    key: str,
+    lane: int,
+    days: list[Any],
+) -> TrendChartLine:
+    """Normalize one metric's values into a share-card lane."""
+    values = [
+        value
+        for point in metric_points
+        for value in (point.value, point.cohort_band.q1, point.cohort_band.q3)
+    ]
+    minimum, maximum = min(values), max(values)
+    if minimum == maximum:
+        minimum -= 1.0
+        maximum += 1.0
+    padding = (maximum - minimum) * 0.12
+    minimum -= padding
+    maximum += padding
+
+    def y_for(value: float) -> float:
+        return (
+            430.0
+            + lane * 225.0
+            + 150.0
+            - ((float(value) - minimum) / (maximum - minimum)) * 150.0
+        )
+
+    def x_for(day: Any) -> float:
+        index = days.index(day)
+        return 170.0 + (1050.0 if len(days) == 1 else index / (len(days) - 1) * 2100.0)
+
+    labels = {"gmsc": "GmSc", "ts_pct": "TS%", "bpm": "BPM"}
+    colors = {"gmsc": "#2563eb", "ts_pct": "#d97706", "bpm": "#e11d48"}
+
+    return TrendChartLine(
+        key=key,
+        label=labels.get(key, key.upper()),
+        color=colors.get(key, "#0891b2"),
+        points=[
+            TrendChartPoint(
+                day=point.effective_day.isoformat(),
+                value_display=_trend_value_display(key, point.value),
+                x=x_for(point.effective_day),
+                y=y_for(point.value),
+                band_top=y_for(point.cohort_band.q3),
+                band_bottom=y_for(point.cohort_band.q1),
+            )
+            for point in metric_points
+        ],
+    )
+
+
+def _trend_value_display(key: str, value: float) -> str:
+    """Format a trend metric for the high-resolution share card."""
+    if key == "ts_pct" and abs(value) <= 1:
+        return f"{value * 100:.1f}%"
+    return f"{value:+.1f}" if key == "bpm" else f"{value:.1f}"

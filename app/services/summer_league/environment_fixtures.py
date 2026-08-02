@@ -659,6 +659,9 @@ async def _seed_leaders_players(session: AsyncSession, *, competition_id: int) -
                 venue_slug="las_vegas",
                 gp=3,
                 minutes=90.0,
+                # Dated-version rows are invisible until publication flips the
+                # pointer; fixture leaders model an already-published snapshot.
+                is_current=True,
                 pts=pts,
                 reb=reb,
                 ast=ast,
