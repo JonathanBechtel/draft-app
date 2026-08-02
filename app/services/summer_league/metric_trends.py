@@ -103,9 +103,11 @@ async def get_daily_trend(  # noqa: C901
 ) -> list[TrendPoint]:
     """Return latest published daily-close points for a scope.
 
-    One version is selected for each requested scope/event-day partition (a
-    competition or the whole season), then all player rows from that daily
-    close are returned. ``published_at`` is the visibility gate and tie-breaker only;
+    One version is selected for each competition/event-day partition inside the
+    requested scope, then all player rows from those daily closes are returned.
+    A season scope therefore combines the latest close from every competition
+    sharing an event day (the archival publisher writes one competition/day at a
+    time). ``published_at`` is the visibility gate and tie-breaker only;
     the event-day expression (never ``as_of``) supplies ordering.  For a player
     request, ``value`` is that player's projection while the cohort band uses
     every player in the scope on the same daily close.  A scope request without
@@ -138,11 +140,13 @@ async def get_daily_trend(  # noqa: C901
         effective_day.label("effective_day"),
         *[getattr(SummerLeaguePlayerSeason, key).label(key) for key in keys],
     ]
-    winner_partition = (
-        (competition_id_column, effective_day)
-        if scope_kind == "competition"
-        else (effective_day,)
-    )
+    # Publication versions are allocated globally, while the archival backfill
+    # publishes each competition/day in its own candidate version. Partitioning
+    # a season only by ``effective_day`` would consequently retain whichever
+    # competition happened to receive the highest global version and silently
+    # omit all sibling competitions on that day. Keep the competition dimension
+    # in the winner key for both scope kinds; season rows are combined below.
+    winner_partition = (competition_id_column, effective_day)
     rank = func.row_number().over(
         partition_by=winner_partition,
         order_by=(
@@ -182,8 +186,7 @@ async def get_daily_trend(  # noqa: C901
         ranked.c.effective_day == winners.c.effective_day,
         ranked.c.version == winners.c.version,
     ]
-    if scope_kind == "competition":
-        join_conditions.append(ranked.c.competition_id == winners.c.competition_id)
+    join_conditions.append(ranked.c.competition_id == winners.c.competition_id)
     latest = ranked.join(winners, and_(*join_conditions))
     rows = (
         (

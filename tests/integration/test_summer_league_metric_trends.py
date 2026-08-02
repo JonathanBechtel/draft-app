@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.summer_league import SummerLeagueCompetition
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league.metric_trends import get_daily_trend
+from app.services.summer_league_explorer_service import ExplorerQuery, run_explorer_query
 from app.services.share_cards.model_builders import build_sl_trend_model
 from tests.integration.conftest import make_player
 
@@ -139,10 +140,16 @@ async def test_trend_route_exposes_response_model_and_deterministic_payload(
 
 
 @pytest.mark.asyncio
-async def test_season_scope_chooses_one_version_for_all_competitions(
+async def test_season_scope_combines_latest_close_for_each_competition(
     db_session: AsyncSession,
 ) -> None:
-    """Season trends do not leak an older competition row into a winning close."""
+    """Season trends retain each competition's latest close on a shared day.
+
+    Archival publication allocates a global version per competition/day. The
+    season reader must therefore choose a close independently for each
+    competition before combining the cohorts; selecting one global winner would
+    silently hide sibling competitions published at a lower version.
+    """
     competition_a = SummerLeagueCompetition(
         year=2026,
         league_id="trend-season-a",
@@ -205,8 +212,10 @@ async def test_season_scope_chooses_one_version_for_all_competitions(
     )
 
     assert len(points) == 1
-    assert points[0].value == 10.0
-    assert points[0].cohort_band.median == 10.0
+    assert points[0].value == 6.0
+    assert points[0].cohort_band.median == 6.0
+    assert points[0].cohort_band.q1 == 4.0
+    assert points[0].cohort_band.q3 == 8.0
 
 
 @pytest.mark.asyncio
@@ -253,3 +262,65 @@ async def test_trend_share_model_reads_real_daily_close_rows(
     assert model.single_point is True
     assert {line.key for line in model.lines} == {"gmsc", "ts_pct", "bpm"}
     assert model.as_of == "2026-07-20"
+
+
+@pytest.mark.asyncio
+async def test_explorer_snapshot_matches_final_through_day_trend_value(
+    db_session: AsyncSession,
+) -> None:
+    """The historical Explorer snapshot and trend read share the same final row."""
+    competition = SummerLeagueCompetition(
+        year=2018,
+        league_id="trend-explorer-seam",
+        venue_slug="las_vegas",
+        display_name="Trend Explorer Seam",
+    )
+    player = make_player("Seam", "Player")
+    db_session.add_all([competition, player])
+    await db_session.flush()
+    assert competition.id and player.id and player.slug
+    final_day = date(2018, 7, 12)
+    db_session.add(
+        SummerLeaguePlayerSeason(
+            competition_id=competition.id,
+            player_id=player.id,
+            year=2018,
+            venue_slug="las_vegas",
+            version=4,
+            is_current=True,
+            gp=3,
+            minutes=90.0,
+            pts=30,
+            gmsc=10.0,
+            effective_day=final_day,
+            as_of=datetime(2026, 8, 1, 12),
+            published_at=datetime(2026, 8, 1, 13),
+        )
+    )
+    await db_session.commit()
+
+    explorer = await run_explorer_query(
+        db_session,
+        ExplorerQuery(
+            subject="players",
+            grain="per_competition",
+            year_min=2018,
+            year_max=2018,
+            venue="las_vegas",
+            player_slug=player.slug,
+            min_games=1,
+            min_minutes=1,
+        ),
+    )
+    trend = await get_daily_trend(
+        db_session,
+        scope_key=f"competition:{competition.id}",
+        player_id=player.id,
+        metric_keys=("gmsc",),
+    )
+
+    assert len(explorer.rows) == 1
+    assert len(trend) == 1
+    assert explorer.read_source == "snapshot"
+    assert explorer.rows[0].values["gmsc"] == trend[0].value == 10.0
+    assert trend[0].effective_day == final_day
