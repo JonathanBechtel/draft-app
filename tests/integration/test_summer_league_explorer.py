@@ -1475,10 +1475,12 @@ async def test_per_competition_freshness_is_stable_across_pages(
                 min_minutes=1,
             ),
         )
-        for page in (1, 2)
+        for page in (1, 2, 3)
     ]
 
     assert all(result.as_of == oldest for result in results)
+    assert results[2].total == 2
+    assert results[2].rows == []
 
 
 @pytest.mark.asyncio

@@ -3297,16 +3297,6 @@ async def _query_players_per_competition(
         ps.year,
         ps.venue_slug,
         ps.as_of.label("as_of"),  # type: ignore[attr-defined, union-attr]
-        # Window aggregation runs after WHERE but before LIMIT/OFFSET, so every
-        # page reports the oldest watermark for the complete filtered scope.
-        case(
-            (
-                func.count(ps.as_of).over()  # type: ignore[attr-defined, arg-type, union-attr]
-                == func.count().over(),
-                func.min(ps.as_of).over(),  # type: ignore[attr-defined, union-attr]
-            ),
-            else_=None,
-        ).label("scope_as_of"),
         ps.gp.label("gp"),  # type: ignore[attr-defined]
         (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
         (ps.pace * ps.minutes * 60).label("pace_sec"),  # type: ignore[attr-defined,operator]
@@ -3378,8 +3368,26 @@ async def _query_players_per_competition(
     if q.player_slug is not None:
         stmt = stmt.where(pm.slug == q.player_slug)  # type: ignore[arg-type]
 
-    # Count via wrapping subquery, then slice.
-    total = await _count_subquery(db, stmt)
+    # Count and scope freshness before slicing. Keeping both in the unsliced
+    # aggregate preserves truthful metadata even when a caller requests a page
+    # beyond the last row.
+    count_sq = stmt.subquery("_per_competition_count_sq")
+    count_row = (
+        await db.execute(
+            select(
+                func.count(),
+                case(
+                    (
+                        func.count(count_sq.c.as_of) == func.count(),
+                        func.min(count_sq.c.as_of),
+                    ),
+                    else_=None,
+                ),
+            ).select_from(count_sq)
+        )
+    ).one()
+    total = int(count_row[0] or 0)
+    as_of = count_row[1]
 
     # per_competition rows are one-per-(player, competition) season totals, so
     # the sort references raw column labels (no aggregation).  Counting stats sort
@@ -3497,7 +3505,7 @@ async def _query_players_per_competition(
         adv_eligible_n=elig_n,
         adv_eligible_m=elig_m,
         read_source="snapshot",
-        as_of=getattr(raw[0], "scope_as_of", None) if raw else None,
+        as_of=as_of,
     )
 
 
