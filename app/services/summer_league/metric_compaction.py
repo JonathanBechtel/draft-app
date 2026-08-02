@@ -3,9 +3,10 @@
 Metric rebuilds are append-only so readers can keep using the last coherent
 published version while a new projection is staged. The resulting history is
 valuable, but hourly rebuilds during an event are operational churn rather than
-analytical granularity. This module keeps the latest published and latest
-unpublished projection for each scope and Eastern event day, plus every current row,
-and removes only older closed-day duplicates.
+analytical granularity. This module keeps the authoritative archival close (or,
+when none exists, the latest published projection) and latest unpublished
+projection for each scope and Eastern event day, plus every current row, and
+removes only older closed-day duplicates.
 
 Compaction is intentionally separate from the rebuild path. It runs in its
 own short transaction under the shared Summer League writer lock, so the
@@ -107,7 +108,14 @@ async def _delete_superseded_closed_day_rows(
             func.row_number()
             .over(
                 partition_by=(*scope_columns, source_day, publication_state),
-                order_by=(model.version.desc(), model.id.desc()),
+                # An archival close captures the event state at its historical
+                # cutoff. Later ordinary rebuilds can share that effective day,
+                # but must not displace it during retention.
+                order_by=(
+                    model.is_archival.desc(),
+                    model.version.desc(),
+                    model.id.desc(),
+                ),
             )
             .label("daily_rank"),
         )
@@ -142,7 +150,9 @@ async def compact_metric_versions(
     left untouched because its final version is not known until the day closes.
     Rows with no effective day or publication stamp are retained. Within a
     closed day, the latest published row and latest unpublished candidate are
-    retained independently.
+    retained independently. When published archival and ordinary rows share a
+    closed day, the archival close wins even if an ordinary rebuild has a newer
+    version.
 
     The caller owns the transaction. This function acquires the same
     transaction-scoped writer lock used by metric publication before issuing
