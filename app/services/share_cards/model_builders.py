@@ -44,7 +44,10 @@ from app.services.share_cards.render_models import (
     WinnerSide,
 )
 from app.services.similarity_service import get_similar_players
-from app.services.summer_league.metric_trends import get_daily_trend
+from app.services.summer_league.metric_trends import (
+    get_daily_trend,
+    latest_trend_as_of,
+)
 
 # discipline: file-size cross-cutting image-I/O boundary; no model logic added
 
@@ -1149,8 +1152,8 @@ async def build_sl_trend_model(
         for lane, key in enumerate(keys)
         if any(point.metric_key == key for point in points)
     ]
-    as_of_values = [point.as_of for point in points if point.as_of is not None]
-    as_of = max(as_of_values).date().isoformat() if as_of_values else "—"
+    latest_as_of = latest_trend_as_of(points)
+    as_of = latest_as_of.date().isoformat() if latest_as_of else "—"
     return TrendRenderModel(
         title=f"{display_name.split()[0].upper()} — TREND",
         subtitle=f"{scope_key} · cumulative through day",

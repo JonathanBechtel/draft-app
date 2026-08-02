@@ -9,7 +9,7 @@ the implementation resolves those keys to the persisted projection columns.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import Date, and_, cast, func, select
@@ -25,6 +25,19 @@ TREND_METRIC_LABELS: dict[str, str] = {
     "bpm": "BPM",
 }
 TREND_METRIC_KEYS = ("gmsc", "ts_pct", "bpm")
+
+
+def latest_trend_as_of(points: Sequence[TrendPoint]) -> datetime | None:
+    """Return source currency for the newest day without masking unknown data."""
+    if not points:
+        return None
+    latest_day = max(point.effective_day for point in points)
+    latest_values = [
+        point.as_of for point in points if point.effective_day == latest_day
+    ]
+    if not latest_values or any(value is None for value in latest_values):
+        return None
+    return max(value for value in latest_values if value is not None)
 
 
 def _scope_filter(scope_key: str) -> tuple[str, int]:
@@ -286,9 +299,8 @@ def trend_points_to_context(
     ]
     if not metric_keys:
         metric_keys = list(dict.fromkeys(p.metric_key for p in ordered))
-    as_of_values = [point.as_of for point in ordered if point.as_of is not None]
     latest_day = max(point.effective_day for point in ordered)
-    latest_as_of = max(as_of_values) if as_of_values else None
+    latest_as_of = latest_trend_as_of(ordered)
     return {
         "scope_key": scope_key,
         "scope_label": scope_label,

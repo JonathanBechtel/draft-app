@@ -47,3 +47,35 @@ def test_trend_context_omits_empty_series() -> None:
         )
         is None
     )
+
+
+def test_trend_context_preserves_unknown_freshness_on_newest_day() -> None:
+    """An unknown newest-close watermark is not replaced by an older timestamp."""
+    band = TrendCohortBand(median=7.0, q1=5.0, q3=9.0)
+    points = [
+        TrendPoint(
+            metric_key="gmsc",
+            effective_day=date(2024, 7, 10),
+            value=8.0,
+            cohort_band=band,
+            as_of=datetime(2026, 7, 20, 12),
+        ),
+        TrendPoint(
+            metric_key="gmsc",
+            effective_day=date(2024, 7, 11),
+            value=9.0,
+            cohort_band=band,
+            as_of=None,
+        ),
+    ]
+
+    payload = trend_points_to_context(
+        points,
+        scope_key="competition:42",
+        scope_label="2024 trend",
+        player_id=7,
+    )
+
+    assert payload is not None
+    assert payload["latest_effective_day"] == "2024-07-11"
+    assert payload["latest_as_of"] is None

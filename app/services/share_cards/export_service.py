@@ -92,16 +92,20 @@ class ImageExportService:
         """
         start_time = time.perf_counter()
 
-        # Generate cache key
-        cache_key = generate_cache_key(component, player_ids, context)
+        model: RenderModel | None = None
+        model_duration = 0.0
+        cache_context = context
+        if component == "sl_trend":
+            # The request context is stable across daily closes. Fingerprint the
+            # selected render model so changed trend bytes always receive a new
+            # public URL instead of overwriting a browser/CDN-cached object.
+            model_start = time.perf_counter()
+            model = await self._build_model(component, player_ids, context)
+            model_duration = time.perf_counter() - model_start
+            cache_context = {**context, "_render_model": asdict(model)}
 
-        # Trend cards are backed by a newly published daily close while their
-        # request context remains stable. Reusing the generic persistent key
-        # would freeze the first exported day indefinitely, so rebuild and
-        # overwrite this low-volume component on every explicit share action.
-        cached = (
-            None if component == "sl_trend" else self.storage.check_cache(cache_key)
-        )
+        cache_key = generate_cache_key(component, player_ids, cache_context)
+        cached = self.storage.check_cache(cache_key)
         if cached:
             export_id = Path(cache_key).stem
             if cached.title and cached.filename:
@@ -119,7 +123,8 @@ class ImageExportService:
                 }
 
             # Back-compat: older cached exports may not have stored metadata.
-            model = await self._build_model(component, player_ids, context)
+            if model is None:
+                model = await self._build_model(component, player_ids, context)
             player_names = self._extract_player_names(model)
 
             logger.info(
@@ -137,9 +142,10 @@ class ImageExportService:
 
         # Cache miss - generate image
         export_id = Path(cache_key).stem
-        model_start = time.perf_counter()
-        model = await self._build_model(component, player_ids, context)
-        model_duration = time.perf_counter() - model_start
+        if model is None:
+            model_start = time.perf_counter()
+            model = await self._build_model(component, player_ids, context)
+            model_duration = time.perf_counter() - model_start
 
         # Enrich context with display name from model for title/filename
         context = self._enrich_context(component, model, context)

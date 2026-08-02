@@ -68,30 +68,41 @@ def test_trend_share_card_cache_metadata() -> None:
 
 
 @pytest.mark.asyncio
-async def test_trend_export_bypasses_persistent_cache(
+async def test_trend_export_versions_url_by_rendered_daily_close(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A later daily close always rebuilds instead of returning yesterday's PNG."""
+    """A changed daily-close model gets a distinct content-addressed public URL."""
     service = ImageExportService.__new__(ImageExportService)
     service.db = AsyncMock()
     service.storage = MagicMock()
-    service.storage.check_cache.side_effect = AssertionError(
-        "trend exports must not consult the persistent cache"
+    service.storage.check_cache.return_value = None
+    service.storage.upload.side_effect = (
+        lambda cache_key, *_args, **_kwargs: f"https://example.test/{cache_key}"
     )
-    service.storage.upload.return_value = "https://example.test/trend.png"
     service.renderer = MagicMock()
     service.rasterizer = MagicMock()
     service.rasterizer.rasterize.return_value = b"png"
-    build_model = AsyncMock(return_value=_model())
+    first_model = _model()
+    second_model = _model()
+    second_model.as_of = "2026-07-21"
+    build_model = AsyncMock(side_effect=[first_model, second_model])
     monkeypatch.setattr(service, "_build_model", build_model)
 
-    result = await service.export(
+    first = await service.export(
+        "sl_trend",
+        [7],
+        {"scope_key": "competition:42", "metric_keys": ["gmsc", "ts_pct", "bpm"]},
+    )
+    second = await service.export(
         "sl_trend",
         [7],
         {"scope_key": "competition:42", "metric_keys": ["gmsc", "ts_pct", "bpm"]},
     )
 
-    service.storage.check_cache.assert_not_called()
-    build_model.assert_awaited_once()
-    service.storage.upload.assert_called_once()
-    assert result["cached"] is False
+    assert service.storage.check_cache.call_count == 2
+    assert build_model.await_count == 2
+    first_key = service.storage.upload.call_args_list[0].args[0]
+    second_key = service.storage.upload.call_args_list[1].args[0]
+    assert first_key != second_key
+    assert first["url"] != second["url"]
+    assert first["cached"] is False and second["cached"] is False

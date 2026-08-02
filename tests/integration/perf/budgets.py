@@ -87,17 +87,15 @@ ROUTE_BUDGETS: dict[str, int] = {
     # one indexed lookup on summer_league_shot_events by player_id.  When the
     # player has no shot events (total_fga == 0) the function returns None
     # immediately without issuing the shot-diet follow-up query.
-    # +1 for resolving the newest concrete event scope used by the cumulative
-    # trend module (the trend read itself is dormant in this fixture because it
-    # has no published daily-close rows).
-    "/players/{slug}": 27,
+    # +2 for the cumulative trend module: resolve the newest concrete event
+    # scope, then read the populated published daily-close projection.
+    "/players/{slug}": 28,
     "/players/{slug}/summer-league": 2,
-    # Per-season page: resolve_player_ref (1) + get_player_game_logs (1) +
-    # get_player_metric_seasons for the advanced table (1, indexed player_id) +
-    # get_competition_id_for_player_year query on summer_league_player_seasons (1).
-    # Shot-chart queries only fire when a SummerLeaguePlayerSeason row exists;
-    # the perf dataset seeds game logs but no season rows, so the budget is 4.
-    "/players/{slug}/summer-league/{year}": 4,
+    # Populated per-season page: player resolution + logs + advanced season row +
+    # competition resolution (4), competition/career shot-zone reads (2), and the
+    # daily-close trend read (1). The representative fixture intentionally seeds
+    # the current projection so all seven production queries remain measured.
+    "/players/{slug}/summer-league/{year}": 7,
     "/consensus": 43,
     # Hub: combine-year coverage + SL-year coverage, one indexed read each.
     "/stats/": 2,

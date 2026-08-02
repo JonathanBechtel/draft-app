@@ -37,6 +37,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
 )
+from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services import consensus_service as svc
 from tests.integration.conftest import (
     make_article,
@@ -121,6 +122,103 @@ async def _make_board(
         assert player.id is not None
         db.add(BoardEntry(board_id=board.id, player_id=player.id, position=rank))
     await db.flush()
+
+
+async def _seed_summer_league(
+    db: AsyncSession, player: PlayerMaster
+) -> SummerLeagueGame:
+    """Seed a populated event, player log, and published trend projection."""
+    competition = SummerLeagueCompetition(
+        year=2025,
+        league_id="15",
+        venue_slug="las_vegas",
+        display_name="2025 Las Vegas",
+        starts_on=date(2025, 7, 1),
+        ends_on=date(2025, 7, 15),
+    )
+    db.add(competition)
+    await db.flush()
+    assert competition.id is not None
+    assert player.id is not None
+
+    franchise = NbaTeam(name="Perf Home", abbreviation="PFH", slug="perf-home")
+    db.add(franchise)
+    await db.flush()
+    home = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_team_id=franchise.id,
+        nba_stats_team_id="perf-sl-home",
+        raw_team_name="Perf Home",
+        raw_team_abbreviation="PFH",
+        team_slug="perf-home",
+    )
+    away = SummerLeagueTeamEntry(
+        competition_id=competition.id,
+        nba_stats_team_id="perf-sl-away",
+        raw_team_name="Perf Away",
+        raw_team_abbreviation="PFA",
+        team_slug="perf-away",
+    )
+    db.add_all([home, away])
+    await db.flush()
+    assert home.id is not None and away.id is not None
+    game = SummerLeagueGame(
+        competition_id=competition.id,
+        nba_stats_game_id="perf-sl-game",
+        game_date=date(2025, 7, 5),
+        home_team_entry_id=home.id,
+        away_team_entry_id=away.id,
+        home_score=100,
+        away_score=90,
+    )
+    db.add(game)
+    await db.flush()
+    assert game.id is not None
+    source_player = SummerLeagueSourcePlayer(
+        nba_stats_person_id="perf-sl-person",
+        raw_player_name=player.display_name or "Player",
+        normalized_name=(player.display_name or "player").lower(),
+        canonical_player_id=player.id,
+    )
+    db.add(source_player)
+    await db.flush()
+    db.add(
+        SummerLeaguePlayerGameLog(
+            competition_id=competition.id,
+            game_id=game.id,
+            team_entry_id=home.id,
+            source_player_id=source_player.id,
+            player_id=player.id,
+            nba_stats_person_id=source_player.nba_stats_person_id,
+            raw_player_name=player.display_name or "Player",
+            minutes_seconds=1800,
+            pts=20,
+            reb=8,
+            ast=5,
+        )
+    )
+    db.add(
+        SummerLeaguePlayerSeason(
+            competition_id=competition.id,
+            player_id=player.id,
+            year=competition.year,
+            venue_slug=competition.venue_slug,
+            version=1,
+            is_current=True,
+            effective_day=game.game_date,
+            as_of=datetime(2025, 7, 5, 23),
+            published_at=datetime(2025, 7, 5, 23, 30),
+            gmsc=18.0,
+            ts_pct=0.61,
+            bpm=4.0,
+            trend_competition_bands={
+                "gmsc": {"median": 12.0, "q1": 9.0, "q3": 15.0},
+                "ts_pct": {"median": 0.55, "q1": 0.50, "q3": 0.60},
+                "bpm": {"median": 1.0, "q1": -1.0, "q3": 3.0},
+            },
+        )
+    )
+    return game
 
 
 @pytest_asyncio.fixture()
@@ -217,78 +315,10 @@ async def representative_dataset(db_session: AsyncSession) -> SeededData:
             )
         )
 
-    # --- Summer League: one competition/game/log so the SL landing exercises
-    # its populated path (season overview + leaders + all-time) rather than the
-    # empty-state short-circuit.
-    comp = SummerLeagueCompetition(
-        year=2025,
-        league_id="15",
-        venue_slug="las_vegas",
-        display_name="2025 Las Vegas",
-        starts_on=date(2025, 7, 1),
-        ends_on=date(2025, 7, 15),
-    )
-    db_session.add(comp)
-    await db_session.flush()
-    assert comp.id is not None
-    # Map the home entry to a real franchise so the franchise-history route
-    # (`/stats/summer-league/teams/{team}`) resolves with slug == sl_team.
-    franchise = NbaTeam(name="Perf Home", abbreviation="PFH", slug="perf-home")
-    db_session.add(franchise)
-    await db_session.flush()
-    sl_home = SummerLeagueTeamEntry(
-        competition_id=comp.id,
-        nba_team_id=franchise.id,
-        nba_stats_team_id="perf-sl-home",
-        raw_team_name="Perf Home",
-        raw_team_abbreviation="PFH",
-        team_slug="perf-home",
-    )
-    sl_away = SummerLeagueTeamEntry(
-        competition_id=comp.id,
-        nba_stats_team_id="perf-sl-away",
-        raw_team_name="Perf Away",
-        raw_team_abbreviation="PFA",
-        team_slug="perf-away",
-    )
-    db_session.add_all([sl_home, sl_away])
-    await db_session.flush()
-    assert sl_home.id is not None and sl_away.id is not None
-    sl_game = SummerLeagueGame(
-        competition_id=comp.id,
-        nba_stats_game_id="perf-sl-game",
-        game_date=date(2025, 7, 5),
-        home_team_entry_id=sl_home.id,
-        away_team_entry_id=sl_away.id,
-        home_score=100,
-        away_score=90,
-    )
-    db_session.add(sl_game)
-    await db_session.flush()
+    # Populate the SL pages and ensure the player route exercises both trend
+    # queries rather than stopping after scope resolution.
+    sl_game = await _seed_summer_league(db_session, players[0])
     assert sl_game.id is not None
-    sl_sp = SummerLeagueSourcePlayer(
-        nba_stats_person_id="perf-sl-person",
-        raw_player_name=players[0].display_name or "Player",
-        normalized_name=(players[0].display_name or "player").lower(),
-        canonical_player_id=players[0].id,
-    )
-    db_session.add(sl_sp)
-    await db_session.flush()
-    db_session.add(
-        SummerLeaguePlayerGameLog(
-            competition_id=comp.id,
-            game_id=sl_game.id,
-            team_entry_id=sl_home.id,
-            source_player_id=sl_sp.id,
-            player_id=players[0].id,
-            nba_stats_person_id=sl_sp.nba_stats_person_id,
-            raw_player_name=players[0].display_name or "Player",
-            minutes_seconds=1800,
-            pts=20,
-            reb=8,
-            ast=5,
-        )
-    )
 
     await db_session.commit()
 
