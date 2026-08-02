@@ -1,10 +1,13 @@
 """Unit coverage for cumulative trend SVG share-card rendering."""
 
 from dataclasses import asdict
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.models.summer_league_trends import TrendCohortBand, TrendPoint
+from app.services.share_cards import model_builders
 from app.services.share_cards.cache_keys import generate_filename, generate_title
 from app.services.share_cards.export_service import ImageExportService
 from app.services.share_cards.render_models import (
@@ -65,6 +68,50 @@ def test_trend_share_card_cache_metadata() -> None:
     """Trend exports use stable, recognizable download metadata."""
     assert generate_filename("sl_trend", ["Test Player"]).endswith("-trend.png")
     assert generate_title("sl_trend", ["Test Player"]) == "Test Player — Trend"
+
+
+@pytest.mark.asyncio
+async def test_trend_builder_compacts_lanes_when_middle_metric_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BPM occupies lane one when TS% has no published point."""
+    day = date(2026, 7, 20)
+    points = [
+        TrendPoint(
+            metric_key="gmsc",
+            effective_day=day,
+            value=8.0,
+            cohort_band=TrendCohortBand(median=8.0, q1=7.0, q3=9.0),
+        ),
+        TrendPoint(
+            metric_key="bpm",
+            effective_day=day,
+            value=4.0,
+            cohort_band=TrendCohortBand(median=4.0, q1=3.0, q3=5.0),
+        ),
+    ]
+    monkeypatch.setattr(
+        model_builders, "get_daily_trend", AsyncMock(return_value=points)
+    )
+    monkeypatch.setattr(
+        model_builders,
+        "_resolve_player_info",
+        AsyncMock(return_value=("Test Player", "test-player", "G", None, [], 2026)),
+    )
+    monkeypatch.setattr(
+        model_builders,
+        "_build_player_badge",
+        AsyncMock(return_value=PlayerBadge(name="Test Player", subtitle="G")),
+    )
+
+    model = await model_builders.build_sl_trend_model(
+        AsyncMock(),
+        [7],
+        {"scope_key": "competition:42", "metric_keys": ["gmsc", "ts_pct", "bpm"]},
+    )
+
+    assert [line.key for line in model.lines] == ["gmsc", "bpm"]
+    assert model.lines[1].points[0].y == pytest.approx(730.0)
 
 
 @pytest.mark.asyncio

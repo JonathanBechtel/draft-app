@@ -1142,6 +1142,7 @@ async def build_sl_trend_model(
     ) = await _resolve_player_info(db, player_ids[0])
     player_badge = await _build_player_badge(db, player_ids[0])
     days = sorted({point.effective_day for point in points})
+    available_keys = {point.metric_key for point in points}
     lines = [
         _build_trend_chart_line(
             [point for point in points if point.metric_key == key],
@@ -1149,8 +1150,7 @@ async def build_sl_trend_model(
             lane=lane,
             days=days,
         )
-        for lane, key in enumerate(keys)
-        if any(point.metric_key == key for point in points)
+        for lane, key in enumerate(key for key in keys if key in available_keys)
     ]
     latest_as_of = latest_trend_as_of(points)
     as_of = latest_as_of.date().isoformat() if latest_as_of else "—"

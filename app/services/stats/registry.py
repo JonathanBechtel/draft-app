@@ -129,16 +129,15 @@ class ReferenceKind(str, Enum):
 # ---------------------------------------------------------------------------
 #
 # These are the canonical values. The materialized Summer League schema imports them
-# rather than declaring a second pair of literals. Keeping the calculation stamp tied
-# to the registry stamp means a formula-registry bump propagates to newly published
-# rows with one edit; the names remain separate in the row shape so a future pipeline
-# change can split them deliberately.
+# rather than declaring a second pair of literals. Registry and calculation versions
+# move independently: formula/rollup/comparison changes bump the registry stamp, while
+# pooling, watermark, or projection-materialization changes bump the calculation stamp.
 #
 # Bump this (and update the assertion test) whenever any formula/rollup/comparison
 # field on a non-exempt entry below changes; bump each affected entry's own
 # ``definition_version`` in the same change.
 METRIC_REGISTRY_VERSION = "2026.07.1"
-METRIC_CALCULATION_VERSION = METRIC_REGISTRY_VERSION
+METRIC_CALCULATION_VERSION = "2026.07.2"
 
 
 @dataclass(frozen=True)

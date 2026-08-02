@@ -290,9 +290,10 @@ def test_registry_version_is_readable_by_an_external_caller() -> None:
     assert METRIC_REGISTRY_VERSION
 
 
-def test_calculation_version_follows_registry_bump() -> None:
-    """A registry version bump updates the default calculation stamp in lockstep."""
-    assert METRIC_CALCULATION_VERSION == METRIC_REGISTRY_VERSION
+def test_calculation_version_tracks_pipeline_independently() -> None:
+    """Pipeline behavior changes are distinguishable from metric definitions."""
+    assert METRIC_CALCULATION_VERSION == "2026.07.2"
+    assert METRIC_CALCULATION_VERSION != METRIC_REGISTRY_VERSION
 
 
 # --------------------------------------------------------------------------- #
