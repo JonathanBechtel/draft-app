@@ -860,6 +860,26 @@
    normal text — a bare text run + the <abbr> would otherwise become separate
    flex items and scramble the sentence. */
 .slg-explorer-banner__text { flex: 1 1 auto; min-width: 0; }
+.slg-explorer-freshness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
+  align-items: baseline;
+  margin: 0.35rem 0 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-slate-500, #64748b);
+}
+.slg-explorer-freshness__mode {
+  font-weight: 700;
+  color: var(--color-accent-emerald, #059669);
+}
+.slg-explorer-freshness--live .slg-explorer-freshness__mode {
+  color: var(--color-accent-cyan, #0891b2);
+}
+.slg-explorer-freshness__as-of { color: var(--color-slate-600, #475569); }
 .slg-explorer-results.is-loading { opacity: 0.5; pointer-events: none; transition: opacity 0.1s; }
 .slg-explorer-table th a { color: inherit; text-decoration: none; }
 .slg-explorer-table th a:hover { text-decoration: underline; }

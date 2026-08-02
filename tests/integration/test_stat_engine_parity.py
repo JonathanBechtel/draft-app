@@ -331,6 +331,61 @@ async def test_engine_stored_explorer_and_leaderboard_agree_on_recombinable_metr
 
 
 @pytest.mark.asyncio
+async def test_default_explorer_reads_current_snapshot_and_exposes_source_currency(
+    db_session: AsyncSession,
+) -> None:
+    """Default career output matches engine/stored values and labels its watermark.
+
+    This is the Phase 3 read-switch leg: the same seeded competition is observed
+    through the live engine, the current materialized season row, and the
+    default Explorer grain.  A per-game query remains explicitly live and does
+    not inherit the snapshot's ``as_of`` value.
+    """
+    comp_id, slug = await _seed_fixture(db_session)
+    await db_session.commit()
+    engine_result = await compute(db_session)
+    target = (
+        await db_session.execute(select(PlayerMaster).where(PlayerMaster.slug == slug))
+    ).scalar_one()
+    engine_ps = next(
+        ps
+        for ps in engine_result.seasons
+        if ps.competition_id == comp_id and ps.player_id == target.id
+    )
+
+    await rebuild(db_session)
+    await db_session.commit()
+    stored = (
+        await db_session.execute(
+            select(SummerLeaguePlayerSeason).where(
+                SummerLeaguePlayerSeason.competition_id == comp_id,
+                SummerLeaguePlayerSeason.player_id == target.id,
+                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            )
+        )
+    ).scalar_one()
+
+    default = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", player_slug=slug),
+    )
+    row = next(r for r in default.rows if r.href == f"/players/{slug}")
+    assert default.read_source == "snapshot"
+    assert default.as_of == stored.as_of
+    assert row.values["pts"] == engine_ps.box.pts / engine_ps.box.gp
+    assert stored.pts / stored.gp == engine_ps.box.pts / engine_ps.box.gp
+    assert row.values["efg_pct"] == engine_ps.metrics["efg_pct"] == stored.efg_pct
+    assert row.values["gmsc"] == engine_ps.metrics["gmsc"]
+
+    live = await run_explorer_query(
+        db_session,
+        ExplorerQuery(subject="players", grain="per_game", min_games=1),
+    )
+    assert live.read_source == "live"
+    assert live.as_of is None
+
+
+@pytest.mark.asyncio
 async def test_engine_stored_explorer_and_leaderboard_agree_on_pool_recalibrated_and_additive_metrics(
     db_session: AsyncSession,
 ) -> None:

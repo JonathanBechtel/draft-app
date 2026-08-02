@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import csv
 import io
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.schemas.player_status import PlayerStatus
@@ -547,6 +548,8 @@ async def test_explorer_page_renders(
     assert "Explorer" in body
     assert "explorer-form" in body
     assert "Big Scorer" in body
+    assert 'data-read-source="snapshot"' in body
+    assert "Source as of" in body
 
 
 @pytest.mark.asyncio
@@ -1392,6 +1395,26 @@ async def test_grain_career_default_unchanged(
     labels = {r.label for r in result_default.rows}
     assert "Big Scorer" in labels
     assert "Role Player" in labels
+
+
+@pytest.mark.asyncio
+async def test_snapshot_freshness_uses_oldest_current_watermark(
+    db_session: AsyncSession,
+) -> None:
+    """A pooled career result never overstates currency from a newer row."""
+    await _seed_grain(db_session)
+    seasons = (
+        await db_session.execute(select(SummerLeaguePlayerSeason))
+    ).scalars().all()
+    newest = datetime(2026, 8, 1, 12, 0)
+    oldest = newest - timedelta(days=3)
+    seasons[0].as_of = newest
+    seasons[1].as_of = oldest
+    await db_session.flush()
+
+    result = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
+    assert result.read_source == "snapshot"
+    assert result.as_of == oldest
 
 
 @pytest.mark.asyncio

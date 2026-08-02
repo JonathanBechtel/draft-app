@@ -2178,6 +2178,20 @@ class ExplorerResult:
     # list never falls through to an unrelated, unscoped competition table
     # (ticket #636; contract §6).
     competition_not_found: bool = False
+    # Read-path disclosure for the Players Explorer.  The default career grain
+    # is a read-model projection (current season snapshots); per-game rows are
+    # recombined directly from the game-log engine.  Keeping this on the DTO
+    # means partial renders and CSV/export consumers cannot accidentally infer
+    # freshness from the URL grain.
+    read_source: str = "live"  # "snapshot" | "live"
+    # Source currency for snapshot reads (the oldest current row in scope).
+    # ``None`` is intentional when the source has not supplied a watermark yet.
+    as_of: Optional[datetime] = None
+
+    @property
+    def is_snapshot(self) -> bool:
+        """Whether this result came from a versioned current projection."""
+        return self.read_source == "snapshot"
 
 
 # --------------------------------------------------------------------------- #
@@ -2882,6 +2896,11 @@ def _build_player_career_stmt(q: ExplorerQuery) -> Any:
             pm.slug,
             pm.display_name,
             func.sum(ps.gp).label("gp"),  # type: ignore[attr-defined]
+            # Keep the oldest source watermark for each player group.  The
+            # count query below folds these group values to a scope-wide MIN,
+            # so a paginated page can never advertise a newer watermark than a
+            # current snapshot row outside that page.
+            func.min(ps.as_of).label("as_of"),  # type: ignore[attr-defined]
             # _compute_player_values expects seconds; minutes * 60 converts.
             (func.sum(ps.minutes) * 60).label("sec"),  # type: ignore[attr-defined]
             pace_sec_expr.label("pace_sec"),
@@ -2983,7 +3002,18 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     stmt = _build_player_career_stmt(q)
 
     # Count total matching rows before slicing (wrapping subquery avoids fetching all rows).
-    total = await _count_subquery(db, stmt)
+    count_sq = stmt.subquery("_count_sq")
+    count_row = (
+        await db.execute(
+            select(func.count(), func.min(count_sq.c.as_of)).select_from(count_sq)
+        )
+    ).one()
+    total = int(count_row[0] or 0)
+    # ``MIN`` is intentionally conservative: across snapshot versions with
+    # differing source watermarks, the oldest input is the truthful currency
+    # for a pooled result.  It also remains correct when the page is sorted and
+    # paginated because the aggregation happens before LIMIT/OFFSET.
+    as_of = count_row[1]
 
     # Apply SQL ORDER BY (NULLS LAST) + LIMIT + OFFSET.
     sort_expr = _player_sort_expr_career(q.sort, q.mode)
@@ -3065,6 +3095,8 @@ async def _query_players(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
         ),
         adv_eligible_n=elig_n,
         adv_eligible_m=elig_m,
+        read_source="snapshot",
+        as_of=as_of,
     )
 
 
@@ -3248,6 +3280,7 @@ async def _query_players_per_competition(
         pm.display_name,
         ps.year,
         ps.venue_slug,
+        ps.as_of.label("as_of"),  # type: ignore[attr-defined, union-attr]
         ps.gp.label("gp"),  # type: ignore[attr-defined]
         (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
         (ps.pace * ps.minutes * 60).label("pace_sec"),  # type: ignore[attr-defined,operator]
@@ -3424,6 +3457,8 @@ async def _query_players_per_competition(
         for r in raw
     ]
 
+    as_of_values = [r.as_of for r in raw if getattr(r, "as_of", None) is not None]
+
     return ExplorerResult(
         subject="players",
         columns=columns,
@@ -3437,6 +3472,8 @@ async def _query_players_per_competition(
         adv_eligible=pool_adv_eligible if single_comp else False,
         adv_eligible_n=elig_n,
         adv_eligible_m=elig_m,
+        read_source="snapshot",
+        as_of=min(as_of_values) if as_of_values else None,
     )
 
 
@@ -4898,6 +4935,25 @@ async def _resolve_context_strip(
     return _build_context_strip(profile), False
 
 
+# Read strategy is deliberately a pure function so the grain boundary stays
+# visible to callers and testable without a database.  Career is the default
+# full-competition roll-up and per-competition is one exact materialized pool;
+# both read the current versioned projection.  Per-game is recombinable from
+# raw logs and therefore remains a live engine read.  The other subjects have
+# no versioned player-metric projection and retain their existing live path.
+def explorer_read_source(q: ExplorerQuery) -> str:
+    """Return the read-path disclosure for one Explorer query.
+
+    Returns ``"snapshot"`` for player season-projection grains and ``"live"``
+    for recombinable game rows and non-player subjects.  This is intentionally
+    independent of presentation templates: partial responses and CSV exports
+    consume the same decision.
+    """
+    if q.subject == "players" and q.grain in ("career", "per_competition"):
+        return "snapshot"
+    return "live"
+
+
 # --------------------------------------------------------------------------- #
 # Dispatch
 # --------------------------------------------------------------------------- #
@@ -4927,6 +4983,7 @@ async def run_explorer_query(db: AsyncSession, q: ExplorerQuery) -> ExplorerResu
         result = await _query_games(db, q)
 
     result.facets = facets
+    result.read_source = explorer_read_source(q)
     (
         result.context_strip,
         result.context_strip_unavailable,
