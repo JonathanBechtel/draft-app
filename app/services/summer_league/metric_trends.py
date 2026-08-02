@@ -25,6 +25,7 @@ TREND_METRIC_LABELS: dict[str, str] = {
     "ts_pct": "TS%",
     "bpm": "BPM",
 }
+TREND_METRIC_KEYS = ("gmsc", "ts_pct", "bpm")
 
 
 def _scope_filter(scope_key: str) -> tuple[str, int]:
@@ -294,3 +295,53 @@ def trend_points_to_context(
         "latest_as_of": latest_as_of.isoformat() if latest_as_of else None,
         "single_point": len({point.effective_day for point in ordered}) == 1,
     }
+
+
+async def build_trend_context(
+    db: AsyncSession,
+    *,
+    scope_key: str,
+    scope_label: str,
+    player_id: int | None = None,
+) -> dict[str, Any] | None:
+    """Fetch the standard trend metrics and serialize one page context."""
+    points = await get_daily_trend(
+        db,
+        scope_key=scope_key,
+        player_id=player_id,
+        metric_keys=TREND_METRIC_KEYS,
+    )
+    return trend_points_to_context(
+        points,
+        scope_key=scope_key,
+        scope_label=scope_label,
+        player_id=player_id,
+    )
+
+
+async def build_player_trend_context(
+    db: AsyncSession,
+    *,
+    player_id: int,
+    year: int,
+    venue_slug: str | None,
+) -> dict[str, Any] | None:
+    """Resolve a player's concrete event and build its trend context."""
+    from app.services.summer_league_stats_service import (
+        get_competition_id_for_player_year,
+    )
+
+    competition_id = await get_competition_id_for_player_year(
+        db,
+        player_id=player_id,
+        year=year,
+        venue_slug=venue_slug,
+    )
+    if competition_id is None:
+        return None
+    return await build_trend_context(
+        db,
+        scope_key=f"competition:{competition_id}",
+        scope_label=f"{year} trend",
+        player_id=player_id,
+    )

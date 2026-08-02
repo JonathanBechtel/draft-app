@@ -6,6 +6,8 @@ raw-data surfaces over the normalized Summer League tables.
 
 from __future__ import annotations
 
+# discipline: file-size existing page family; trend computation/API live in scoped modules
+
 import csv
 import io
 from datetime import datetime
@@ -15,8 +17,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import Response
-
-from app.models.summer_league_trends import TrendPoint
 
 from app.services.summer_league_games_service import (
     GamesPage,
@@ -53,10 +53,7 @@ from app.services.summer_league_environment_service import (
     get_current_profile_by_scope_key,
     season_scope_key,
 )
-from app.services.summer_league.metric_trends import (
-    get_daily_trend,
-    trend_points_to_context,
-)
+from app.services.summer_league.metric_trends import build_trend_context
 from app.services.summer_league_franchise_service import get_franchise_history
 from app.services.summer_league_leaders_service import get_leaders
 from app.services.summer_league_season_service import (
@@ -78,8 +75,6 @@ from app.utils.db_async import get_session
 SCHEDULE_PAGE_SIZE = 20
 
 LANDING_RECENT_GAMES = 8
-TREND_METRIC_KEYS = ("gmsc", "ts_pct", "bpm")
-
 router = APIRouter(tags=["summer-league"])
 
 FOOTER_LINKS = [
@@ -87,51 +82,6 @@ FOOTER_LINKS = [
     {"text": "Privacy Policy", "url": "/privacy"},
     {"text": "Cookie Policy", "url": "/cookies"},
 ]
-
-
-async def _trend_context(
-    db: AsyncSession,
-    *,
-    scope_key: str,
-    scope_label: str,
-    player_id: int | None = None,
-) -> dict | None:
-    """Fetch all trend metrics in one daily-close read for a page scope."""
-    points = await get_daily_trend(
-        db,
-        scope_key=scope_key,
-        player_id=player_id,
-        metric_keys=TREND_METRIC_KEYS,
-    )
-    return trend_points_to_context(
-        points,
-        scope_key=scope_key,
-        scope_label=scope_label,
-        player_id=player_id,
-    )
-
-
-@router.get(
-    "/api/summer-league/trends",
-    response_model=list[TrendPoint],
-    status_code=200,
-)
-async def summer_league_daily_trends(
-    scope_key: str = Query(..., min_length=1),
-    player_id: int | None = Query(default=None, ge=1),
-    metric_keys: list[str] = Query(default=["gmsc", "ts_pct", "bpm"]),
-    db: AsyncSession = Depends(get_session),
-) -> list[TrendPoint]:
-    """Return ordered daily-close trend points for a stable event scope."""
-    try:
-        return await get_daily_trend(
-            db,
-            scope_key=scope_key,
-            player_id=player_id,
-            metric_keys=metric_keys,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/stats/summer-league/games", response_class=HTMLResponse)
@@ -556,7 +506,7 @@ async def player_summer_league_season(
             db, player_id=ref.id, competition_id=comp_id
         )
     sl_trend = (
-        await _trend_context(
+        await build_trend_context(
             db,
             scope_key=f"competition:{comp_id}",
             scope_label=f"{year} trend",
@@ -650,7 +600,7 @@ async def summer_league_season(
         if season_profile_row is not None
         else None
     )
-    season_trend = await _trend_context(
+    season_trend = await build_trend_context(
         db,
         scope_key=f"season:{year}",
         scope_label=f"{year} all competitions",
@@ -705,7 +655,7 @@ async def summer_league_venue(
         if venue_profile_row is not None
         else None
     )
-    venue_trend = await _trend_context(
+    venue_trend = await build_trend_context(
         db,
         scope_key=f"competition:{detail.competition_id}",
         scope_label=f"{detail.venue} {year}",
