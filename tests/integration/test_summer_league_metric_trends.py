@@ -11,9 +11,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.summer_league import SummerLeagueCompetition
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league.metric_trends import get_daily_trend
-from app.services.summer_league_explorer_service import ExplorerQuery, run_explorer_query
+from app.services.summer_league_explorer_service import (
+    ExplorerQuery,
+    run_explorer_query,
+)
 from app.services.share_cards.model_builders import build_sl_trend_model
 from tests.integration.conftest import make_player
+
+
+def _single_value_bands(**values: float) -> dict[str, dict[str, float]]:
+    """Build materialized bands for a one-player projection fixture."""
+    return {
+        key: {"median": value, "q1": value, "q3": value}
+        for key, value in values.items()
+    }
 
 
 @pytest.mark.asyncio
@@ -45,6 +56,7 @@ async def test_trend_does_not_mix_partial_later_version_with_older_cohort(
                 venue_slug="las_vegas",
                 version=1,
                 gmsc=4.0,
+                trend_competition_bands={"gmsc": {"median": 6.0, "q1": 5.0, "q3": 7.0}},
                 effective_day=day,
                 as_of=datetime(2026, 8, 1, 10),
                 published_at=datetime(2026, 8, 1, 11),
@@ -56,6 +68,7 @@ async def test_trend_does_not_mix_partial_later_version_with_older_cohort(
                 venue_slug="las_vegas",
                 version=1,
                 gmsc=8.0,
+                trend_competition_bands={"gmsc": {"median": 6.0, "q1": 5.0, "q3": 7.0}},
                 effective_day=day,
                 as_of=datetime(2026, 8, 1, 10),
                 published_at=datetime(2026, 8, 1, 11),
@@ -68,6 +81,7 @@ async def test_trend_does_not_mix_partial_later_version_with_older_cohort(
                 venue_slug="las_vegas",
                 version=2,
                 gmsc=10.0,
+                trend_competition_bands=_single_value_bands(gmsc=10.0),
                 effective_day=day,
                 as_of=datetime(2026, 8, 1, 12),
                 published_at=datetime(2026, 8, 1, 13),
@@ -117,6 +131,7 @@ async def test_trend_route_exposes_response_model_and_deterministic_payload(
             venue_slug="las_vegas",
             version=1,
             gmsc=7.5,
+            trend_competition_bands=_single_value_bands(gmsc=7.5),
             effective_day=date(2026, 7, 13),
             as_of=datetime(2026, 8, 1, 12),
             published_at=datetime(2026, 8, 1, 13),
@@ -177,6 +192,7 @@ async def test_season_scope_combines_latest_close_for_each_competition(
                 venue_slug="las_vegas",
                 version=1,
                 gmsc=1.0,
+                trend_season_bands={"gmsc": {"median": 1.5, "q1": 1.25, "q3": 1.75}},
                 effective_day=day,
                 published_at=datetime(2026, 8, 1, 11),
             ),
@@ -187,6 +203,7 @@ async def test_season_scope_combines_latest_close_for_each_competition(
                 venue_slug="sacramento",
                 version=1,
                 gmsc=2.0,
+                trend_season_bands={"gmsc": {"median": 1.5, "q1": 1.25, "q3": 1.75}},
                 effective_day=day,
                 published_at=datetime(2026, 8, 1, 11),
             ),
@@ -197,6 +214,7 @@ async def test_season_scope_combines_latest_close_for_each_competition(
                 venue_slug="las_vegas",
                 version=2,
                 gmsc=10.0,
+                trend_season_bands={"gmsc": {"median": 6.0, "q1": 4.0, "q3": 8.0}},
                 effective_day=day,
                 published_at=datetime(2026, 8, 1, 12),
             ),
@@ -243,6 +261,7 @@ async def test_trend_share_model_reads_real_daily_close_rows(
             gmsc=7.0,
             ts_pct=0.55,
             bpm=1.0,
+            trend_competition_bands=_single_value_bands(gmsc=7.0, ts_pct=0.55, bpm=1.0),
             effective_day=date(2024, 7, 10),
             as_of=datetime(2026, 7, 20, 12),
             published_at=datetime(2026, 7, 20, 13),
@@ -292,6 +311,7 @@ async def test_explorer_snapshot_matches_final_through_day_trend_value(
             minutes=90.0,
             pts=30,
             gmsc=10.0,
+            trend_competition_bands=_single_value_bands(gmsc=10.0),
             effective_day=final_day,
             as_of=datetime(2026, 8, 1, 12),
             published_at=datetime(2026, 8, 1, 13),

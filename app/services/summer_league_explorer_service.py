@@ -3281,6 +3281,9 @@ async def _query_players_per_competition(
         ps.year,
         ps.venue_slug,
         ps.as_of.label("as_of"),  # type: ignore[attr-defined, union-attr]
+        # Window aggregation runs after WHERE but before LIMIT/OFFSET, so every
+        # page reports the oldest watermark for the complete filtered scope.
+        func.min(ps.as_of).over().label("scope_as_of"),  # type: ignore[attr-defined, union-attr]
         ps.gp.label("gp"),  # type: ignore[attr-defined]
         (ps.minutes * 60).label("sec"),  # type: ignore[attr-defined]
         (ps.pace * ps.minutes * 60).label("pace_sec"),  # type: ignore[attr-defined,operator]
@@ -3457,8 +3460,6 @@ async def _query_players_per_competition(
         for r in raw
     ]
 
-    as_of_values = [r.as_of for r in raw if getattr(r, "as_of", None) is not None]
-
     return ExplorerResult(
         subject="players",
         columns=columns,
@@ -3473,7 +3474,7 @@ async def _query_players_per_competition(
         adv_eligible_n=elig_n,
         adv_eligible_m=elig_m,
         read_source="snapshot",
-        as_of=min(as_of_values) if as_of_values else None,
+        as_of=getattr(raw[0], "scope_as_of", None) if raw else None,
     )
 
 

@@ -44,6 +44,12 @@ class ComputeResult:
     seasons: list[PlayerSeason]
     shot_diet: dict[tuple[int, int], dict[str, int]] = field(default_factory=dict)
     assisted_fg: dict[tuple[int, int], tuple[int, int]] = field(default_factory=dict)
+    competition_trend_bands: dict[int, dict[str, dict[str, float]]] = field(
+        default_factory=dict
+    )
+    season_trend_bands: dict[int, dict[str, dict[str, float]]] = field(
+        default_factory=dict
+    )
     as_of: Optional[datetime] = None
 
     @property

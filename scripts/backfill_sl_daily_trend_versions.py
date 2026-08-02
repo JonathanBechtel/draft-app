@@ -39,7 +39,6 @@ from app.services.summer_league.metric_publish import (
 )
 from app.services.summer_league.metrics import (
     rebuild_staged,
-    set_repeatable_read_snapshot,
 )
 from app.services.summer_league.write_lock import (
     acquire_summer_league_writer_lock_bounded,
@@ -168,6 +167,10 @@ async def _has_complete_archival_close(
     context_effective_day: Any = getattr(SummerLeagueMetricContext, "effective_day")
     season_competition_id: Any = getattr(SummerLeaguePlayerSeason, "competition_id")
     season_effective_day: Any = getattr(SummerLeaguePlayerSeason, "effective_day")
+    season_competition_bands: Any = getattr(
+        SummerLeaguePlayerSeason, "trend_competition_bands"
+    )
+    season_year_bands: Any = getattr(SummerLeaguePlayerSeason, "trend_season_bands")
     context_count = await db.scalar(
         select(func.count())
         .select_from(SummerLeagueMetricContext)
@@ -186,6 +189,8 @@ async def _has_complete_archival_close(
             season_effective_day == effective_day,
             season_current.is_(False),  # type: ignore[attr-defined]
             season_published.is_not(None),  # type: ignore[attr-defined]
+            season_competition_bands.is_not(None),
+            season_year_bands.is_not(None),
         )
     )
     # A day with no resolved player rows is not a valid backfill target.  Requiring
@@ -201,9 +206,9 @@ async def _backfill_target(
 ) -> ArchivalPublication:
     """Compute and archive one day atomically under the shared writer lock."""
     async with db.begin():
-        # SET TRANSACTION must be the first statement in a transaction.  It gives
-        # the unlocked Python portion a stable source snapshot before lock polling.
-        await set_repeatable_read_snapshot(db)
+        # Keep the default READ COMMITTED isolation while polling. Once the lock
+        # is acquired, the idempotency query gets a fresh statement snapshot and
+        # can see a competing operator's just-committed archive.
         await acquire_summer_league_writer_lock_bounded(
             db, max_wait_seconds=lock_max_wait_seconds
         )
@@ -217,6 +222,9 @@ async def _backfill_target(
             raise _AlreadyArchived
         summary = await rebuild_staged(
             db,
+            model_version=(
+                f"archive-{target.competition_id}-{target.effective_day.isoformat()}"
+            ),
             competition_ids=[target.competition_id],
             effective_day=target.effective_day,
             through_day=target.effective_day,

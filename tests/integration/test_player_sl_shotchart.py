@@ -258,6 +258,16 @@ async def _seed_rich_player(
         gmsc=8.0,
         ts_pct=0.58,
         bpm=1.2,
+        trend_competition_bands={
+            "gmsc": {"median": 8.0, "q1": 8.0, "q3": 8.0},
+            "ts_pct": {"median": 0.58, "q1": 0.58, "q3": 0.58},
+            "bpm": {"median": 1.2, "q1": 1.2, "q3": 1.2},
+        },
+        trend_season_bands={
+            "gmsc": {"median": 8.0, "q1": 8.0, "q3": 8.0},
+            "ts_pct": {"median": 0.58, "q1": 0.58, "q3": 0.58},
+            "bpm": {"median": 1.2, "q1": 1.2, "q3": 1.2},
+        },
         rim_rate=0.60,
         mid_rate=0.00,
         three_rate=0.40,

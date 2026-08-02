@@ -61,6 +61,8 @@ def _result(*, seasons: list[metrics.PlayerSeason]) -> SimpleNamespace:
         bpm_n_fit=20,
         shot_diet={},
         assisted_fg={},
+        competition_trend_bands={},
+        season_trend_bands={},
         as_of=datetime(2026, 7, 28, 12, 0),
     )
 

@@ -34,17 +34,14 @@ async def test_trend_shapes_player_values_and_cohort_band_in_day_order() -> None
         [
             {
                 "effective_day": date(2026, 7, 2),
-                "player_id": 2,
-                "as_of": datetime(2026, 8, 1, 12),
-                "gmsc": 8.0,
-                "ts_pct": 55.0,
-            },
-            {
-                "effective_day": date(2026, 7, 2),
                 "player_id": 1,
                 "as_of": datetime(2026, 8, 1, 11),
                 "gmsc": 4.0,
                 "ts_pct": 45.0,
+                "trend_competition_bands": {
+                    "gmsc": {"median": 6.0, "q1": 5.0, "q3": 7.0},
+                    "ts_pct": {"median": 50.0, "q1": 47.5, "q3": 52.5},
+                },
             },
             {
                 "effective_day": date(2026, 7, 1),
@@ -52,6 +49,10 @@ async def test_trend_shapes_player_values_and_cohort_band_in_day_order() -> None
                 "as_of": datetime(2026, 8, 1, 10),
                 "gmsc": 3.0,
                 "ts_pct": 40.0,
+                "trend_competition_bands": {
+                    "gmsc": {"median": 3.0, "q1": 3.0, "q3": 3.0},
+                    "ts_pct": {"median": 40.0, "q1": 40.0, "q3": 40.0},
+                },
             },
         ]
     )

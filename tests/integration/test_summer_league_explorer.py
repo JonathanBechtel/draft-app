@@ -31,6 +31,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
 )
+from app.services import summer_league_explorer_service as explorer_service
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     PER_GAME_FILTERABLE_COLUMNS,
@@ -1404,8 +1405,8 @@ async def test_snapshot_freshness_uses_oldest_current_watermark(
     """A pooled career result never overstates currency from a newer row."""
     await _seed_grain(db_session)
     seasons = (
-        await db_session.execute(select(SummerLeaguePlayerSeason))
-    ).scalars().all()
+        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
+    )
     newest = datetime(2026, 8, 1, 12, 0)
     oldest = newest - timedelta(days=3)
     seasons[0].as_of = newest
@@ -1415,6 +1416,41 @@ async def test_snapshot_freshness_uses_oldest_current_watermark(
     result = await run_explorer_query(db_session, ExplorerQuery(subject="players"))
     assert result.read_source == "snapshot"
     assert result.as_of == oldest
+
+
+@pytest.mark.asyncio
+async def test_per_competition_freshness_is_stable_across_pages(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pagination cannot hide an older watermark elsewhere in the same scope."""
+    await _seed_grain(db_session)
+    seasons = (
+        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
+    )
+    newest = datetime(2026, 8, 1, 12, 0)
+    oldest = newest - timedelta(days=3)
+    seasons[0].as_of = newest
+    seasons[1].as_of = oldest
+    await db_session.flush()
+    monkeypatch.setattr(explorer_service, "PAGE_SIZE", 1)
+
+    results = [
+        await run_explorer_query(
+            db_session,
+            ExplorerQuery(
+                subject="players",
+                grain="per_competition",
+                page=page,
+                sort="gmsc",
+                min_games=1,
+                min_minutes=1,
+            ),
+        )
+        for page in (1, 2)
+    ]
+
+    assert all(result.as_of == oldest for result in results)
 
 
 @pytest.mark.asyncio

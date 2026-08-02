@@ -20,6 +20,7 @@ from app.schemas.summer_league import (
 )
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
+    SummerLeagueMetricModel,
     SummerLeaguePlayerSeason,
 )
 from app.services.summer_league.metric_publish import (
@@ -227,6 +228,7 @@ async def test_archival_rows_feed_the_public_trend_endpoint(
             effective_day=day,
             gp=1,
             gmsc=9.25,
+            trend_competition_bands={"gmsc": {"median": 9.25, "q1": 9.25, "q3": 9.25}},
         )
     )
     await db_session.flush()
@@ -361,6 +363,18 @@ async def test_backfill_two_events_is_idempotent_and_trend_endpoint_reads_both(
     assert first.archived == 2
     assert first.contexts == 2
     assert first.seasons == 2
+    archive_models = (
+        (
+            await db_session.execute(
+                select(SummerLeagueMetricModel).where(
+                    SummerLeagueMetricModel.model_version.like("archive-%")  # type: ignore[attr-defined]
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len({model.model_version for model in archive_models}) == 2
     await db_session.commit()
 
     second = await run_backfill(db_session)

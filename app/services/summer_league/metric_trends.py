@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date
-from math import floor
 from typing import Any
 
 from sqlalchemy import Date, and_, cast, func, select
@@ -82,19 +81,7 @@ def _effective_day_expression() -> Any:
     )
 
 
-def _percentile(values: Sequence[float], probability: float) -> float:
-    """Compute a deterministic linear-interpolated percentile for a cohort."""
-    ordered = sorted(values)
-    if len(ordered) == 1:
-        return ordered[0]
-    position = (len(ordered) - 1) * probability
-    lower = floor(position)
-    upper = min(lower + 1, len(ordered) - 1)
-    fraction = position - lower
-    return ordered[lower] + (ordered[upper] - ordered[lower]) * fraction
-
-
-async def get_daily_trend(  # noqa: C901
+async def get_daily_trend(
     db: AsyncSession,
     *,
     scope_key: str,
@@ -110,9 +97,10 @@ async def get_daily_trend(  # noqa: C901
     sharing an event day (the archival publisher writes one competition/day at a
     time). ``published_at`` is the visibility gate and tie-breaker only;
     the event-day expression (never ``as_of``) supplies ordering.  For a player
-    request, ``value`` is that player's projection while the cohort band uses
-    every player in the scope on the same daily close.  A scope request without
-    ``player_id`` returns the cohort median as its value.
+    request, ``value`` is that player's projection while the cohort band comes
+    from the offline materialized projection. A scope request without
+    ``player_id`` returns the stored cohort median as its value. The request path
+    reads at most one projection row per event day and never rebuilds quartiles.
 
     Args:
         db: Active async session; callers own the transaction.
@@ -139,6 +127,8 @@ async def get_daily_trend(  # noqa: C901
         getattr(SummerLeaguePlayerSeason, "as_of"),
         published_at_column,
         effective_day.label("effective_day"),
+        getattr(SummerLeaguePlayerSeason, "trend_competition_bands"),
+        getattr(SummerLeaguePlayerSeason, "trend_season_bands"),
         *[getattr(SummerLeaguePlayerSeason, key).label(key) for key in keys],
     ]
     # Publication versions are allocated globally, while the archival backfill
@@ -189,64 +179,66 @@ async def get_daily_trend(  # noqa: C901
     ]
     join_conditions.append(ranked.c.competition_id == winners.c.competition_id)
     latest = ranked.join(winners, and_(*join_conditions))
+    candidates = select(ranked).select_from(latest)
+    if player_id is not None:
+        candidates = candidates.where(ranked.c.player_id == player_id)
+    # A player can appear in sibling competitions on the same day. Choose one
+    # deterministic row, and likewise choose one representative row for a
+    # scope-median request; each row carries the same materialized scope band.
+    scope_rank = func.row_number().over(
+        partition_by=ranked.c.effective_day,
+        order_by=(
+            ranked.c.version.desc(),
+            ranked.c.published_at.desc(),
+            ranked.c.id.desc(),
+        ),
+    )
+    daily_candidates = candidates.add_columns(scope_rank.label("scope_rank")).cte(
+        "daily_trend_candidates"
+    )
     rows = (
         (
             await db.execute(
-                select(ranked)
-                .select_from(latest)
-                .order_by(ranked.c.effective_day, ranked.c.player_id)
+                select(daily_candidates)
+                .where(daily_candidates.c.scope_rank == 1)
+                .order_by(daily_candidates.c.effective_day)
             )
         )
         .mappings()
         .all()
     )
 
-    by_day: dict[date, list[Any]] = {}
-    for row in rows:
-        day = row["effective_day"]
-        if day is not None:
-            by_day.setdefault(day, []).append(row)
-
     points: list[TrendPoint] = []
     metric_order = {key: index for index, key in enumerate(keys)}
-    for day in sorted(by_day):
-        cohort_rows = by_day[day]
+    band_column = (
+        "trend_competition_bands"
+        if scope_kind == "competition"
+        else "trend_season_bands"
+    )
+    for row in rows:
+        day = row["effective_day"]
+        if day is None:
+            continue
+        stored_bands = row[band_column] or {}
         for key in keys:
-            values = [float(row[key]) for row in cohort_rows if row[key] is not None]
-            if not values:
+            stored_band = stored_bands.get(key)
+            if stored_band is None:
                 continue
             band = TrendCohortBand(
-                median=_percentile(values, 0.5),
-                q1=_percentile(values, 0.25),
-                q3=_percentile(values, 0.75),
+                median=float(stored_band["median"]),
+                q1=float(stored_band["q1"]),
+                q3=float(stored_band["q3"]),
             )
-            target = (
-                next(
-                    (
-                        row
-                        for row in cohort_rows
-                        if row["player_id"] == player_id and row[key] is not None
-                    ),
-                    None,
-                )
-                if player_id is not None
-                else None
-            )
-            if player_id is not None and target is None:
+            if player_id is not None and row[key] is None:
                 continue
-            value = float(target[key]) if target is not None else band.median
-            as_of_values = (
-                [target["as_of"]]
-                if target is not None and target["as_of"] is not None
-                else [row["as_of"] for row in cohort_rows if row["as_of"] is not None]
-            )
+            value = float(row[key]) if player_id is not None else band.median
             points.append(
                 TrendPoint(
                     metric_key=key,
                     effective_day=day,
                     value=value,
                     cohort_band=band,
-                    as_of=max(as_of_values) if as_of_values else None,
+                    as_of=row["as_of"],
                 )
             )
 

@@ -616,6 +616,14 @@ async def test_historical_scoped_compute_refits_only_through_cutoff(
         players_per_team=6,
         n_games=4,
     )
+    peer_comp = await _seed_pool(
+        db_session,
+        year=2025,
+        venue="salt_lake_city",
+        league_id="historical-peer-fit",
+        players_per_team=6,
+        n_games=4,
+    )
     await _seed_pool(
         db_session,
         year=2026,
@@ -624,6 +632,20 @@ async def test_historical_scoped_compute_refits_only_through_cutoff(
         players_per_team=6,
         n_games=4,
     )
+    peer_game = (
+        (
+            await db_session.execute(
+                select(SummerLeagueGame).where(
+                    SummerLeagueGame.competition_id == peer_comp
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert peer_game is not None
+    peer_watermark = datetime(2030, 1, 1, 12)
+    peer_game.updated_at = peer_watermark
     await db_session.commit()
 
     await metrics.rebuild(db_session)
@@ -631,7 +653,7 @@ async def test_historical_scoped_compute_refits_only_through_cutoff(
     active_fit = await metrics._load_active_fit(db_session)
     assert active_fit is not None
     assert active_fit.model_version is not None
-    assert active_fit.bpm_n_fit == 24
+    assert active_fit.bpm_n_fit == 36
 
     historical = await metrics.compute(
         db_session,
@@ -640,7 +662,8 @@ async def test_historical_scoped_compute_refits_only_through_cutoff(
     )
 
     assert historical.fit.model_version is None
-    assert historical.fit.bpm_n_fit == 12
+    assert historical.fit.bpm_n_fit == 24
+    assert historical.as_of == peer_watermark
     assert {season.competition_id for season in historical.seasons} == {historical_comp}
 
 

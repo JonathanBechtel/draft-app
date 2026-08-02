@@ -221,6 +221,15 @@ class SummerLeaguePlayerSeason(DatedVersionMixin, SQLModel, table=True):  # type
     # currency. Legacy rows may leave this NULL; the trend read/compaction paths
     # fall back to the historical ``published_at`` day until they are backfilled.
     effective_day: Optional[date] = Field(default=None)
+    # Daily-close cohort distributions are derived offline with the player
+    # projection. Public trend pages read these JSON payloads directly instead
+    # of re-aggregating every retained player row on each request.
+    trend_competition_bands: Optional[dict[str, dict[str, float]]] = Field(
+        default=None, sa_column=Column(JSONB, nullable=True)
+    )
+    trend_season_bands: Optional[dict[str, dict[str, float]]] = Field(
+        default=None, sa_column=Column(JSONB, nullable=True)
+    )
     competition_id: int = Field(
         sa_column=Column(
             Integer,

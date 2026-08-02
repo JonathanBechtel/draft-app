@@ -102,6 +102,7 @@ from app.services.stats.registry import (
     rollup_class_matches,
 )
 from app.services.summer_league import scoped_metrics
+from app.services.summer_league.metric_trend_projection import materialize_trend_bands
 
 ComputeResult = scoped_metrics.ComputeResult
 MetricFit = scoped_metrics.MetricFit
@@ -824,7 +825,10 @@ async def _load_compute_inputs(
     elif load_scope is None:
         # A first scoped call without an active fit bootstraps the fit from the full
         # through-day source pool, then narrows projections after assembly.
-        as_of = await _source_as_of(db, competition_ids, through_day=through_day)
+        # This branch fits against the full through-day pool, so its watermark
+        # must cover that same pool even though only the requested projections
+        # are retained below.
+        as_of = await _source_as_of(db, through_day=through_day)
         comps, games, team_rows, team_mp, player_rows = await _load(
             db, through_day=through_day
         )
@@ -890,6 +894,10 @@ async def compute(
     projected_fit = scoped_metrics.project_metrics(
         seasons, contexts, records, team_comp, pooled_fit
     )
+    competition_trend_bands, season_trend_bands = materialize_trend_bands(
+        seasons,
+        include_season_scope=load_scope is None,
+    )
 
     if scope is not None and load_scope is None:
         contexts = {cid: ctx for cid, ctx in contexts.items() if cid in scope}
@@ -905,6 +913,8 @@ async def compute(
         seasons=seasons,
         shot_diet=shot_diet,
         assisted_fg=assisted_fg,
+        competition_trend_bands=competition_trend_bands,
+        season_trend_bands=season_trend_bands,
         as_of=as_of,
     )
 
@@ -974,6 +984,8 @@ def _season_columns(
         "calculation_version": METRIC_CALCULATION_VERSION,
         "as_of": projection.as_of,
         "effective_day": projection.effective_day,
+        "trend_competition_bands": None,
+        "trend_season_bands": None,
         "published_at": None,
     }
 
@@ -1142,6 +1154,10 @@ async def _rebuild_with_options(
             zone_fga,
             pbp_counts,
         )
+        cols["trend_competition_bands"] = result.competition_trend_bands.get(
+            ps.competition_id
+        )
+        cols["trend_season_bands"] = result.season_trend_bands.get(ps.year)
         db.add(SummerLeaguePlayerSeason(**cols))
         n_seasons += 1
 
