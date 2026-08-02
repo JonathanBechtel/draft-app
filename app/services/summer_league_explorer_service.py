@@ -2902,7 +2902,8 @@ def _build_player_career_stmt(q: ExplorerQuery) -> Any:
             # current snapshot row outside that page.
             case(
                 (
-                    func.count(ps.as_of) == func.count(),  # type: ignore[attr-defined]
+                    func.count(ps.as_of)  # type: ignore[attr-defined, arg-type]
+                    == func.count(),
                     func.min(ps.as_of),  # type: ignore[attr-defined]
                 ),
                 else_=None,
@@ -3300,7 +3301,8 @@ async def _query_players_per_competition(
         # page reports the oldest watermark for the complete filtered scope.
         case(
             (
-                func.count(ps.as_of).over() == func.count().over(),  # type: ignore[attr-defined, union-attr]
+                func.count(ps.as_of).over()  # type: ignore[attr-defined, arg-type, union-attr]
+                == func.count().over(),
                 func.min(ps.as_of).over(),  # type: ignore[attr-defined, union-attr]
             ),
             else_=None,
