@@ -127,6 +127,17 @@ class TestSlTrendSurfaceVisuals:
         assert mobile_page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
         screenshot.capture_element(".trend-card", "sl_trend_mobile")
 
+    def test_dark_theme_chart_remains_legible(self, page: Page, base_url: str, screenshot) -> None:
+        """Dark-theme tokens apply to the card while all chart lanes remain visible."""
+        page.emulate_media(color_scheme="dark")
+        _mount(page, base_url, _payload())
+        expect(page.locator(".trend-card__line")).to_have_count(3)
+        assert page.locator(".trend-card").evaluate(
+            "element => getComputedStyle(element).backgroundColor"
+        ) == "rgb(17, 24, 39)"
+        expect(page.locator(".trend-card__meta")).to_be_visible()
+        screenshot.capture_element(".trend-card", "sl_trend_dark")
+
     def test_event_scope_is_shareless(self, page: Page, base_url: str, screenshot) -> None:
         """Competition/cohort cards render without a player-only share action."""
         _mount(page, base_url, _payload(scope_key="competition:2026:42", player_id=None))
