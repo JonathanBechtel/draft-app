@@ -36,3 +36,29 @@ async def test_publish_metric_summary_forwards_as_of_and_effective_day(
         as_of=datetime(2026, 8, 1, 12),
         effective_day=date(2026, 7, 14),
     )
+
+
+@pytest.mark.asyncio
+async def test_publish_metric_summary_omits_stamps_it_does_not_have(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Older rebuild shims omit the optional stamps instead of publishing ``None``.
+
+    A summary may carry an explicit ``None`` (``as_of`` here) or leave the key
+    out entirely (``effective_day``). Both take the compatibility branch, which
+    drops the keyword rather than forwarding a null that would blank the column
+    on every promoted row. The publisher's skipped-scope result is passed
+    through unchanged.
+    """
+    publish = AsyncMock(return_value={4})
+    monkeypatch.setattr(metrics_rebuild_gate, "publish_metric_version", publish)
+    db = AsyncMock()
+
+    skipped = await metrics_rebuild_gate._publish_metric_summary(
+        db,
+        metrics_version=3,
+        summary={"model_version": "fit-3", "as_of": None},
+    )
+
+    assert skipped == {4}
+    publish.assert_awaited_once_with(db, version=3, model_version="fit-3")

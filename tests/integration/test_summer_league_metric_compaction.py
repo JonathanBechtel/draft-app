@@ -208,6 +208,98 @@ async def test_effective_day_cutoff_uses_eastern_calendar_boundary(
 
 
 @pytest.mark.asyncio
+async def test_legacy_day_partition_uses_publication_stamp_not_source_currency(
+    db_session: AsyncSession,
+) -> None:
+    """Rows predating ``effective_day`` group by their Eastern publication day.
+
+    Legacy rows have no event day, so retention derives one from ``published_at``
+    in Eastern time -- never from ``as_of``, which is source currency. Version 1
+    is published at 02:00 UTC on July 2, which is still July 1 in Eastern time,
+    while its ``as_of`` falls on July 2: it therefore owns its own daily
+    partition and survives, and only the superseded July 2 row is removed.
+    """
+    competition = SummerLeagueCompetition(
+        year=2026,
+        league_id="compaction-legacy-day",
+        venue_slug="las_vegas",
+        display_name="Compaction Legacy Day",
+    )
+    player = make_player("Legacy", "Stamp")
+    db_session.add_all([competition, player])
+    await db_session.flush()
+    assert competition.id is not None
+    assert player.id is not None
+
+    rows = {
+        # (version, published_at, as_of); every row is superseded and published.
+        1: (datetime(2026, 7, 2, 2), datetime(2026, 7, 2, 12)),
+        2: (datetime(2026, 7, 2, 12), datetime(2026, 7, 2, 13)),
+        3: (datetime(2026, 7, 2, 13), datetime(2026, 7, 2, 14)),
+    }
+    for version, (published_at, as_of) in rows.items():
+        db_session.add(
+            SummerLeagueMetricContext(
+                competition_id=competition.id,
+                year=2026,
+                venue_slug="las_vegas",
+                version=version,
+                is_current=False,
+                effective_day=None,
+                as_of=as_of,
+                published_at=published_at,
+            )
+        )
+        db_session.add(
+            SummerLeaguePlayerSeason(
+                competition_id=competition.id,
+                player_id=player.id,
+                year=2026,
+                venue_slug="las_vegas",
+                version=version,
+                is_current=False,
+                effective_day=None,
+                as_of=as_of,
+                published_at=published_at,
+            )
+        )
+    await db_session.commit()
+
+    async with db_session.begin():
+        summary = await compact_metric_versions(
+            db_session,
+            now=datetime(2026, 7, 5, 12, tzinfo=timezone.utc),
+        )
+
+    assert summary.context_rows_deleted == 1
+    assert summary.season_rows_deleted == 1
+    surviving_contexts = (
+        (
+            await db_session.execute(
+                select(SummerLeagueMetricContext.version).where(
+                    SummerLeagueMetricContext.competition_id == competition.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    surviving_seasons = (
+        (
+            await db_session.execute(
+                select(SummerLeaguePlayerSeason.version).where(
+                    SummerLeaguePlayerSeason.competition_id == competition.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert set(surviving_contexts) == {1, 3}
+    assert set(surviving_seasons) == {1, 3}
+
+
+@pytest.mark.asyncio
 async def test_compaction_preserves_archive_over_later_ordinary_rebuild(
     db_session: AsyncSession,
 ) -> None:

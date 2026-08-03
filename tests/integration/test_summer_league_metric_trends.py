@@ -84,6 +84,73 @@ async def test_archival_close_wins_over_later_normal_same_day_version(
 
 
 @pytest.mark.asyncio
+async def test_daily_close_winner_ignores_source_currency(
+    db_session: AsyncSession,
+) -> None:
+    """A republished close wins on version even when its watermark is older.
+
+    ``as_of`` is source currency, not event evidence: a rebuild that reprocesses
+    a day from an older source snapshot still supersedes the version before it.
+    Every other trend fixture correlates ``as_of`` with ``version``, so this one
+    deliberately inverts them -- the winning version 2 carries the *older*
+    watermark and the losing version 1 the newer one.
+    """
+    competition = SummerLeagueCompetition(
+        year=2026,
+        league_id="trend-as-of-inverted",
+        venue_slug="las_vegas",
+        display_name="Trend As Of Inverted",
+    )
+    player = make_player("Inverted", "Watermark")
+    db_session.add_all([competition, player])
+    await db_session.flush()
+    assert competition.id is not None and player.id is not None
+    day = date(2026, 7, 15)
+    db_session.add_all(
+        [
+            SummerLeaguePlayerSeason(
+                competition_id=competition.id,
+                player_id=player.id,
+                year=2026,
+                venue_slug="las_vegas",
+                version=1,
+                gmsc=4.0,
+                effective_day=day,
+                as_of=datetime(2026, 8, 5, 12),
+                published_at=datetime(2026, 8, 1, 11),
+                trend_competition_bands=_single_value_bands(gmsc=4.0),
+            ),
+            SummerLeaguePlayerSeason(
+                competition_id=competition.id,
+                player_id=player.id,
+                year=2026,
+                venue_slug="las_vegas",
+                version=2,
+                gmsc=10.0,
+                effective_day=day,
+                as_of=datetime(2026, 7, 30, 6),
+                published_at=datetime(2026, 8, 1, 12),
+                trend_competition_bands=_single_value_bands(gmsc=10.0),
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    points = await get_daily_trend(
+        db_session,
+        scope_key=f"competition:{competition.id}",
+        player_id=player.id,
+        metric_keys=("gmsc",),
+    )
+
+    assert len(points) == 1
+    assert points[0].value == 10.0
+    # The point still reports its own row's source currency; it just never
+    # decided which row won.
+    assert points[0].as_of == datetime(2026, 7, 30, 6)
+
+
+@pytest.mark.asyncio
 async def test_trend_ignores_legacy_rows_without_an_event_day(
     db_session: AsyncSession,
 ) -> None:

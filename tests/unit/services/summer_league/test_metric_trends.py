@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from unittest.mock import AsyncMock
 
@@ -91,6 +92,39 @@ async def test_unknown_metric_key_is_rejected_before_query() -> None:
         )
 
     db.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_daily_close_windows_never_rank_by_source_currency() -> None:
+    """Both winner windows rank by event day + version, never by ``as_of``.
+
+    The service documents that ``as_of`` supplies no ordering. Compiling the
+    statement the service actually issues pins that for *both* ``row_number()``
+    windows -- the per-competition/day winner and the per-day scope
+    representative -- which reading ``_effective_day_expression()`` alone cannot.
+    """
+    db = AsyncMock()
+    db.execute.return_value = _MappingsResult([])
+
+    await get_daily_trend(
+        db,
+        scope_key="season:2026",
+        player_id=None,
+        metric_keys=("gmsc",),
+    )
+
+    statement = db.execute.await_args.args[0]
+    sql = str(statement.compile(compile_kwargs={"literal_binds": True}))
+    windows = re.findall(r"row_number\(\) OVER \(([^)]*)\)", sql)
+    assert len(windows) == 2
+    for window in windows:
+        partition, _, order_by = window.partition("ORDER BY")
+        assert "effective_day" in partition
+        assert "version DESC" in order_by
+        assert "is_archival DESC" in order_by
+        # ``published_at`` is the visibility gate and final tie-breaker; source
+        # currency must not appear in the ordering at all.
+        assert "as_of" not in order_by
 
 
 def test_effective_day_expression_does_not_use_publication_time() -> None:
