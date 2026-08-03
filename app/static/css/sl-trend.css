@@ -33,10 +33,13 @@
 .trend-card__legend-swatch--bpm { background: #e11d48; }
 .trend-card__single-point { margin: .55rem 0 0; color: var(--color-accent-amber, #b45309); font-family: var(--font-mono, monospace); font-size: .72rem; }
 .trend-card__tooltip { min-height: 1.1rem; margin-top: .35rem; }
+.trend-card__share.is-error { border-color: var(--color-accent-rose, #f43f5e); color: var(--color-accent-rose, #f43f5e); }
+.trend-card__share.is-error:hover, .trend-card__share.is-error:focus-visible { color: #fff; background: var(--color-accent-rose, #f43f5e); }
 .trend-card [data-trend-point] { cursor: pointer; }
-@media (prefers-color-scheme: dark) {
-  .trend-card { --trend-ink: #f8fafc; --trend-muted: #94a3b8; --trend-border: #334155; --trend-surface: #111827; box-shadow: 0 7px 20px rgb(0 0 0 / 25%); }
-}
+.trend-card [data-trend-point]:focus-visible { outline: 2px solid var(--color-accent-cyan, #06b6d4); outline-offset: 2px; }
+/* DraftGuru is a light-only retro surface (no dark tokens in main.css, no
+   theme toggle). A `prefers-color-scheme: dark` block here left OS-dark
+   readers with one dark card floating in an otherwise light page. */
 @media (max-width: 480px) {
   .trend-card { margin-inline: 0; padding: .85rem .75rem .8rem; border-radius: 7px; }
   .trend-card__title { font-size: 1.08rem; }
