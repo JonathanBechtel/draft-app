@@ -44,7 +44,7 @@ the race neither empties a scope nor fails a rebuild.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import Date, cast, delete, func, or_, select
@@ -103,18 +103,33 @@ async def _delete_superseded_closed_day_rows(
     *,
     model: Any,
     scope_columns: tuple[Any, ...],
-    event_day_cutoff: Any,
+    event_day_cutoff: date,
     candidate_grace_cutoff: datetime | None = None,
 ) -> int:
-    """Delete superseded published/unpublished rows from closed source days.
+    """Delete superseded published/unpublished rows from closed event days.
 
     Unpublished rows created after ``candidate_grace_cutoff`` are left out of the
     ranking entirely: they are neither deleted nor allowed to displace an older
     row, so an in-flight candidate cannot be reaped before its pointer flip.
+
+    Args:
+        db: Active database session; the caller owns the transaction and lock.
+        model: Projection table to compact.
+        scope_columns: Columns that identify one history series.
+        event_day_cutoff: First Eastern event day that is still open. Rows on or
+            after it are left alone. The caller derives it from its own clock so
+            this function never has to guess a boundary from a UTC instant.
+        candidate_grace_cutoff: Rows created at or after this instant are exempt
+            from retention while a rebuild may still be in flight.
+
+    Returns:
+        The number of rows deleted.
     """
     # ``effective_day`` is the event calendar day and is the primary history
     # partition. Legacy published rows predate that column, so derive their
-    # day from the publication stamp in Eastern time. ``as_of`` is source
+    # day from the publication stamp in Eastern time -- note this is deliberately
+    # *not* symmetric with the trend read, which requires an explicit
+    # ``effective_day`` and treats legacy rows as invisible. ``as_of`` is source
     # currency and must never influence trend ordering/retention.
     legacy_day = cast(
         func.timezone("America/New_York", func.timezone("UTC", model.published_at)),
@@ -199,6 +214,9 @@ async def compact_metric_versions(
         Counts of deleted context and player-season rows plus the cutoff.
     """
     reference_now = now or datetime.now(timezone.utc)
+    # ``cutoff`` is reported for the existing job contract; retention itself is
+    # decided entirely by the Eastern event day so a run just after UTC midnight
+    # does not close the still-current Eastern day.
     cutoff = _closed_day_cutoff(reference_now)
     event_day_cutoff = to_eastern_date(reference_now)
     candidate_grace_cutoff = (
