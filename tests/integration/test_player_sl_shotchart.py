@@ -322,7 +322,11 @@ async def test_player_detail_with_shots_shows_shotchart(
     assert "trend-card" in html
     assert "GmSc" in html and "TS%" in html and "BPM" in html
     assert "Single-point state" in html
-    assert "Source as of" in html and "2026-07-20" in html
+    # Freshness reads like the Explorer's label, not as a raw ISO timestamp,
+    # and the dead trend global is gone.
+    assert "Source as of" in html and "2026-07-20 11:00 UTC" in html
+    assert "2026-07-20T11:00:00</time>" not in html
+    assert "window.DRAFTGURU_TREND" not in html
 
 
 @pytest.mark.asyncio
