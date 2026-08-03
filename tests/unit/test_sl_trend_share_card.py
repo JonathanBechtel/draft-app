@@ -23,7 +23,7 @@ def _model() -> TrendRenderModel:
     """Return a deterministic three-line model with cohort bands."""
     return TrendRenderModel(
         title="TEST — TREND",
-        subtitle="competition:42 · cumulative through day",
+        subtitle="2024 Las Vegas Summer League · cumulative through day",
         player=PlayerBadge(name="Test Player", subtitle="G | School", has_photo=False),
         lines=[
             TrendChartLine(
@@ -62,6 +62,8 @@ def test_trend_share_card_svg_contains_lines_band_and_freshness() -> None:
     assert 'fill-opacity=".15"' in svg
     assert "Source as of 2026-07-20" in svg
     assert "Test Player" in svg
+    assert "2024 Las Vegas Summer League" in svg
+    assert "competition:" not in svg
 
 
 def test_trend_share_card_cache_metadata() -> None:
@@ -103,6 +105,11 @@ async def test_trend_builder_compacts_lanes_when_middle_metric_is_missing(
         "_build_player_badge",
         AsyncMock(return_value=PlayerBadge(name="Test Player", subtitle="G")),
     )
+    monkeypatch.setattr(
+        model_builders,
+        "resolve_scope_label",
+        AsyncMock(return_value="2024 Las Vegas Summer League"),
+    )
 
     model = await model_builders.build_sl_trend_model(
         AsyncMock(),
@@ -141,6 +148,11 @@ async def test_trend_builder_deduplicates_metric_keys_before_loading(
         "_build_player_badge",
         AsyncMock(return_value=PlayerBadge(name="Test Player", subtitle="G")),
     )
+    monkeypatch.setattr(
+        model_builders,
+        "resolve_scope_label",
+        AsyncMock(return_value="2024 Las Vegas Summer League"),
+    )
 
     model = await model_builders.build_sl_trend_model(
         AsyncMock(),
@@ -151,6 +163,51 @@ async def test_trend_builder_deduplicates_metric_keys_before_loading(
     assert load_trend.await_args is not None
     assert load_trend.await_args.kwargs["metric_keys"] == ("gmsc",)
     assert [line.key for line in model.lines] == ["gmsc"]
+
+
+@pytest.mark.asyncio
+async def test_trend_builder_subtitle_names_the_event_not_the_scope_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A shared card names the competition; the internal scope key never leaks."""
+    monkeypatch.setattr(
+        model_builders,
+        "get_daily_trend",
+        AsyncMock(
+            return_value=[
+                TrendPoint(
+                    metric_key="gmsc",
+                    effective_day=date(2026, 7, 20),
+                    value=8.0,
+                    cohort_band=TrendCohortBand(median=8.0, q1=7.0, q3=9.0),
+                )
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        model_builders,
+        "_resolve_player_info",
+        AsyncMock(return_value=("Test Player", "test-player", "G", None, [], 2026)),
+    )
+    monkeypatch.setattr(
+        model_builders,
+        "_build_player_badge",
+        AsyncMock(return_value=PlayerBadge(name="Test Player", subtitle="G")),
+    )
+    monkeypatch.setattr(
+        model_builders,
+        "resolve_scope_label",
+        AsyncMock(return_value="2026 Las Vegas Summer League"),
+    )
+
+    model = await model_builders.build_sl_trend_model(
+        AsyncMock(), [7], {"scope_key": "competition:42", "metric_keys": ["gmsc"]}
+    )
+
+    assert model.subtitle == "2026 Las Vegas Summer League · cumulative through day"
+    assert "competition:" not in model.subtitle
+    rendered = get_svg_renderer().render("sl_trend.svg", asdict(model))
+    assert "competition:42" not in rendered
 
 
 @pytest.mark.asyncio

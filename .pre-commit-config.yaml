@@ -35,6 +35,24 @@ repos:
         language: system
         pass_filenames: false
         files: ^(app|scripts)/.*\.py$
+      - id: runtime-entrypoints
+        name: Enforce the app/cli vs scripts/ runtime boundary
+        # Whole-tree by nature: it cross-references Fly cron tomls, workflow YAML,
+        # .dockerignore, and every module under app/. Per-file arguments cannot
+        # express that, so it takes none. Mirrors the CI step of the same name.
+        entry: python scripts/check_runtime_entrypoints.py
+        language: system
+        pass_filenames: false
+        files: ^(app/.*\.py|deploy/fly/.*\.toml|\.github/workflows/.*\.ya?ml|\.dockerignore)$
+      - id: stat-constants
+        name: Confine designated stat coefficients to app/services/stats/
+        # A property of the whole tree, not of a diff — the script's own docstring
+        # says so, and CI invokes it with no arguments. Mirrored exactly here
+        # rather than passing filenames, so both copies evaluate the same thing.
+        entry: python scripts/check_stat_constants.py
+        language: system
+        pass_filenames: false
+        files: ^app/.*\.py$
       - id: migration-safety
         name: Require concurrent, autocommit-wrapped index builds in new migrations
         # Diff-scoped: 36 existing revisions build indexes non-concurrently and have
