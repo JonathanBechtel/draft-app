@@ -29,15 +29,25 @@ magnitude as the published row it sits beside and provides useful audit trail
 additional time-based sweep removes these rows; if the bound ever needs to
 tighten further, add an explicit "abandoned candidates older than N days" pass
 rather than folding it into the daily-rank logic here.
+
+In-flight candidates (#766): a candidate is only "abandoned" once its rebuild has
+had time to publish it. Staged rows carry the event's own ``effective_day``,
+which for a historical competition is already a closed day, so an overlapping
+rebuild would otherwise let this job delete a candidate that is still minutes
+away from its own pointer flip. Unpublished rows younger than
+``DEFAULT_METRIC_COMPACTION_CANDIDATE_GRACE_HOURS`` are therefore exempt from
+ranking altogether. The publisher does not rely on that exemption -- it verifies
+its candidate still exists before demoting anything -- but the two together mean
+the race neither empties a scope nor fails a rebuild.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import Date, cast, delete, func, select
+from sqlalchemy import Date, cast, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league_metrics import (
@@ -50,6 +60,15 @@ from app.services.summer_league.write_lock import (
 )
 
 DEFAULT_METRIC_COMPACTION_LOCK_MAX_WAIT_SECONDS = 30.0
+
+# Grace period protecting freshly staged, still-unpublished candidates from
+# retention. A rebuild stages its rows outside the writer lock and publishes them
+# minutes later; since Phase 3 those rows carry the event's own (already closed)
+# ``effective_day``, so without this window an overlapping rebuild would make the
+# in-flight candidate rank 2 and compaction would delete it before its own
+# pointer flip ran. Six hours comfortably exceeds a full rebuild while keeping
+# the extra retention bounded to the candidates of the last few hourly ticks.
+DEFAULT_METRIC_COMPACTION_CANDIDATE_GRACE_HOURS = 6.0
 
 
 @dataclass(frozen=True)
@@ -84,10 +103,15 @@ async def _delete_superseded_closed_day_rows(
     *,
     model: Any,
     scope_columns: tuple[Any, ...],
-    cutoff: datetime,
-    event_day_cutoff: Any | None = None,
+    event_day_cutoff: Any,
+    candidate_grace_cutoff: datetime | None = None,
 ) -> int:
-    """Delete superseded published/unpublished rows from closed source days."""
+    """Delete superseded published/unpublished rows from closed source days.
+
+    Unpublished rows created after ``candidate_grace_cutoff`` are left out of the
+    ranking entirely: they are neither deleted nor allowed to displace an older
+    row, so an in-flight candidate cannot be reaped before its pointer flip.
+    """
     # ``effective_day`` is the event calendar day and is the primary history
     # partition. Legacy published rows predate that column, so derive their
     # day from the publication stamp in Eastern time. ``as_of`` is source
@@ -97,11 +121,17 @@ async def _delete_superseded_closed_day_rows(
         Date,
     )
     source_day = func.coalesce(model.effective_day, legacy_day)
-    # ``cutoff`` is normalized to UTC midnight for the existing job contract;
-    # compare event days against that instant's Eastern calendar date so a run
-    # just after UTC midnight does not close the still-current Eastern day.
-    event_day_cutoff = event_day_cutoff or to_eastern_date(cutoff)
     publication_state = model.published_at.is_(None)
+    predicates = [model.is_current.is_(False), source_day < event_day_cutoff]
+    if candidate_grace_cutoff is not None:
+        # A published row is by definition no longer in flight, so the grace
+        # window only ever holds back unpublished candidates.
+        predicates.append(
+            or_(
+                model.published_at.isnot(None),
+                model.created_at < candidate_grace_cutoff,
+            )
+        )
     ranked = (
         select(
             model.id.label("row_id"),
@@ -119,10 +149,7 @@ async def _delete_superseded_closed_day_rows(
             )
             .label("daily_rank"),
         )
-        .where(
-            model.is_current.is_(False),
-            source_day < event_day_cutoff,
-        )
+        .where(*predicates)
         .cte("closed_day_rows")
     )
     # The predicate is deliberately scoped by primary key. Besides making the
@@ -141,6 +168,7 @@ async def compact_metric_versions(
     *,
     now: datetime | None = None,
     max_wait_seconds: float = DEFAULT_METRIC_COMPACTION_LOCK_MAX_WAIT_SECONDS,
+    candidate_grace_hours: float = DEFAULT_METRIC_COMPACTION_CANDIDATE_GRACE_HOURS,
 ) -> MetricCompactionSummary:
     """Compact closed-day metric versions while preserving published closes/candidates.
 
@@ -152,7 +180,9 @@ async def compact_metric_versions(
     closed day, the latest published row and latest unpublished candidate are
     retained independently. When published archival and ordinary rows share a
     closed day, the archival close wins even if an ordinary rebuild has a newer
-    version.
+    version. Unpublished rows younger than ``candidate_grace_hours`` are exempt
+    entirely, because a rebuild that is still between staging and its pointer
+    flip must find its candidate intact.
 
     The caller owns the transaction. This function acquires the same
     transaction-scoped writer lock used by metric publication before issuing
@@ -162,6 +192,8 @@ async def compact_metric_versions(
         db: Active database session.
         now: Optional clock value, primarily for deterministic backfills/tests.
         max_wait_seconds: Maximum time to wait for the shared writer lock.
+        candidate_grace_hours: Age below which an unpublished candidate is never
+            compacted. Zero disables the exemption.
 
     Returns:
         Counts of deleted context and player-season rows plus the cutoff.
@@ -169,6 +201,11 @@ async def compact_metric_versions(
     reference_now = now or datetime.now(timezone.utc)
     cutoff = _closed_day_cutoff(reference_now)
     event_day_cutoff = to_eastern_date(reference_now)
+    candidate_grace_cutoff = (
+        _utc_naive(reference_now) - timedelta(hours=candidate_grace_hours)
+        if candidate_grace_hours > 0
+        else None
+    )
     await acquire_summer_league_writer_lock_bounded(
         db, max_wait_seconds=max_wait_seconds
     )
@@ -176,8 +213,8 @@ async def compact_metric_versions(
         db,
         model=SummerLeagueMetricContext,
         scope_columns=(SummerLeagueMetricContext.competition_id,),
-        cutoff=cutoff,
         event_day_cutoff=event_day_cutoff,
+        candidate_grace_cutoff=candidate_grace_cutoff,
     )
     season_rows_deleted = await _delete_superseded_closed_day_rows(
         db,
@@ -186,8 +223,8 @@ async def compact_metric_versions(
             SummerLeaguePlayerSeason.competition_id,
             SummerLeaguePlayerSeason.player_id,
         ),
-        cutoff=cutoff,
         event_day_cutoff=event_day_cutoff,
+        candidate_grace_cutoff=candidate_grace_cutoff,
     )
     return MetricCompactionSummary(
         cutoff=cutoff,
