@@ -96,6 +96,22 @@ async def test_next_metric_version_uses_the_database_sequence() -> None:
     assert await metric_publish.next_metric_version(db) == 12
 
 
+def _update_shapes(db: MagicMock) -> list[tuple[str, frozenset[str]]]:
+    """Return ``(table, assigned columns)`` for each UPDATE the publisher issued.
+
+    Reads statements in await order, so the demote-then-promote sequence the
+    partial unique indexes depend on is visible to assertions.
+    """
+    return [
+        (
+            statement.table.name,
+            frozenset(str(key).rsplit(".", 1)[-1] for key in statement._values),
+        )
+        for statement in (call.args[0] for call in db.execute.await_args_list)
+        if hasattr(statement, "_values")
+    ]
+
+
 @pytest.mark.asyncio
 async def test_publish_metric_version_flips_full_projection_and_fit() -> None:
     """A full publication demotes old rows before promoting the candidate."""
@@ -108,8 +124,19 @@ async def test_publish_metric_version_flips_full_projection_and_fit() -> None:
         db, version=9, model_version="candidate"
     )
 
+    # One flush separates the demotions from the promotions; the partial unique
+    # indexes reject the candidate otherwise.
     assert db.flush.await_count == 1
-    assert db.execute.await_count == 9
+    assert _update_shapes(db) == [
+        ("summer_league_player_seasons", frozenset({"is_current"})),
+        ("summer_league_metric_contexts", frozenset({"is_current"})),
+        ("summer_league_player_seasons", frozenset({"is_current", "published_at"})),
+        ("summer_league_metric_contexts", frozenset({"is_current", "published_at"})),
+        # A full publication also deactivates every prior fit and activates the
+        # candidate's own model version.
+        ("summer_league_metric_models", frozenset({"is_active"})),
+        ("summer_league_metric_models", frozenset({"is_active"})),
+    ]
 
 
 @pytest.mark.asyncio
@@ -147,7 +174,20 @@ async def test_publish_metric_version_scopes_the_pointer_flip() -> None:
     await metric_publish.publish_metric_version(db, version=10, competition_ids={3, 5})
 
     assert db.flush.await_count == 1
-    assert db.execute.await_count == 7
+    shapes = _update_shapes(db)
+    # Only the two projections flip: the league-wide fit table is never updated.
+    assert shapes == [
+        ("summer_league_player_seasons", frozenset({"is_current"})),
+        ("summer_league_metric_contexts", frozenset({"is_current"})),
+        ("summer_league_player_seasons", frozenset({"is_current", "published_at"})),
+        ("summer_league_metric_contexts", frozenset({"is_current", "published_at"})),
+    ]
+    updates = [
+        statement
+        for statement in (call.args[0] for call in db.execute.await_args_list)
+        if hasattr(statement, "_values")
+    ]
+    assert all("competition_id IN" in str(statement) for statement in updates)
 
 
 @pytest.mark.asyncio
