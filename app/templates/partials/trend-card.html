@@ -2,7 +2,9 @@
    read service and intentionally contains no event-specific table names. #}
 {% macro trend_card(trend, title='Within-event trend') %}
 {% if trend %}
-<section class="trend-card" data-trend-root data-trend-scope="{{ trend.scope_key }}" data-trend-player-id="{{ trend.player_id or '' }}">
+{# The scope key lives only in the JSON payload the export request replays; it
+   is an internal id and is never rendered as text or duplicated onto markup. #}
+<section class="trend-card" data-trend-root data-trend-player-id="{{ trend.player_id or '' }}">
   <div class="trend-card__head">
     <div>
       <p class="trend-card__eyebrow">{{ trend.scope_label }}</p>
@@ -12,7 +14,7 @@
     {% if trend.player_id %}<button class="trend-card__share" type="button" data-trend-share aria-label="Share this trend card">Share PNG</button>{% endif %}
   </div>
   <div class="trend-card__meta">
-    <span>Source as of <time data-trend-as-of>{{ trend.latest_as_of or '—' }}</time></span>
+    <span>Source as of <time data-trend-as-of{% if trend.latest_as_of %} datetime="{{ trend.latest_as_of }}"{% endif %}>{{ trend.latest_as_of_label or 'not reported' }}</time></span>
     <span>Through <time data-trend-effective-day>{{ trend.latest_effective_day }}</time></span>
   </div>
   <div class="trend-card__chart-wrap">

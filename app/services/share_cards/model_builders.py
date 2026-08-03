@@ -47,6 +47,7 @@ from app.services.similarity_service import get_similar_players
 from app.services.summer_league.metric_trends import (
     get_daily_trend,
     latest_trend_as_of,
+    resolve_scope_label,
 )
 
 # discipline: file-size cross-cutting image-I/O boundary; no model logic added
@@ -1156,9 +1157,12 @@ async def build_sl_trend_model(
     ]
     latest_as_of = latest_trend_as_of(points)
     as_of = latest_as_of.date().isoformat() if latest_as_of else "—"
+    # A share card leaves the site: it carries the event's name, never the
+    # internal scope key it was rendered from.
+    scope_label = await resolve_scope_label(db, scope_key)
     return TrendRenderModel(
         title=f"{display_name.split()[0].upper()} — TREND",
-        subtitle=f"{scope_key} · cumulative through day",
+        subtitle=f"{scope_label} · cumulative through day",
         player=player_badge,
         lines=lines,
         single_point=len(days) == 1,
