@@ -1,9 +1,15 @@
 """Pure contract tests for the cumulative trend presentation adapter."""
 
 from datetime import date, datetime
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from app.models.summer_league_trends import TrendCohortBand, TrendPoint
-from app.services.summer_league.metric_trends import trend_points_to_context
+from app.services.summer_league.metric_trends import (
+    resolve_scope_label,
+    trend_points_to_context,
+)
 
 
 def test_trend_context_keeps_event_day_and_source_currency_distinct() -> None:
@@ -35,6 +41,7 @@ def test_trend_context_keeps_event_day_and_source_currency_distinct() -> None:
     assert payload is not None
     assert payload["latest_effective_day"] == "2024-07-10"
     assert payload["latest_as_of"] == "2026-07-20T12:00:00"
+    assert payload["latest_as_of_label"] == "2026-07-20 12:00 UTC"
     assert payload["player_id"] == 7
     assert payload["single_point"] is True
 
@@ -79,3 +86,27 @@ def test_trend_context_preserves_unknown_freshness_on_newest_day() -> None:
     assert payload is not None
     assert payload["latest_effective_day"] == "2024-07-11"
     assert payload["latest_as_of"] is None
+    assert payload["latest_as_of_label"] == "not reported"
+
+
+@pytest.mark.asyncio
+async def test_season_scope_label_needs_no_competition_lookup() -> None:
+    """A season scope is named from the key itself, without a database read."""
+    db = AsyncMock()
+
+    assert await resolve_scope_label(db, "season:2026") == "2026 Summer League"
+    db.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_competition_scope_label_falls_back_without_leaking_the_key() -> None:
+    """An unresolvable competition still yields a label, never the raw key."""
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    db.execute.return_value = result
+
+    label = await resolve_scope_label(db, "competition:42")
+
+    assert label == "Summer League"
+    assert "42" not in label
