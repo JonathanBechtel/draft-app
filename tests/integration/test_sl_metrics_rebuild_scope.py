@@ -57,6 +57,7 @@ from app.services.summer_league.audit import audit_summer_league_raw
 from app.services.summer_league import metrics
 from app.services.summer_league.metrics import game_score_line, rebuild
 from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.stats.registry import METRIC_REGISTRY_VERSION
 from app.services.summer_league.metric_publish import publish_metric_version
 from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.conftest import make_player
@@ -546,6 +547,13 @@ async def test_metric_publish_stamps_source_watermark_and_hides_candidates(
     )
     assert current_context.as_of == watermark
     assert current_seasons and all(row.as_of == watermark for row in current_seasons)
+    # Published rows carry the stat-engine registry version they were built
+    # under, so a registry bump is auditable from the projection itself rather
+    # than only from the rebuild summary.
+    assert current_context.registry_version == METRIC_REGISTRY_VERSION
+    assert all(
+        row.registry_version == METRIC_REGISTRY_VERSION for row in current_seasons
+    )
 
 
 def _scoped_projection(result: metrics.ComputeResult, competition_id: int) -> tuple:
