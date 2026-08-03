@@ -11,6 +11,19 @@ import pytest
 from app.services.summer_league import metric_publish
 
 
+def _empty_projection_result(newer_competition_ids: list[int]) -> SimpleNamespace:
+    """Return a result usable by every read the publisher issues before the flip.
+
+    ``scalars().all()`` feeds the newer-version guard; the bare ``all()`` feeds the
+    candidate-presence guard, whose empty grouping means "no scope holds current
+    rows", so nothing is demoted and nothing can have vanished.
+    """
+    return SimpleNamespace(
+        scalars=lambda: SimpleNamespace(all=lambda: newer_competition_ids),
+        all=lambda: [],
+    )
+
+
 def _fit_result() -> SimpleNamespace:
     """Return the small fit-shaped object consumed by the publisher."""
     return SimpleNamespace(
@@ -89,16 +102,14 @@ async def test_publish_metric_version_flips_full_projection_and_fit() -> None:
     db = MagicMock()
     db.execute = AsyncMock()
     db.flush = AsyncMock()
-    db.execute.return_value = SimpleNamespace(
-        scalars=lambda: SimpleNamespace(all=lambda: [])
-    )
+    db.execute.return_value = _empty_projection_result([])
 
     await metric_publish.publish_metric_version(
         db, version=9, model_version="candidate"
     )
 
     assert db.flush.await_count == 1
-    assert db.execute.await_count == 7
+    assert db.execute.await_count == 9
 
 
 @pytest.mark.asyncio
@@ -107,9 +118,7 @@ async def test_publish_metric_version_stamps_input_watermark_on_promoted_rows() 
     db = MagicMock()
     db.execute = AsyncMock()
     db.flush = AsyncMock()
-    db.execute.return_value = SimpleNamespace(
-        scalars=lambda: SimpleNamespace(all=lambda: [])
-    )
+    db.execute.return_value = _empty_projection_result([])
     watermark = datetime(2026, 7, 28, 12, 0)
 
     await metric_publish.publish_metric_version(
@@ -121,10 +130,10 @@ async def test_publish_metric_version_stamps_input_watermark_on_promoted_rows() 
     )
 
     statements = [call.args[0] for call in db.execute.await_args_list]
-    assert "as_of" in str(statements[3])
-    assert "as_of" in str(statements[4])
-    assert "effective_day" in str(statements[3])
-    assert "effective_day" in str(statements[4])
+    assert "as_of" in str(statements[5])
+    assert "as_of" in str(statements[6])
+    assert "effective_day" in str(statements[5])
+    assert "effective_day" in str(statements[6])
 
 
 @pytest.mark.asyncio
@@ -133,14 +142,12 @@ async def test_publish_metric_version_scopes_the_pointer_flip() -> None:
     db = MagicMock()
     db.execute = AsyncMock()
     db.flush = AsyncMock()
-    db.execute.return_value = SimpleNamespace(
-        scalars=lambda: SimpleNamespace(all=lambda: [])
-    )
+    db.execute.return_value = _empty_projection_result([])
 
     await metric_publish.publish_metric_version(db, version=10, competition_ids={3, 5})
 
     assert db.flush.await_count == 1
-    assert db.execute.await_count == 5
+    assert db.execute.await_count == 7
 
 
 @pytest.mark.asyncio
@@ -149,20 +156,18 @@ async def test_publish_metric_version_skips_newer_current_scope() -> None:
     db = MagicMock()
     db.execute = AsyncMock()
     db.flush = AsyncMock()
-    db.execute.return_value = SimpleNamespace(
-        scalars=lambda: SimpleNamespace(all=lambda: [3])
-    )
+    db.execute.return_value = _empty_projection_result([3])
 
     await metric_publish.publish_metric_version(db, version=9, competition_ids={3, 5})
 
     assert db.flush.await_count == 1
-    assert db.execute.await_count == 5
+    assert db.execute.await_count == 7
     statements = [call.args[0] for call in db.execute.await_args_list]
-    assert "published_at" not in str(statements[1])
-    assert "published_at" not in str(statements[2])
-    assert "published_at" in str(statements[3])
-    assert "published_at" in str(statements[4])
-    assert all("NOT IN" in str(statement) for statement in statements[1:])
+    assert "published_at" not in str(statements[3])
+    assert "published_at" not in str(statements[4])
+    assert "published_at" in str(statements[5])
+    assert "published_at" in str(statements[6])
+    assert all("NOT IN" in str(statement) for statement in statements[3:])
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,10 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricModel,
     SummerLeaguePlayerSeason,
 )
+from app.services.summer_league.metric_publish_guards import (
+    assert_candidate_still_present,
+    newer_current_competition_ids,
+)
 
 # These are intentionally separate from the Competition Context registry versions.
 # The player-season projection has its own formula and aggregation contract.
@@ -157,42 +161,6 @@ async def next_metric_version(db: AsyncSession) -> int:
     return max(int(season_max or 0), int(context_max or 0)) + 1
 
 
-async def _newer_current_competition_ids(
-    db: AsyncSession,
-    *,
-    version: int,
-    competition_ids: set[int] | frozenset[int] | None,
-) -> set[int]:
-    """Return scopes already published at a version newer than the candidate.
-
-    A full rebuild can finish after a scoped Desk tick has published a later
-    version. The context and player-season projections must make the same
-    per-competition decision, so the guard considers both tables.
-    """
-    context_query = select(  # type: ignore[call-overload]
-        SummerLeagueMetricContext.competition_id
-    ).where(
-        SummerLeagueMetricContext.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeagueMetricContext.version > version,  # type: ignore[operator]
-    )
-    season_query = select(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.competition_id
-    ).where(
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.version > version,  # type: ignore[operator]
-    )
-    if competition_ids is not None:
-        context_query = context_query.where(
-            SummerLeagueMetricContext.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
-        )
-        season_query = season_query.where(
-            SummerLeaguePlayerSeason.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
-        )
-
-    rows = (await db.execute(context_query.union(season_query))).scalars().all()
-    return {int(competition_id) for competition_id in rows}
-
-
 async def publish_metric_version(  # noqa: PLR0913
     db: AsyncSession,
     *,
@@ -215,13 +183,21 @@ async def publish_metric_version(  # noqa: PLR0913
     from the rebuild input and never substitutes for ``as_of``. A failed caller
     transaction therefore leaves the previous current version untouched.
 
+    Every scope about to be demoted is checked for candidate rows first, so a
+    candidate that vanished after staging fails the publication loudly instead of
+    emptying those scopes.
+
     Returns:
         Competition IDs whose newer current publication prevented this candidate
         from flipping that scope. Callers that materialize dependent read models
         should discard candidate-derived writes when this set is non-empty.
+
+    Raises:
+        MetricCandidateVanishedError: If a scope that would be demoted has no row
+            staged at ``version``.
     """
     published_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    newer_competition_ids = await _newer_current_competition_ids(
+    newer_competition_ids = await newer_current_competition_ids(
         db,
         version=version,
         competition_ids=competition_ids,
@@ -233,6 +209,16 @@ async def publish_metric_version(  # noqa: PLR0913
             version,
             sorted(newer_competition_ids),
         )
+
+    # Runs before any demotion, inside the caller's locked publication
+    # transaction, so compaction cannot remove the candidate between this check
+    # and the flip below.
+    await assert_candidate_still_present(
+        db,
+        version=version,
+        competition_ids=competition_ids,
+        skipped_competition_ids=newer_competition_ids,
+    )
 
     season_scope: Any = (
         SummerLeaguePlayerSeason.competition_id.in_(  # type: ignore[attr-defined]
