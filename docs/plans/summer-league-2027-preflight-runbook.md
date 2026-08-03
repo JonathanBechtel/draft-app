@@ -13,7 +13,7 @@ Origin: ticket #718, filed from the post-merge review of PR #706 (`390b9b7`) rec
 `docs/plans/summer-league-remediation-roadmap.md`'s Phase 1 status section. Master reference:
 #743.
 
-Historical trend archive (dev/staging first): `scripts/backfill_sl_daily_trend_versions.py --year YYYY --dry-run` (ticket #759; use the same `with-db-env.sh` wrapper before a real run).
+Historical trend archive (dev/staging first): `scripts/backfill_sl_daily_trend_versions.py --year YYYY --dry-run` (ticket #759; use the same `with-db-env.sh` wrapper before a real run). Its operating notes — including why trend modules are **expected** to render empty on a fresh prod deploy — are in [Historical trend archive](#historical-trend-archive--operating-notes) below.
 
 ## Why this exists
 
@@ -389,6 +389,93 @@ of stopped at T-14d, is worth revisiting: if the 2027 promotion succeeded, it sh
 stopped; if it's still running post-event, that's a leftover from an incomplete promotion, not
 a wind-down artifact, and should be investigated before the next event rather than left for
 2028.
+
+---
+
+## Historical trend archive — operating notes
+
+Owner: same as above. Script: `scripts/backfill_sl_daily_trend_versions.py` (ticket #759).
+This section is not tied to a T-minus date; it applies any time the trend surfaces are
+deployed to an environment whose history has never been stamped.
+
+### 1. Empty trend modules after a deploy are **expected**, not a regression
+
+The trend read (`app/services/summer_league/metric_trends.py`) requires a non-NULL
+`effective_day` on `summer_league_player_seasons`. That is deliberate — a job timestamp
+(`published_at`) is not evidence of *which event day* a projection describes, so the read
+does **not** fall back to it (the fallback was removed in `42f459a`). Compaction is
+deliberately asymmetric here: it *does* coalesce a NULL `effective_day` to the Eastern date
+of `published_at`, purely so legacy rows stay retention-eligible.
+
+The practical consequence: **every projection row written before the `effective_day` column
+shipped is invisible to trends.** On a freshly deployed environment the trend modules render
+empty even though the projection tables are full and every other Summer League surface is
+healthy. A post-deploy smoke check must not read this as a regression.
+
+The state clears in two ways:
+
+- run `scripts/backfill_sl_daily_trend_versions.py` (see §2), which stamps every historical
+  competition/day close; and/or
+- let the next organic rebuild run — new projections stamp `effective_day` themselves, so
+  trends begin filling in from the deploy date forward without any operator action.
+
+Read-only confirmation that "empty" is the legacy-row case and not a broken read:
+
+```bash
+ENV_FILE=.env.sl-desk-prod scripts/with-db-env.sh conda run -n draftguru --no-capture-output \
+  python scripts/backfill_sl_daily_trend_versions.py --dry-run
+```
+
+A dry run writes nothing. It probes each competition/day for an existing archival close and
+prints one `DRY-RUN status=pending|archived ...` line per target plus a summary with
+`pending=` and estimated row counts (`est_contexts=` / `est_seasons=`). A large `pending=`
+with `archived=0` is exactly the expected pre-backfill state; re-running after a real run
+should show the same targets as `archived`. Because the probe runs in both modes, the
+dry-run counts are directly comparable before and after — use them as the "measured row
+counts before prod" evidence.
+
+### 2. Run the full historical sweep off-season / during idle hours — **[MUTATES DATA]**
+
+Each `(competition, day)` target bootstraps a **fresh through-day fit over the entire `<= day`
+source pool** and holds the shared Summer League writer lock
+(`app/services/summer_league/write_lock.py`) for the whole compute-plus-publish transaction.
+One target is short; a full 2017-present sweep is hundreds of them back to back, and it would
+occupy that lock long enough to **starve the Desk tick** if run during a live event.
+
+So: run the unrestricted sweep off-season. During an event, only ever run a `--year`-scoped
+repair (e.g. recovering daily closes lost to an in-event outage), and expect it to contend
+with the Desk. The `--year` upper bound tracks the current Eastern year automatically, so a
+future season is always repairable.
+
+```bash
+# staging/dev first -- no ENV_FILE prefix
+scripts/with-db-env.sh conda run -n draftguru --no-capture-output \
+  python scripts/backfill_sl_daily_trend_versions.py --year 2026
+
+# [MUTATES DATA] prod, off-season, after the dry run above looks right
+ENV_FILE=.env.sl-desk-prod scripts/with-db-env.sh conda run -n draftguru --no-capture-output \
+  python scripts/backfill_sl_daily_trend_versions.py
+```
+
+The job is idempotent and re-run safe: a target that already has a complete archival close is
+skipped, so an interrupted sweep can simply be re-run. Targets are independent — one that
+fails (no complete projection for that day, a lock-acquisition timeout, a transient fault) is
+skipped, listed under `FAILED TARGETS` in the summary, and the process exits **1**. A non-zero
+exit with `archived>0` therefore means *partial* success: read the failure list, fix or accept
+those days, and re-run (already-archived targets will no-op).
+
+### 3. Known audit noise: `archive-<cid>-<day>` model rows
+
+Each target writes one inactive `summer_league_metric_models` row named
+`archive-<competition_id>-<day>`, so a full sweep leaves a few hundred of them. There is
+deliberately **no cleanup path**: `summer_league_player_seasons.model_version` references
+these rows by name, so deleting them would strip the provenance of the very archival closes
+the sweep exists to create. Treat them as retained audit trail, not leakage. To eyeball the
+volume:
+
+```sql
+SELECT count(*) FROM summer_league_metric_models WHERE model_version LIKE 'archive-%';
+```
 
 ---
 
