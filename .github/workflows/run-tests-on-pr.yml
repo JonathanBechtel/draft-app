@@ -111,6 +111,37 @@ jobs:
       - name: Complexity ratchet
         run: python scripts/check_complexity_ratchet.py
 
+      - name: Request transaction policy (no commit/rollback in request code)
+        # These three guards run in pre-commit too, but pre-commit is bypassable
+        # (--no-verify, a clone without hooks installed, an agent worktree) and
+        # only sees staged files. CI is the enforcing copy.
+        #
+        # The file list is passed explicitly and mirrors the hook's `files:`
+        # pattern: all three scripts scan only the paths given in argv and exit 0
+        # on an empty list, so a bare invocation would pass vacuously. The empty
+        # match is therefore failed loudly.
+        #
+        # Piped through xargs rather than splatting $files: xargs splits on
+        # newlines in any shell (unquoted expansion does not word-split under
+        # zsh, so a splat would silently pass one giant path), and it exits 123
+        # if any invocation fails, so a multi-batch run cannot mask a violation.
+        run: |
+          files=$(git ls-files '*.py' | grep -E '^app/(routes|services)/' || true)
+          [ -n "$files" ] || { echo "::error::no files matched app/(routes|services) — guard would pass vacuously"; exit 1; }
+          printf '%s\n' "$files" | xargs python scripts/check_request_transaction_policy.py
+
+      - name: Route conventions (response_model, status_code, DI, TemplateResponse)
+        run: |
+          files=$(git ls-files '*.py' | grep -E '^app/routes/' || true)
+          [ -n "$files" ] || { echo "::error::no files matched app/routes — guard would pass vacuously"; exit 1; }
+          printf '%s\n' "$files" | xargs python scripts/check_route_conventions.py
+
+      - name: Unscoped delete ban (P2 — retain history by default)
+        run: |
+          files=$(git ls-files '*.py' | grep -E '^(app|scripts)/' || true)
+          [ -n "$files" ] || { echo "::error::no files matched app|scripts — guard would pass vacuously"; exit 1; }
+          printf '%s\n' "$files" | xargs python scripts/check_unscoped_delete.py
+
       - name: Runtime entrypoint boundary (app/cli vs scripts)
         # Fails if a Fly cron entrypoint points at scripts/, or if anything under
         # app/ grows a new `import scripts.*`. See CLAUDE.md "Executable code
@@ -251,6 +282,37 @@ jobs:
 
       - name: Complexity ratchet
         run: python scripts/check_complexity_ratchet.py
+
+      - name: Request transaction policy (no commit/rollback in request code)
+        # These three guards run in pre-commit too, but pre-commit is bypassable
+        # (--no-verify, a clone without hooks installed, an agent worktree) and
+        # only sees staged files. CI is the enforcing copy.
+        #
+        # The file list is passed explicitly and mirrors the hook's `files:`
+        # pattern: all three scripts scan only the paths given in argv and exit 0
+        # on an empty list, so a bare invocation would pass vacuously. The empty
+        # match is therefore failed loudly.
+        #
+        # Piped through xargs rather than splatting $files: xargs splits on
+        # newlines in any shell (unquoted expansion does not word-split under
+        # zsh, so a splat would silently pass one giant path), and it exits 123
+        # if any invocation fails, so a multi-batch run cannot mask a violation.
+        run: |
+          files=$(git ls-files '*.py' | grep -E '^app/(routes|services)/' || true)
+          [ -n "$files" ] || { echo "::error::no files matched app/(routes|services) — guard would pass vacuously"; exit 1; }
+          printf '%s\n' "$files" | xargs python scripts/check_request_transaction_policy.py
+
+      - name: Route conventions (response_model, status_code, DI, TemplateResponse)
+        run: |
+          files=$(git ls-files '*.py' | grep -E '^app/routes/' || true)
+          [ -n "$files" ] || { echo "::error::no files matched app/routes — guard would pass vacuously"; exit 1; }
+          printf '%s\n' "$files" | xargs python scripts/check_route_conventions.py
+
+      - name: Unscoped delete ban (P2 — retain history by default)
+        run: |
+          files=$(git ls-files '*.py' | grep -E '^(app|scripts)/' || true)
+          [ -n "$files" ] || { echo "::error::no files matched app|scripts — guard would pass vacuously"; exit 1; }
+          printf '%s\n' "$files" | xargs python scripts/check_unscoped_delete.py
 
       - name: Runtime entrypoint boundary (app/cli vs scripts)
         # Fails if a Fly cron entrypoint points at scripts/, or if anything under
