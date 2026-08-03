@@ -34,7 +34,7 @@ rather than folding it into the daily-rank logic here.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timezone
+from datetime import date, datetime, time, timezone
 from typing import Any
 
 from sqlalchemy import Date, cast, delete, func, select
@@ -84,23 +84,32 @@ async def _delete_superseded_closed_day_rows(
     *,
     model: Any,
     scope_columns: tuple[Any, ...],
-    cutoff: datetime,
-    event_day_cutoff: Any | None = None,
+    event_day_cutoff: date,
 ) -> int:
-    """Delete superseded published/unpublished rows from closed source days."""
+    """Delete superseded published/unpublished rows from closed event days.
+
+    Args:
+        db: Active database session; the caller owns the transaction and lock.
+        model: Projection table to compact.
+        scope_columns: Columns that identify one history series.
+        event_day_cutoff: First Eastern event day that is still open. Rows on or
+            after it are left alone. The caller derives it from its own clock so
+            this function never has to guess a boundary from a UTC instant.
+
+    Returns:
+        The number of rows deleted.
+    """
     # ``effective_day`` is the event calendar day and is the primary history
     # partition. Legacy published rows predate that column, so derive their
-    # day from the publication stamp in Eastern time. ``as_of`` is source
+    # day from the publication stamp in Eastern time -- note this is deliberately
+    # *not* symmetric with the trend read, which requires an explicit
+    # ``effective_day`` and treats legacy rows as invisible. ``as_of`` is source
     # currency and must never influence trend ordering/retention.
     legacy_day = cast(
         func.timezone("America/New_York", func.timezone("UTC", model.published_at)),
         Date,
     )
     source_day = func.coalesce(model.effective_day, legacy_day)
-    # ``cutoff`` is normalized to UTC midnight for the existing job contract;
-    # compare event days against that instant's Eastern calendar date so a run
-    # just after UTC midnight does not close the still-current Eastern day.
-    event_day_cutoff = event_day_cutoff or to_eastern_date(cutoff)
     publication_state = model.published_at.is_(None)
     ranked = (
         select(
@@ -167,6 +176,9 @@ async def compact_metric_versions(
         Counts of deleted context and player-season rows plus the cutoff.
     """
     reference_now = now or datetime.now(timezone.utc)
+    # ``cutoff`` is reported for the existing job contract; retention itself is
+    # decided entirely by the Eastern event day so a run just after UTC midnight
+    # does not close the still-current Eastern day.
     cutoff = _closed_day_cutoff(reference_now)
     event_day_cutoff = to_eastern_date(reference_now)
     await acquire_summer_league_writer_lock_bounded(
@@ -176,7 +188,6 @@ async def compact_metric_versions(
         db,
         model=SummerLeagueMetricContext,
         scope_columns=(SummerLeagueMetricContext.competition_id,),
-        cutoff=cutoff,
         event_day_cutoff=event_day_cutoff,
     )
     season_rows_deleted = await _delete_superseded_closed_day_rows(
@@ -186,7 +197,6 @@ async def compact_metric_versions(
             SummerLeaguePlayerSeason.competition_id,
             SummerLeaguePlayerSeason.player_id,
         ),
-        cutoff=cutoff,
         event_day_cutoff=event_day_cutoff,
     )
     return MetricCompactionSummary(

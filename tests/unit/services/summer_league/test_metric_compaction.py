@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -34,7 +34,7 @@ async def test_delete_helper_returns_database_rowcount() -> None:
         db,
         model=SummerLeagueMetricContext,
         scope_columns=(SummerLeagueMetricContext.competition_id,),
-        cutoff=datetime(2026, 7, 7),
+        event_day_cutoff=date(2026, 7, 7),
     )
 
     assert deleted == 4

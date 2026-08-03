@@ -135,8 +135,14 @@ class SummerLeagueMetricContext(DatedVersionMixin, SQLModel, table=True):  # typ
     # distinguishes an abandoned/in-flight candidate from a published daily close.
     published_at: Optional[datetime] = Field(default=None)
     # Event calendar day (Eastern), deliberately separate from ``as_of`` source
-    # currency. Legacy rows may leave this NULL; the trend read/compaction paths
-    # fall back to the historical ``published_at`` day until they are backfilled.
+    # currency. Legacy rows may leave this NULL, and the two consumers treat that
+    # asymmetrically on purpose:
+    #   * the trend read requires an explicit day (``metric_trends.py`` -- job
+    #     timestamps are not event evidence), so a NULL row is simply invisible to
+    #     trends until ``scripts/backfill_sl_daily_trend_versions.py`` stamps it;
+    #   * compaction still coalesces NULL to the Eastern date of ``published_at``
+    #     (``metric_compaction.py``) so legacy rows stay retention-eligible rather
+    #     than accumulating forever.
     effective_day: Optional[date] = Field(default=None)
     is_archival: bool = Field(default=False, nullable=False)
     competition_id: int = Field(
@@ -219,8 +225,14 @@ class SummerLeaguePlayerSeason(DatedVersionMixin, SQLModel, table=True):  # type
     # distinguishes an abandoned/in-flight candidate from a published daily close.
     published_at: Optional[datetime] = Field(default=None)
     # Event calendar day (Eastern), deliberately separate from ``as_of`` source
-    # currency. Legacy rows may leave this NULL; the trend read/compaction paths
-    # fall back to the historical ``published_at`` day until they are backfilled.
+    # currency. Legacy rows may leave this NULL, and the two consumers treat that
+    # asymmetrically on purpose:
+    #   * the trend read requires an explicit day (``metric_trends.py`` -- job
+    #     timestamps are not event evidence), so a NULL row is simply invisible to
+    #     trends until ``scripts/backfill_sl_daily_trend_versions.py`` stamps it;
+    #   * compaction still coalesces NULL to the Eastern date of ``published_at``
+    #     (``metric_compaction.py``) so legacy rows stay retention-eligible rather
+    #     than accumulating forever.
     effective_day: Optional[date] = Field(default=None)
     is_archival: bool = Field(default=False, nullable=False)
     # Daily-close cohort distributions are derived offline with the player
