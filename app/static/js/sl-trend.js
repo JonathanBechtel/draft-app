@@ -3,6 +3,7 @@
   "use strict";
 
   const COLORS = { gmsc: "#2563eb", ts_pct: "#d97706", bpm: "#e11d48" };
+  const exportFailureTimers = new WeakMap();
   const NS = "http://www.w3.org/2000/svg";
   const chartBox = { left: 48, right: 742, top: 22, bottom: 300 };
 
@@ -56,10 +57,11 @@
       label.textContent = metric.label;
       svg.appendChild(label);
       metricPoints.forEach((point) => {
-        const circle = svgNode("circle", { cx: xFor(point.effective_day), cy: yFor(point.value), r: 5, class: "trend-card__point", fill: color, stroke: "white", "stroke-width": 2, "data-trend-point": "true", tabindex: 0 });
+        const display = formatValue(key, point.value);
+        const circle = svgNode("circle", { cx: xFor(point.effective_day), cy: yFor(point.value), r: 5, class: "trend-card__point", fill: color, stroke: "white", "stroke-width": 2, "data-trend-point": "true", tabindex: 0, role: "button", "aria-label": `${metric.label} ${point.effective_day} ${display}` });
         circle.dataset.metric = key;
         circle.dataset.day = point.effective_day;
-        circle.dataset.value = formatValue(key, point.value);
+        circle.dataset.value = display;
         svg.appendChild(circle);
       });
     });
@@ -68,6 +70,23 @@
       label.textContent = day.slice(5);
       svg.appendChild(label);
     });
+  }
+
+  function reportExportFailure(root, button) {
+    // A failed export is otherwise silent: the button re-enables and nothing
+    // happens, so the reader cannot tell a dead click from a slow one.
+    const tooltip = root.querySelector("[data-trend-tooltip]");
+    if (tooltip) tooltip.textContent = "Share export failed · try again";
+    if (!button) return;
+    if (exportFailureTimers.has(button)) window.clearTimeout(exportFailureTimers.get(button));
+    else button.dataset.trendShareLabel = button.textContent;
+    button.textContent = "Export failed";
+    button.classList.add("is-error");
+    exportFailureTimers.set(button, window.setTimeout(() => {
+      button.textContent = button.dataset.trendShareLabel || "Share PNG";
+      button.classList.remove("is-error");
+      exportFailureTimers.delete(button);
+    }, 4000));
   }
 
   async function exportTrend(root, payload) {
@@ -87,6 +106,7 @@
       link.click();
     } catch (error) {
       console.error(error);
+      reportExportFailure(root, button);
     } finally {
       if (button) button.disabled = false;
     }
@@ -108,9 +128,19 @@
       });
     });
     const tooltip = root.querySelector("[data-trend-tooltip]");
-    root.querySelector("[data-trend-chart]")?.addEventListener("click", (event) => {
-      const point = event.target.closest("[data-trend-point]");
+    const announce = (point) => {
       if (point && tooltip) tooltip.textContent = `${point.dataset.metric.toUpperCase()} · ${point.dataset.day} · ${point.dataset.value}`;
+    };
+    const chart = root.querySelector("[data-trend-chart]");
+    chart?.addEventListener("click", (event) => announce(event.target.closest("[data-trend-point]")));
+    // Points are focusable, so keyboard users must get the same read-out a
+    // click gives; Space additionally must not scroll the page.
+    chart?.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar") return;
+      const point = event.target.closest?.("[data-trend-point]");
+      if (!point) return;
+      event.preventDefault();
+      announce(point);
     });
     root.querySelector("[data-trend-share]")?.addEventListener("click", () => exportTrend(root, payload));
   }

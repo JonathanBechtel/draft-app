@@ -1127,7 +1127,8 @@
   window.SUMMER_LEAGUE_DATA = {{ summer_league | tojson | safe }};
   // Shot chart payload (career zone rollup); null when no shot data.
   window.SL_SHOTCHART = {{ sl_shotchart | tojson | safe }};
-  window.DRAFTGURU_TREND = {{ sl_trend | tojson | safe }};
+  {# The trend payload is read from the macro's `data-trend-payload` script tag;
+     it is deliberately not duplicated onto a global. #}
 </script>
 <script src="{{ url_for('static', path='js/player-detail.js') }}"></script>
 <script src="{{ url_for('static', path='js/film-room.js') }}"></script>

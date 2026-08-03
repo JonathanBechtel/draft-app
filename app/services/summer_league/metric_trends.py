@@ -16,6 +16,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.summer_league_trends import TrendCohortBand, TrendPoint
+from app.schemas.summer_league import SummerLeagueCompetition
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.stats.registry import get_metric
 
@@ -25,6 +26,19 @@ TREND_METRIC_LABELS: dict[str, str] = {
     "bpm": "BPM",
 }
 TREND_METRIC_KEYS = ("gmsc", "ts_pct", "bpm")
+
+#: Rendering format for source currency, shared with the Explorer's freshness
+#: labels (``_explorer_results.html``) so one surface never reads as an ISO
+#: timestamp while its sibling reads as a human label.
+AS_OF_LABEL_FORMAT = "%Y-%m-%d %H:%M UTC"
+
+#: Shown when a scope's newest daily close has no reported source watermark;
+#: matches the Explorer's wording for the same unknown state.
+AS_OF_UNKNOWN_LABEL = "not reported"
+
+#: Last-resort scope label. A scope key is an internal database identifier and
+#: must never surface to a reader, least of all on a shared PNG.
+FALLBACK_SCOPE_LABEL = "Summer League"
 
 
 def latest_trend_as_of(points: Sequence[TrendPoint]) -> datetime | None:
@@ -54,6 +68,34 @@ def _scope_filter(scope_key: str) -> tuple[str, int]:
     if value < 1:
         raise ValueError(f"scope_key value must be positive: {scope_key!r}")
     return kind, value
+
+
+async def resolve_scope_label(db: AsyncSession, scope_key: str) -> str:
+    """Return a reader-facing label for a stable scope key.
+
+    Scope keys are internal identifiers (``competition:42``). Any surface a
+    person reads -- and especially a share card that leaves the site -- must
+    show the event's own name instead. The label is resolved server-side from
+    the canonical competition row rather than accepted from a caller, so an
+    export request can never inject arbitrary text into a rendered PNG.
+
+    Args:
+        db: Active async session; the caller owns the transaction.
+        scope_key: ``competition:<id>`` or ``season:<year>``.
+
+    Returns:
+        The competition's display name, a season label, or a neutral fallback
+        when the scope has no canonical row.
+    """
+    scope_kind, scope_value = _scope_filter(scope_key)
+    if scope_kind == "season":
+        return f"{scope_value} Summer League"
+    display_name_column: Any = getattr(SummerLeagueCompetition, "display_name")
+    id_column: Any = getattr(SummerLeagueCompetition, "id")
+    display_name = (
+        await db.execute(select(display_name_column).where(id_column == scope_value))
+    ).scalar_one_or_none()
+    return str(display_name) if display_name else FALLBACK_SCOPE_LABEL
 
 
 def _validate_metric_keys(metric_keys: Sequence[str]) -> tuple[str, ...]:
@@ -296,7 +338,14 @@ def trend_points_to_context(
         ],
         "points": [point.model_dump(mode="json") for point in ordered],
         "latest_effective_day": latest_day.isoformat(),
+        # The ISO value stays machine-readable (``<time datetime>``, clients);
+        # the label is what a reader sees, formatted like the Explorer.
         "latest_as_of": latest_as_of.isoformat() if latest_as_of else None,
+        "latest_as_of_label": (
+            latest_as_of.strftime(AS_OF_LABEL_FORMAT)
+            if latest_as_of
+            else AS_OF_UNKNOWN_LABEL
+        ),
         "single_point": len({point.effective_day for point in ordered}) == 1,
     }
 

@@ -377,6 +377,9 @@ async def test_trend_share_model_reads_real_daily_close_rows(
     assert model.single_point is True
     assert {line.key for line in model.lines} == {"gmsc", "ts_pct", "bpm"}
     assert model.as_of == "2026-07-20"
+    # The exported card names the competition; the scope key is internal.
+    assert model.subtitle == "Trend Share Model · cumulative through day"
+    assert f"competition:{competition.id}" not in model.subtitle
 
 
 @pytest.mark.asyncio

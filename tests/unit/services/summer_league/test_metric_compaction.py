@@ -69,6 +69,42 @@ async def test_compaction_acquires_lock_and_compacts_both_projection_tables(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("grace_hours", "expected_cutoff"),
+    [
+        (6.0, datetime(2026, 7, 7, 22)),
+        (0, None),
+    ],
+)
+async def test_compaction_derives_the_in_flight_candidate_grace_cutoff(
+    monkeypatch: pytest.MonkeyPatch,
+    grace_hours: float,
+    expected_cutoff: datetime | None,
+) -> None:
+    """The grace window becomes a naive-UTC birth cutoff, or None when disabled."""
+    delete_rows = AsyncMock(side_effect=[0, 0])
+    monkeypatch.setattr(
+        metric_compaction,
+        "acquire_summer_league_writer_lock_bounded",
+        AsyncMock(),
+    )
+    monkeypatch.setattr(
+        metric_compaction, "_delete_superseded_closed_day_rows", delete_rows
+    )
+
+    await metric_compaction.compact_metric_versions(
+        AsyncMock(),
+        now=datetime(2026, 7, 8, 4, tzinfo=timezone.utc),
+        candidate_grace_hours=grace_hours,
+    )
+
+    assert all(
+        call.kwargs["candidate_grace_cutoff"] == expected_cutoff
+        for call in delete_rows.await_args_list
+    )
+
+
+@pytest.mark.asyncio
 async def test_compaction_uses_the_configured_bounded_lock_wait(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
