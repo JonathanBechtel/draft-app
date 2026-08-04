@@ -84,7 +84,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskSlate,
     SummerLeagueDeskStoryline,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.event_desk.controller import TICK_INTERVAL
 from app.services.event_desk.lifecycle import lifecycle_phase, resolve_home_owner
 from app.services.event_desk.payload import (
@@ -1559,7 +1559,7 @@ def _r3(value: Optional[float]) -> Optional[float]:
     return round(value, 3) if value is not None else None
 
 
-def _pooled_possessions(rows: Sequence[SummerLeaguePlayerSeason]) -> Optional[float]:
+def _pooled_possessions(rows: Sequence[SummerLeagueDerivedAgg]) -> Optional[float]:
     """Pace-covered possessions extrapolated across a player's pooled venue rows.
 
     Mirrors the denominator `summer_league_explorer_service.rollup_recombinable`
@@ -1571,7 +1571,7 @@ def _pooled_possessions(rows: Sequence[SummerLeaguePlayerSeason]) -> Optional[fl
     only the covered slice. ``None`` when no pooled row carries pace data.
 
     Args:
-        rows: A player's pooled ``SummerLeaguePlayerSeason`` rows for one event.
+        rows: A player's pooled ``SummerLeagueDerivedAgg`` rows for one event.
 
     Returns:
         Extrapolated possessions, or ``None`` when no row has pace data.
@@ -1585,11 +1585,11 @@ def _pooled_possessions(rows: Sequence[SummerLeaguePlayerSeason]) -> Optional[fl
 
 
 def _build_stat_columns(
-    rows: Sequence[SummerLeaguePlayerSeason], stat_view: str
+    rows: Sequence[SummerLeagueDerivedAgg], stat_view: str
 ) -> dict[str, Optional[float]]:
     """The Box/Per-36/Per-100/Advanced middle block for one Class Tracker row.
 
-    ``rows`` is one player's pooled ``SummerLeaguePlayerSeason`` rows across
+    ``rows`` is one player's pooled ``SummerLeagueDerivedAgg`` rows across
     every venue in the event cluster for the event year (the same pool
     `_assemble_tracker`'s fixed-frame GP/MIN/GmSc blend uses). A player with no
     rows (e.g. rostered but hasn't debuted yet -- GP=0) returns every column
@@ -1763,21 +1763,21 @@ async def _assemble_tracker(
     # Full rows (not just the gp/minutes/gmsc slice) so `_build_stat_columns`
     # has box totals + advanced composites to pool per player, across every
     # venue in the event cluster this year.
-    season_stmt = select(SummerLeaguePlayerSeason).where(
-        SummerLeaguePlayerSeason.player_id.in_(member_ids),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.year == event_year,  # type: ignore[arg-type]
+    season_stmt = select(SummerLeagueDerivedAgg).where(
+        SummerLeagueDerivedAgg.player_id.in_(member_ids),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.year == event_year,  # type: ignore[arg-type]
     )
     if metrics_version is None:
         season_stmt = season_stmt.where(
-            SummerLeaguePlayerSeason.is_current.is_(True)  # type: ignore[attr-defined]
+            SummerLeagueDerivedAgg.is_current.is_(True)  # type: ignore[attr-defined]
         )
     else:
         season_stmt = season_stmt.where(
-            SummerLeaguePlayerSeason.version == metrics_version  # type: ignore[arg-type]
+            SummerLeagueDerivedAgg.version == metrics_version  # type: ignore[arg-type]
         )
     season_rows = (await db.execute(season_stmt)).scalars().all()
     events = blend_event_aggregates(season_rows, min_minutes=0.0)
-    season_rows_by_player: dict[int, list[SummerLeaguePlayerSeason]] = defaultdict(list)
+    season_rows_by_player: dict[int, list[SummerLeagueDerivedAgg]] = defaultdict(list)
     for row in season_rows:
         season_rows_by_player[row.player_id].append(row)
 

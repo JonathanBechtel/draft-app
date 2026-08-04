@@ -21,7 +21,7 @@ from app.schemas.summer_league import (
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeagueMetricModel,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services.summer_league.metric_publish import (
     publish_archival_metric_version,
@@ -198,7 +198,7 @@ async def test_backfill_guard_rejects_ordinary_demoted_publications(
         published_at=datetime(2026, 8, 1, 12),
         effective_day=day,
     )
-    season = SummerLeaguePlayerSeason(
+    season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=2021,
@@ -325,7 +325,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
         published_at=datetime(2026, 8, 1, 13),
         as_of=source_watermark,
     )
-    current_season = SummerLeaguePlayerSeason(
+    current_season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=2017,
@@ -348,7 +348,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
         is_current=False,
         effective_day=date(2017, 7, 9),
     )
-    archival_season = SummerLeaguePlayerSeason(
+    archival_season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=2017,
@@ -402,7 +402,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
         SummerLeagueMetricContext, current_context_id
     )
     current_season_after = await db_session.get(
-        SummerLeaguePlayerSeason, current_season_id
+        SummerLeagueDerivedAgg, current_season_id
     )
     assert current_context_after is not None and current_season_after is not None
     after = (
@@ -433,8 +433,8 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
     archival_rows = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.version == 99
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.version == 99
                 )
             )
         )
@@ -458,7 +458,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
     assert second.contexts == 0
     assert second.seasons == 0
     db_session.expire_all()
-    archival_after = await db_session.get(SummerLeaguePlayerSeason, archival_season_id)
+    archival_after = await db_session.get(SummerLeagueDerivedAgg, archival_season_id)
     assert archival_after is not None
     assert archival_after.published_at == published_at
     assert archival_after.is_current is False
@@ -484,7 +484,7 @@ async def test_archival_rows_feed_the_public_trend_endpoint(
     player_id = player.id
     day = date(2018, 7, 9)
     db_session.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition_id,
             player_id=player_id,
             year=2018,

@@ -43,7 +43,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskGrain,
     SummerLeagueDeskPlayerGrade,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.event_desk.registry import sync_summer_league_event
 from app.services.event_desk.render_snapshots import (
     RenderSnapshotWrite,
@@ -280,9 +280,9 @@ async def _seed_season(
     ws82: float | None = None,
     bpm: float | None = None,
     adv_eligible: bool = False,
-) -> SummerLeaguePlayerSeason:
+) -> SummerLeagueDerivedAgg:
     assert competition.id is not None and player.id is not None
-    season = SummerLeaguePlayerSeason(
+    season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=year,
@@ -689,7 +689,7 @@ async def test_gp_zero_row_renders_em_dashes(
         db_session, name="Debuting", draft_year=year, draft_round=1, draft_pick=1
     )
     await _roster_player(db_session, competition, team, debut)
-    # No SummerLeaguePlayerSeason row seeded for `debut` -- GP=0 case.
+    # No SummerLeagueDerivedAgg row seeded for `debut` -- GP=0 case.
     await db_session.commit()
     await sync_summer_league_event(db_session, today)
     await db_session.commit()

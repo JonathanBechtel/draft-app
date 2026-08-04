@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import SummerLeagueEdition
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     run_explorer_query,
@@ -91,7 +91,7 @@ async def _seed_retained_history(
     db.add_all(
         [
             # Archival close: published, historical, never current by design.
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 version=1,
                 is_current=False,
                 is_archival=True,
@@ -105,7 +105,7 @@ async def _seed_retained_history(
                 **shared,
             ),
             # Superseded: the version readers used before the latest rebuild.
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 version=2,
                 is_current=False,
                 gp=3,
@@ -118,7 +118,7 @@ async def _seed_retained_history(
                 **shared,
             ),
             # Current: the only version any reader may surface.
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 version=3,
                 is_current=True,
                 gp=CURRENT_GP,
@@ -151,7 +151,7 @@ async def _seed_retained_only_year(
     assert competition.id is not None
     assert player.id is not None
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=year,

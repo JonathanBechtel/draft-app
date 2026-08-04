@@ -12,7 +12,7 @@ player-competition.
 
 Uses ADD COLUMN IF NOT EXISTS so this migration is idempotent on a fresh
 database (where SQLModel.metadata.create_all already reflects the updated
-SummerLeaguePlayerSeason model from a prior create_all call).
+SummerLeagueDerivedAgg model from a prior create_all call).
 """
 
 from typing import Sequence, Union
@@ -33,7 +33,7 @@ def upgrade() -> None:
     """Add nullable assisted-FG count columns.
 
     Guarded with IF NOT EXISTS so a fresh-DB create_all (which already
-    reflects the updated SummerLeaguePlayerSeason model) does not error.
+    reflects the updated SummerLeagueDerivedAgg model) does not error.
     """
     for col in _COLS:
         op.execute(

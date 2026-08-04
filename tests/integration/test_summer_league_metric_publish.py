@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services.summer_league.metric_publish import publish_metric_version
 from tests.integration.conftest import make_player
@@ -45,7 +45,7 @@ async def _projection_rows(
         )
     )
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=spec.competition_id,
             player_id=spec.player_id,
             year=2026,
@@ -145,8 +145,8 @@ async def test_older_full_flip_keeps_newer_scoped_publication_current(
     seasons = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id.in_(  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id.in_(  # type: ignore[attr-defined]
                         [competition_a_id, competition_b_id]
                     )
                 )

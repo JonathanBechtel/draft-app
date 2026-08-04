@@ -1,6 +1,6 @@
 """Read-side service for materialized Summer League advanced metrics.
 
-Reads the pre-computed :class:`SummerLeaguePlayerSeason` rows (one per player +
+Reads the pre-computed :class:`SummerLeagueDerivedAgg` rows (one per player +
 competition) for display. The composite metrics are *league-relative*: PER is
 standardized to 15 within each pool, BPM is re-centered to 0.0 per pool, and Win
 Shares come from each pool's own Pythagorean fit. That recalibration is only
@@ -31,7 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.stats.capabilities import is_computable
 from app.services.stats.formulas import (
     astd_pct_line,
@@ -312,7 +312,7 @@ def _assisted_share(
     return astd_pct_line(ast_fgm=ast_fgm, unast_fgm=unast_fgm)
 
 
-def _to_season(row: SummerLeaguePlayerSeason) -> PlayerMetricSeason:
+def _to_season(row: SummerLeagueDerivedAgg) -> PlayerMetricSeason:
     """Map a materialized row to the display dataclass."""
     return PlayerMetricSeason(
         year=row.year,
@@ -381,11 +381,11 @@ async def get_player_metric_seasons(
         adv-eligible Summer League competition with at least
         :data:`DISPLAY_MIN_MINUTES` minutes, so the caller can omit the view.
     """
-    stmt = select(SummerLeaguePlayerSeason).where(
-        SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
+    stmt = select(SummerLeagueDerivedAgg).where(
+        SummerLeagueDerivedAgg.player_id == player_id,  # type: ignore[arg-type]
+        SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.adv_eligible.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
     )
     rows = list((await db.execute(stmt)).scalars().all())
     if not rows:
@@ -518,7 +518,7 @@ def _first_populated_rung(
     return qualified, applied[0], applied[1]
 
 
-def _leader_values(s: SummerLeaguePlayerSeason) -> dict[str, Optional[float]]:
+def _leader_values(s: SummerLeagueDerivedAgg) -> dict[str, Optional[float]]:
     """Shape one materialized row into display values keyed by leader column."""
     return {
         "min": _round1(s.minutes),
@@ -557,13 +557,13 @@ async def list_adv_competitions(db: AsyncSession) -> list[tuple[int, str]]:
     """Distinct adv-eligible ``(year, venue_slug)``, newest year first, LV first."""
     stmt = (
         select(
-            SummerLeaguePlayerSeason.year,
-            SummerLeaguePlayerSeason.venue_slug,
+            SummerLeagueDerivedAgg.year,
+            SummerLeagueDerivedAgg.venue_slug,
         )  # type: ignore[call-overload]
         .where(
-            SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-            SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
-            SummerLeaguePlayerSeason.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
+            SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+            SummerLeagueDerivedAgg.adv_eligible.is_(True),  # type: ignore[attr-defined]
+            SummerLeagueDerivedAgg.minutes >= DISPLAY_MIN_MINUTES,  # type: ignore[arg-type]
         )
         .distinct()
     )
@@ -650,20 +650,20 @@ async def get_competition_leaders(
         )
 
     conds: list[object] = [
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.year == r_year,  # type: ignore[arg-type]
-        SummerLeaguePlayerSeason.venue_slug == r_venue,  # type: ignore[arg-type]
+        SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.year == r_year,  # type: ignore[arg-type]
+        SummerLeagueDerivedAgg.venue_slug == r_venue,  # type: ignore[arg-type]
     ]
     if calibrated:
-        conds.append(SummerLeaguePlayerSeason.adv_eligible.is_(True))  # type: ignore[attr-defined]
+        conds.append(SummerLeagueDerivedAgg.adv_eligible.is_(True))  # type: ignore[attr-defined]
 
     stmt = (
         select(
-            SummerLeaguePlayerSeason,
+            SummerLeagueDerivedAgg,
             PlayerMaster.slug,
             PlayerMaster.display_name,
         )  # type: ignore[call-overload]
-        .join(PlayerMaster, PlayerMaster.id == SummerLeaguePlayerSeason.player_id)
+        .join(PlayerMaster, PlayerMaster.id == SummerLeagueDerivedAgg.player_id)
         .where(*conds)
     )
     fetched = (await db.execute(stmt)).all()
@@ -698,11 +698,11 @@ async def get_competition_leaders(
 async def _competition_has_rows(db: AsyncSession, year: int, venue_slug: str) -> bool:
     """True when any materialized season row exists for ``(year, venue_slug)``."""
     stmt = (
-        select(SummerLeaguePlayerSeason.id)  # type: ignore[call-overload]
+        select(SummerLeagueDerivedAgg.id)  # type: ignore[call-overload]
         .where(
-            SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-            SummerLeaguePlayerSeason.year == year,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.venue_slug == venue_slug,  # type: ignore[arg-type]
+            SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+            SummerLeagueDerivedAgg.year == year,  # type: ignore[arg-type]
+            SummerLeagueDerivedAgg.venue_slug == venue_slug,  # type: ignore[arg-type]
         )
         .limit(1)
     )
@@ -779,12 +779,12 @@ require_rollup_class(
 
 
 def _blend_leader_values(
-    seasons: list[SummerLeaguePlayerSeason],
+    seasons: list[SummerLeagueDerivedAgg],
 ) -> dict[str, Optional[float]]:
     """Blend a player's adv-eligible pools into one leaderboard line.
 
     Args:
-        seasons: One player's adv-eligible ``SummerLeaguePlayerSeason`` rows
+        seasons: One player's adv-eligible ``SummerLeagueDerivedAgg`` rows
             within the requested scope (a season, a venue, or everything).
 
     Returns:
@@ -850,27 +850,27 @@ async def get_blended_leaders(
         sorts and paginates. ``venue_label`` reads "All venues" when unscoped.
     """
     conds: list[object] = [
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.adv_eligible.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.adv_eligible.is_(True),  # type: ignore[attr-defined]
     ]
     if year is not None:
-        conds.append(SummerLeaguePlayerSeason.year == year)  # type: ignore[arg-type]
+        conds.append(SummerLeagueDerivedAgg.year == year)  # type: ignore[arg-type]
     if venue_slug is not None:
         conds.append(
-            SummerLeaguePlayerSeason.venue_slug == venue_slug  # type: ignore[arg-type]
+            SummerLeagueDerivedAgg.venue_slug == venue_slug  # type: ignore[arg-type]
         )
 
     stmt = (
         select(
-            SummerLeaguePlayerSeason,
+            SummerLeagueDerivedAgg,
             PlayerMaster.slug,
             PlayerMaster.display_name,
         )  # type: ignore[call-overload]
-        .join(PlayerMaster, PlayerMaster.id == SummerLeaguePlayerSeason.player_id)
+        .join(PlayerMaster, PlayerMaster.id == SummerLeagueDerivedAgg.player_id)
         .where(*conds)
     )
 
-    grouped: dict[int, list[SummerLeaguePlayerSeason]] = {}
+    grouped: dict[int, list[SummerLeagueDerivedAgg]] = {}
     meta: dict[int, tuple[Optional[str], str]] = {}
     for season, slug, name in (await db.execute(stmt)).all():
         grouped.setdefault(season.player_id, []).append(season)

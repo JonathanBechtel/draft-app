@@ -12,7 +12,7 @@ from typing import Any, TypeAlias
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.stats.inputs import PlayerSeason
 
 TREND_METRIC_KEYS = ("gmsc", "ts_pct", "bpm")
@@ -84,15 +84,15 @@ async def materialize_scoped_season_trend_bands(
         rows = (
             await db.execute(
                 select(  # type: ignore[call-overload]
-                    SummerLeaguePlayerSeason.year,
-                    SummerLeaguePlayerSeason.gmsc,
-                    SummerLeaguePlayerSeason.ts_pct,
-                    SummerLeaguePlayerSeason.bpm,
-                    SummerLeaguePlayerSeason.as_of,
+                    SummerLeagueDerivedAgg.year,
+                    SummerLeagueDerivedAgg.gmsc,
+                    SummerLeagueDerivedAgg.ts_pct,
+                    SummerLeagueDerivedAgg.bpm,
+                    SummerLeagueDerivedAgg.as_of,
                 ).where(
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-                    SummerLeaguePlayerSeason.year.in_(years),  # type: ignore[attr-defined]
-                    SummerLeaguePlayerSeason.competition_id.not_in(  # type: ignore[attr-defined]
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+                    SummerLeagueDerivedAgg.year.in_(years),  # type: ignore[attr-defined]
+                    SummerLeagueDerivedAgg.competition_id.not_in(  # type: ignore[attr-defined]
                         scoped_competition_ids
                     ),
                 )

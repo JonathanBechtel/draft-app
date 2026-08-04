@@ -80,12 +80,12 @@ async def _seed_season(
     minutes: float,
     gp: int,
 ) -> None:
-    from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+    from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 
     assert competition.id is not None
     assert player.id is not None
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=year,

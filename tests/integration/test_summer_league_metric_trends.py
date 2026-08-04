@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import SummerLeagueEdition
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league.metric_trends import get_daily_trend
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
@@ -45,7 +45,7 @@ async def test_archival_close_wins_over_later_normal_same_day_version(
     day = date(2024, 7, 12)
     db_session.add_all(
         [
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition.id,
                 player_id=player.id,
                 year=2024,
@@ -57,7 +57,7 @@ async def test_archival_close_wins_over_later_normal_same_day_version(
                 published_at=datetime(2026, 8, 1, 11),
                 trend_competition_bands=_single_value_bands(gmsc=4.0),
             ),
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition.id,
                 player_id=player.id,
                 year=2024,
@@ -108,7 +108,7 @@ async def test_daily_close_winner_ignores_source_currency(
     day = date(2026, 7, 15)
     db_session.add_all(
         [
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition.id,
                 player_id=player.id,
                 year=2026,
@@ -120,7 +120,7 @@ async def test_daily_close_winner_ignores_source_currency(
                 published_at=datetime(2026, 8, 1, 11),
                 trend_competition_bands=_single_value_bands(gmsc=4.0),
             ),
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition.id,
                 player_id=player.id,
                 year=2026,
@@ -166,7 +166,7 @@ async def test_trend_ignores_legacy_rows_without_an_event_day(
     await db_session.flush()
     assert competition.id is not None and player.id is not None
     db_session.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=2024,
@@ -212,7 +212,7 @@ async def test_trend_does_not_mix_partial_later_version_with_older_cohort(
     day = date(2026, 7, 12)
     db_session.add_all(
         [
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition.id,
                 player_id=player_one.id,
                 year=2026,
@@ -224,7 +224,7 @@ async def test_trend_does_not_mix_partial_later_version_with_older_cohort(
                 as_of=datetime(2026, 8, 1, 10),
                 published_at=datetime(2026, 8, 1, 11),
             ),
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition.id,
                 player_id=player_two.id,
                 year=2026,
@@ -237,7 +237,7 @@ async def test_trend_does_not_mix_partial_later_version_with_older_cohort(
                 published_at=datetime(2026, 8, 1, 11),
             ),
             # Version 2 is intentionally partial: player two has no row.
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition.id,
                 player_id=player_one.id,
                 year=2026,
@@ -287,7 +287,7 @@ async def test_trend_route_exposes_response_model_and_deterministic_payload(
     assert competition.id is not None
     assert player.id is not None
     db_session.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=2026,
@@ -348,7 +348,7 @@ async def test_season_scope_combines_latest_close_for_each_competition(
     day = date(2026, 7, 14)
     db_session.add_all(
         [
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition_a.id,
                 player_id=player_a.id,
                 year=2026,
@@ -359,7 +359,7 @@ async def test_season_scope_combines_latest_close_for_each_competition(
                 effective_day=day,
                 published_at=datetime(2026, 8, 1, 11),
             ),
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition_b.id,
                 player_id=player_b.id,
                 year=2026,
@@ -370,7 +370,7 @@ async def test_season_scope_combines_latest_close_for_each_competition(
                 effective_day=day,
                 published_at=datetime(2026, 8, 1, 11),
             ),
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition_a.id,
                 player_id=player_a.id,
                 year=2026,
@@ -415,7 +415,7 @@ async def test_trend_share_model_reads_real_daily_close_rows(
     await db_session.flush()
     assert competition.id and player.id
     db_session.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=2024,
@@ -466,7 +466,7 @@ async def test_explorer_snapshot_matches_final_through_day_trend_value(
     assert competition.id and player.id and player.slug
     final_day = date(2018, 7, 12)
     db_session.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=2018,

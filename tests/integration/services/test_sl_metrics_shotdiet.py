@@ -1,4 +1,4 @@
-"""Integration tests for shot-diet columns on SummerLeaguePlayerSeason.
+"""Integration tests for shot-diet columns on SummerLeagueDerivedAgg.
 
 Exercises the metrics.rebuild() pipeline end-to-end against a real Postgres
 test schema and asserts that:
@@ -33,7 +33,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league.metrics import rebuild
 
 
@@ -323,8 +323,8 @@ async def test_shot_diet_columns_populate_after_rebuild(db_session: AsyncSession
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -392,8 +392,8 @@ async def test_shot_diet_null_when_no_shot_data(db_session: AsyncSession) -> Non
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -412,7 +412,7 @@ async def test_shot_diet_per_competition_not_merged(db_session: AsyncSession) ->
 
     Comp A: 8 RA + 2 Above-Break-3 = 10 shots → rim_rate=0.8, three_rate=0.2
     Comp B: 3 RA + 7 Mid-Range = 10 shots     → rim_rate=0.3, mid_rate=0.7
-    The rebuild must NOT merge the two; each SummerLeaguePlayerSeason row gets
+    The rebuild must NOT merge the two; each SummerLeagueDerivedAgg row gets
     its own competition's shot diet.
     """
     comp_a = await _make_competition(db_session, year=2024, league_id="15")
@@ -537,8 +537,8 @@ async def test_shot_diet_per_competition_not_merged(db_session: AsyncSession) ->
 
     seasons = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalars().all()
@@ -629,8 +629,8 @@ async def test_backcourt_shots_excluded_from_diet(db_session: AsyncSession) -> N
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()

@@ -15,7 +15,7 @@ from __future__ import annotations
 import pytest
 
 from app.schemas.summer_league import SummerLeaguePlayerGameLog
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league_environment_registry import (
     METRIC_DEFINITIONS,
     MetricUnit,
@@ -47,7 +47,7 @@ _CATALOG_BY_KEY: dict[str, ExplorerColumn] = {c.key: c for c in PLAYER_COLUMN_CA
 VALID_BUCKETS = {"recombinable", "additive", "rate_composite"}
 VALID_GROUPS = {"box", "shooting", "advanced"}
 
-# All advanced columns present in SummerLeaguePlayerSeason (the full schema set).
+# All advanced columns present in SummerLeagueDerivedAgg (the full schema set).
 # These must all appear in PLAYER_COLUMN_CATALOG with exactly one bucket.
 _SCHEMA_ADVANCED_COLUMNS = {
     # Shooting / efficiency
@@ -317,8 +317,8 @@ def test_metric_filter_builders_cover_every_column(col: str) -> None:
     """
     f = MetricFilter(col=col, op=">=", value=1.0)
 
-    assert _career_metric_having(f, SummerLeaguePlayerSeason) is not None
-    assert _per_comp_metric_where(f, SummerLeaguePlayerSeason) is not None
+    assert _career_metric_having(f, SummerLeagueDerivedAgg) is not None
+    assert _per_comp_metric_where(f, SummerLeagueDerivedAgg) is not None
 
     per_game_expr = _per_game_metric_where(f, SummerLeaguePlayerGameLog)
     if col in _PER_GAME_UNSUPPORTED:
@@ -331,8 +331,8 @@ def test_metric_filter_builders_cover_every_column(col: str) -> None:
 def test_metric_filter_builders_honor_operator(op: str) -> None:
     """Both operators build a valid expression (covers the _op ternary branches)."""
     f = MetricFilter(col="pts", op=op, value=10.0)
-    assert _career_metric_having(f, SummerLeaguePlayerSeason) is not None
-    assert _per_comp_metric_where(f, SummerLeaguePlayerSeason) is not None
+    assert _career_metric_having(f, SummerLeagueDerivedAgg) is not None
+    assert _per_comp_metric_where(f, SummerLeagueDerivedAgg) is not None
     assert _per_game_metric_where(f, SummerLeaguePlayerGameLog) is not None
 
 

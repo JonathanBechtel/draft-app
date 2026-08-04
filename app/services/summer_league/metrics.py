@@ -68,7 +68,7 @@ from app.schemas.summer_league import (
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeagueMetricModel,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 
 # Back-compat re-exports: the pure engine now lives in ``app.services.stats``
@@ -177,7 +177,7 @@ def compute_shot_diet(
         ``corner3_rate``.  All ``None`` when total FGA is zero (no shot
         data for this player-competition).  Stored as fractions (0.0–1.0),
         rounded to 4 decimal places, matching the ``fg3ar``/``ftr``
-        convention on ``SummerLeaguePlayerSeason``.
+        convention on ``SummerLeagueDerivedAgg``.
     """
     total = sum(zone_fga.values())
     if not total:
@@ -1053,7 +1053,7 @@ async def _active_or_fresh_model_version(db: AsyncSession) -> str:
 
     A scoped :func:`rebuild` call never writes a new
     :class:`SummerLeagueMetricModel` row (see that function's docstring),
-    but ``SummerLeaguePlayerSeason.model_version`` is still a useful
+    but ``SummerLeagueDerivedAgg.model_version`` is still a useful
     informational stamp (no FK relies on it) -- reuse whichever model is
     active so a scoped tick's season rows reference the same fit the last
     full rebuild wrote, falling back to a freshly minted version only when
@@ -1225,7 +1225,7 @@ async def _rebuild_with_options(
         )
         cols["trend_season_bands"] = result.season_trend_bands.get(ps.year)
         cols["trend_season_as_of"] = getattr(result, "season_trend_as_of", result.as_of)
-        db.add(SummerLeaguePlayerSeason(**cols))
+        db.add(SummerLeagueDerivedAgg(**cols))
         n_seasons += 1
 
     summary: dict[str, Any] = {

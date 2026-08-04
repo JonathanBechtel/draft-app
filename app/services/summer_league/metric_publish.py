@@ -29,7 +29,7 @@ from app.schemas.summer_league_metrics import (
     DEFAULT_METRIC_REGISTRY_VERSION,
     SummerLeagueMetricContext,
     SummerLeagueMetricModel,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services.summer_league.metric_publish_guards import (
     assert_candidate_still_present,
@@ -156,7 +156,7 @@ async def next_metric_version(db: AsyncSession) -> int:
     # Test fixtures that create tables from SQLModel metadata do not run Alembic,
     # so retain a compatibility fallback for those DBs. Production databases have
     # the sequence from c5d6e7f8a9b0 and never use this race-prone legacy path.
-    season_max = await db.scalar(select(func.max(SummerLeaguePlayerSeason.version)))
+    season_max = await db.scalar(select(func.max(SummerLeagueDerivedAgg.version)))
     context_max = await db.scalar(select(func.max(SummerLeagueMetricContext.version)))
     return max(int(season_max or 0), int(context_max or 0)) + 1
 
@@ -221,7 +221,7 @@ async def publish_metric_version(  # noqa: PLR0913
     )
 
     season_scope: Any = (
-        SummerLeaguePlayerSeason.competition_id.in_(  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.competition_id.in_(  # type: ignore[attr-defined]
             competition_ids
         )
         if competition_ids is not None
@@ -235,8 +235,8 @@ async def publish_metric_version(  # noqa: PLR0913
         else None
     )
 
-    season_demote = update(SummerLeaguePlayerSeason).where(
-        SummerLeaguePlayerSeason.is_current.is_(True)  # type: ignore[attr-defined]
+    season_demote = update(SummerLeagueDerivedAgg).where(
+        SummerLeagueDerivedAgg.is_current.is_(True)  # type: ignore[attr-defined]
     )
     context_demote = update(SummerLeagueMetricContext).where(
         SummerLeagueMetricContext.is_current.is_(True)  # type: ignore[attr-defined]
@@ -247,7 +247,7 @@ async def publish_metric_version(  # noqa: PLR0913
         context_demote = context_demote.where(context_scope)
     if newer_competition_ids:
         season_demote = season_demote.where(
-            SummerLeaguePlayerSeason.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
+            SummerLeagueDerivedAgg.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
         )
         context_demote = context_demote.where(
             SummerLeagueMetricContext.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
@@ -259,8 +259,8 @@ async def publish_metric_version(  # noqa: PLR0913
     # candidate rows are promoted in the same transaction.
     await db.flush()
 
-    season_promote = update(SummerLeaguePlayerSeason).where(
-        SummerLeaguePlayerSeason.version == version  # type: ignore[arg-type]
+    season_promote = update(SummerLeagueDerivedAgg).where(
+        SummerLeagueDerivedAgg.version == version  # type: ignore[arg-type]
     )
     context_promote = update(SummerLeagueMetricContext).where(
         SummerLeagueMetricContext.version == version  # type: ignore[arg-type]
@@ -271,7 +271,7 @@ async def publish_metric_version(  # noqa: PLR0913
         context_promote = context_promote.where(context_scope)
     if newer_competition_ids:
         season_promote = season_promote.where(
-            SummerLeaguePlayerSeason.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
+            SummerLeagueDerivedAgg.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
         )
         context_promote = context_promote.where(
             SummerLeagueMetricContext.competition_id.not_in(newer_competition_ids)  # type: ignore[attr-defined]
@@ -343,7 +343,7 @@ async def publish_archival_metric_version(  # noqa: PLR0913
         return ArchivalPublication(contexts=0, seasons=0)
 
     season_scope = (
-        SummerLeaguePlayerSeason.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
         if competition_ids is not None
         else None
     )
@@ -356,15 +356,15 @@ async def publish_archival_metric_version(  # noqa: PLR0913
     # A current candidate is a publication-path violation.  Refusing it is safer
     # than silently stamping it: a future reader could otherwise observe a row that
     # archival code was never allowed to create.
-    season_version: Any = getattr(SummerLeaguePlayerSeason, "version")
-    season_current: Any = getattr(SummerLeaguePlayerSeason, "is_current")
+    season_version: Any = getattr(SummerLeagueDerivedAgg, "version")
+    season_current: Any = getattr(SummerLeagueDerivedAgg, "is_current")
     context_version: Any = getattr(SummerLeagueMetricContext, "version")
     context_current: Any = getattr(SummerLeagueMetricContext, "is_current")
-    season_published_at: Any = getattr(SummerLeaguePlayerSeason, "published_at")
+    season_published_at: Any = getattr(SummerLeagueDerivedAgg, "published_at")
     context_published_at: Any = getattr(SummerLeagueMetricContext, "published_at")
     current_queries = [
         select(func.count())
-        .select_from(SummerLeaguePlayerSeason)
+        .select_from(SummerLeagueDerivedAgg)
         .where(
             season_version == version,
             season_current.is_(True),
@@ -387,7 +387,7 @@ async def publish_archival_metric_version(  # noqa: PLR0913
         )
 
     published_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    season_update = update(SummerLeaguePlayerSeason).where(
+    season_update = update(SummerLeagueDerivedAgg).where(
         season_version == version,
         season_current.is_(False),
         season_published_at.is_(None),

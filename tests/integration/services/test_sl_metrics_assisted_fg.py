@@ -1,4 +1,4 @@
-"""Integration tests for assisted-FG columns on SummerLeaguePlayerSeason.
+"""Integration tests for assisted-FG columns on SummerLeagueDerivedAgg.
 
 Exercises metrics.rebuild() end-to-end against a real Postgres test schema and
 asserts that:
@@ -33,7 +33,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league.metrics import rebuild
 from app.services.summer_league_stats_service import get_player_shotchart_context
 
@@ -343,8 +343,8 @@ async def test_assisted_fg_columns_populate_after_rebuild(
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == scorer.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == scorer.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -427,8 +427,8 @@ async def test_assisted_fg_counts_unresolved_assister(
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == scorer.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == scorer.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -490,8 +490,8 @@ async def test_assisted_fg_null_when_no_pbp_data(db_session: AsyncSession) -> No
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -584,8 +584,8 @@ async def test_assisted_fg_excludes_unresolved_scorer_events(
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == scorer.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == scorer.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()

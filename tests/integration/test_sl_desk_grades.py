@@ -1,7 +1,7 @@
 """Integration tests for the Summer League Desk percentile + grade service (#503).
 
 Seeds a T1 baseline (via #502's ``build_baselines``) plus subject
-``SummerLeaguePlayerSeason`` rows, runs ``grade_player_event``, and asserts
+``SummerLeagueDerivedAgg`` rows, runs ``grade_player_event``, and asserts
 the persisted T2 (`summer_league_desk_player_grades`) row end to end,
 including the adaptive gate-ladder suppression on thin/1-game samples and a
 thin-cohort baseline.
@@ -21,7 +21,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskGrade,
     SummerLeagueDeskPlayerGrade,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league.cohort_baselines import (
     build_baselines,
     compute_breakpoints,
@@ -80,10 +80,10 @@ async def _seed_season(
     gmsc: float,
     minutes: float,
     gp: int,
-) -> SummerLeaguePlayerSeason:
+) -> SummerLeagueDerivedAgg:
     assert competition.id is not None
     assert player.id is not None
-    season = SummerLeaguePlayerSeason(
+    season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=year,

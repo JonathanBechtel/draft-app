@@ -40,7 +40,7 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentProfile,
     SummerLeagueEnvironmentSeasonMembership,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league_environment_registry import (
     CALCULATION_VERSION,
     REGISTRY_VERSION,
@@ -604,7 +604,7 @@ async def seed_competition_context_demo(
 
     # --- Leaders strip fixture (contract: leaders "presentation over
     # existing Players Explorer results") -- a handful of real
-    # SummerLeaguePlayerSeason rows tied to the lv2024 competition so the
+    # SummerLeagueDerivedAgg rows tied to the lv2024 competition so the
     # Competition Context leaders boards (and the season2024 pool, which
     # includes every 2024 competition) have real, distinct PTS/REB/AST
     # leaders to render and assert against. cc2024/slc2024 deliberately carry
@@ -625,10 +625,10 @@ async def _seed_leaders_players(session: AsyncSession, *, competition_id: int) -
     """
     existing = (
         await session.execute(
-            _select(SummerLeaguePlayerSeason.id)  # type: ignore[call-overload]
+            _select(SummerLeagueDerivedAgg.id)  # type: ignore[call-overload]
             .where(
-                SummerLeaguePlayerSeason.competition_id == competition_id,
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                SummerLeagueDerivedAgg.competition_id == competition_id,
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
             .limit(1)
         )
@@ -652,7 +652,7 @@ async def _seed_leaders_players(session: AsyncSession, *, competition_id: int) -
         session.add(player)
         await session.flush()
         session.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition_id,
                 player_id=player.id,
                 year=2024,

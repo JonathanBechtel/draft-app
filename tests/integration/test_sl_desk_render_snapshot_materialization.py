@@ -46,7 +46,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.event_desk.registry import sync_summer_league_event
 from app.services.event_desk.render_snapshots import CURRENT_SCHEMA_VERSION
 from app.services.summer_league.desk_read import (
@@ -222,7 +222,7 @@ async def _seed_roster_player(
         )
     )
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=year,

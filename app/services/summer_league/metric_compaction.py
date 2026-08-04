@@ -52,7 +52,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.write_lock import (
@@ -236,10 +236,10 @@ async def compact_metric_versions(
     )
     season_rows_deleted = await _delete_superseded_closed_day_rows(
         db,
-        model=SummerLeaguePlayerSeason,
+        model=SummerLeagueDerivedAgg,
         scope_columns=(
-            SummerLeaguePlayerSeason.competition_id,
-            SummerLeaguePlayerSeason.player_id,
+            SummerLeagueDerivedAgg.competition_id,
+            SummerLeagueDerivedAgg.player_id,
         ),
         event_day_cutoff=event_day_cutoff,
         candidate_grace_cutoff=candidate_grace_cutoff,

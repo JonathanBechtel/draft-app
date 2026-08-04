@@ -14,7 +14,7 @@ Three tables:
 * :class:`SummerLeagueMetricContext` — one ``LeagueContext`` row per competition
   (year + venue), holding the recalibration constants and the pool's eligibility
   for league-relative metrics.
-* :class:`SummerLeaguePlayerSeason` — one materialized row per (player,
+* :class:`SummerLeagueDerivedAgg` — one materialized row per (player,
   competition) with box totals and every computed metric.
 """
 
@@ -170,12 +170,15 @@ class SummerLeagueMetricContext(DatedVersionMixin, SQLModel, table=True):  # typ
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
-class SummerLeaguePlayerSeason(DatedVersionMixin, SQLModel, table=True):  # type: ignore[call-arg]
+class SummerLeagueDerivedAgg(DatedVersionMixin, SQLModel, table=True):  # type: ignore[call-arg]
     """Materialized per-(player, competition) box totals and computed metrics.
 
     ``adv_eligible`` mirrors the pool's flag: when ``False`` only the
     league-calibrated composite columns (PER/ORtg/DRtg/WS/BPM/...) are ``None``.
     Box, shooting, possession, and player/team-box rate columns remain available.
+
+    The ``derived_agg`` element of the backbone's participation -> game_log ->
+    derived_agg spoke chain (journey-graph §3).
     """
 
     __tablename__ = "summer_league_player_seasons"

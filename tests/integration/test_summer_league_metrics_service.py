@@ -25,7 +25,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from tests.integration.conftest import make_player
 
@@ -60,8 +60,8 @@ async def _season(
     player,
     adv_eligible: bool = True,
     **metrics,
-) -> SummerLeaguePlayerSeason:
-    row = SummerLeaguePlayerSeason(
+) -> SummerLeagueDerivedAgg:
+    row = SummerLeagueDerivedAgg(
         competition_id=comp.id,
         player_id=player.id,
         year=comp.year,

@@ -26,13 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 
 # Both projections are keyed by competition and must reach the same per-scope
 # verdict, so every check here iterates the pair.
 PROJECTION_MODELS: tuple[Any, ...] = (
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
     SummerLeagueMetricContext,
 )
 
@@ -75,17 +75,17 @@ async def newer_current_competition_ids(
         SummerLeagueMetricContext.version > version,  # type: ignore[operator]
     )
     season_query = select(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.competition_id
+        SummerLeagueDerivedAgg.competition_id
     ).where(
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.version > version,  # type: ignore[operator]
+        SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.version > version,  # type: ignore[operator]
     )
     if competition_ids is not None:
         context_query = context_query.where(
             SummerLeagueMetricContext.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
         )
         season_query = season_query.where(
-            SummerLeaguePlayerSeason.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
+            SummerLeagueDerivedAgg.competition_id.in_(competition_ids)  # type: ignore[attr-defined]
         )
 
     rows = (await db.execute(context_query.union(season_query))).scalars().all()

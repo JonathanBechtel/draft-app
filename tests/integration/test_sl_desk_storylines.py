@@ -38,7 +38,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskStoryline,
     SummerLeagueDeskTriggerType,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league.desk_storylines import compute_desk_storylines
 
 pytestmark = pytest.mark.asyncio
@@ -593,7 +593,7 @@ async def test_compute_desk_storylines_second_look_for_returning_player_and_no_d
     # Prior-year SL season (makes this a returner, not a debutant).
     assert player.id is not None
     prior_competition = await _seed_competition(db_session, year=2025)
-    prior_season = SummerLeaguePlayerSeason(
+    prior_season = SummerLeagueDerivedAgg(
         competition_id=prior_competition.id,
         player_id=player.id,
         year=2025,

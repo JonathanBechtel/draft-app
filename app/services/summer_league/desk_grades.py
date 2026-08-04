@@ -17,7 +17,7 @@ step 2).
   applied here to a single subject's own event sample rather than a whole
   leaderboard population, plus that same module's ``TARGET_BOARD_ROWS`` (10)
   as the floor for a cohort baseline being too thin to trust at all.
-* ``SummerLeaguePlayerSeason.gmsc`` — already computed from
+* ``SummerLeagueDerivedAgg.gmsc`` — already computed from
   ``game_score_line()`` (`app/services/summer_league/metrics.py`) when the
   materialized per-(player, competition) row is built; grading reads that
   column via the same blend path #502 uses rather than recomputing GmSc from
@@ -49,7 +49,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskGrain,
     SummerLeagueDeskPlayerGrade,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.stats.percentiles import percentile_of
 from app.services.summer_league.cohort_baselines import (
     blend_event_aggregates,
@@ -229,7 +229,7 @@ async def grade_player_event(
 ) -> GradeRow:
     """Rank a player's SL event-aggregate GmSc against their cohort baseline (T1).
 
-    Reads every ``SummerLeaguePlayerSeason`` row for ``player_id`` in
+    Reads every ``SummerLeagueDerivedAgg`` row for ``player_id`` in
     ``competition_id``'s year (across every venue they played, same
     event-aggregate grain #502's Job A used to build T1), blends them
     games-weighted with no eligibility floor (``min_minutes=0.0`` — unlike
@@ -272,15 +272,15 @@ async def grade_player_event(
         raise ValueError(f"No players_master row for id={player_id}.")
 
     season_stmt = select(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.player_id,
-        SummerLeaguePlayerSeason.year,
-        SummerLeaguePlayerSeason.gmsc,
-        SummerLeaguePlayerSeason.minutes,
-        SummerLeaguePlayerSeason.gp,
+        SummerLeagueDerivedAgg.player_id,
+        SummerLeagueDerivedAgg.year,
+        SummerLeagueDerivedAgg.gmsc,
+        SummerLeagueDerivedAgg.minutes,
+        SummerLeagueDerivedAgg.gp,
     ).where(
-        SummerLeaguePlayerSeason.player_id == player_id,
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.year == competition.year,
+        SummerLeagueDerivedAgg.player_id == player_id,
+        SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.year == competition.year,
     )
     rows = (await session.execute(season_stmt)).all()
 
@@ -356,7 +356,7 @@ async def grade_players_bulk(
     fetch, a season-rows fetch, a baseline fetch, and an upsert PER PLAYER --
     5 queries x roster size) with exactly 4 batched queries total regardless
     of roster size: one competition fetch, one ``players_master`` fetch, one
-    ``SummerLeaguePlayerSeason`` fetch, one baseline fetch over every distinct
+    ``SummerLeagueDerivedAgg`` fetch, one baseline fetch over every distinct
     cohort key this roster spans, plus ONE multi-row upsert statement (a
     single ``INSERT ... VALUES (...), (...), ... ON CONFLICT DO UPDATE`` --
     still one round trip no matter how many players qualify).
@@ -411,15 +411,15 @@ async def grade_players_bulk(
     player_by_id = {p.id: p for p in players if p.id is not None}
 
     season_stmt = select(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.player_id,
-        SummerLeaguePlayerSeason.year,
-        SummerLeaguePlayerSeason.gmsc,
-        SummerLeaguePlayerSeason.minutes,
-        SummerLeaguePlayerSeason.gp,
+        SummerLeagueDerivedAgg.player_id,
+        SummerLeagueDerivedAgg.year,
+        SummerLeagueDerivedAgg.gmsc,
+        SummerLeagueDerivedAgg.minutes,
+        SummerLeagueDerivedAgg.gp,
     ).where(
-        SummerLeaguePlayerSeason.player_id.in_(unique_ids),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.year == competition.year,
+        SummerLeagueDerivedAgg.player_id.in_(unique_ids),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.year == competition.year,
     )
     season_rows = (await session.execute(season_stmt)).all()
     events = blend_event_aggregates(season_rows, min_minutes=0.0)

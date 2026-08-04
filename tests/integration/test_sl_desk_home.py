@@ -39,7 +39,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskStoryline,
     SummerLeagueDeskTriggerType,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.event_desk.registry import sync_summer_league_event
 from app.services.summer_league.desk_read import _build_game_hero, get_desk_payload
 from app.services.summer_league.metrics import game_score_line
@@ -228,7 +228,7 @@ async def _seed_season(
     assert competition.id is not None
     assert player.id is not None
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=year,

@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.temporal import Watermark
 from app.models.summer_league_trends import TrendCohortBand, TrendPoint
 from app.schemas.summer_league import SummerLeagueEdition
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.stats.registry import get_metric
 
 TREND_METRIC_LABELS: dict[str, str] = {
@@ -126,7 +126,7 @@ def _validate_metric_keys(metric_keys: Sequence[str]) -> tuple[str, ...]:
             get_metric(key)
         except KeyError as exc:
             raise ValueError(f"unknown registry metric key: {key!r}") from exc
-        if not hasattr(SummerLeaguePlayerSeason, key):
+        if not hasattr(SummerLeagueDerivedAgg, key):
             raise ValueError(
                 f"registry metric key {key!r} is not available in the trend projection"
             )
@@ -135,7 +135,7 @@ def _validate_metric_keys(metric_keys: Sequence[str]) -> tuple[str, ...]:
 
 def _effective_day_expression() -> Any:
     """Return the explicit event day; job timestamps are not event evidence."""
-    return SummerLeaguePlayerSeason.effective_day
+    return SummerLeagueDerivedAgg.effective_day
 
 
 def _shape_trend_points(
@@ -213,26 +213,26 @@ async def get_daily_trend(
     keys = _validate_metric_keys(metric_keys)
 
     effective_day = _effective_day_expression()
-    competition_id_column: Any = getattr(SummerLeaguePlayerSeason, "competition_id")
-    player_id_column: Any = getattr(SummerLeaguePlayerSeason, "player_id")
-    year_column: Any = getattr(SummerLeaguePlayerSeason, "year")
-    version_column: Any = getattr(SummerLeaguePlayerSeason, "version")
-    published_at_column: Any = getattr(SummerLeaguePlayerSeason, "published_at")
-    id_column: Any = getattr(SummerLeaguePlayerSeason, "id")
-    archival_column: Any = getattr(SummerLeaguePlayerSeason, "is_archival")
+    competition_id_column: Any = getattr(SummerLeagueDerivedAgg, "competition_id")
+    player_id_column: Any = getattr(SummerLeagueDerivedAgg, "player_id")
+    year_column: Any = getattr(SummerLeagueDerivedAgg, "year")
+    version_column: Any = getattr(SummerLeagueDerivedAgg, "version")
+    published_at_column: Any = getattr(SummerLeagueDerivedAgg, "published_at")
+    id_column: Any = getattr(SummerLeagueDerivedAgg, "id")
+    archival_column: Any = getattr(SummerLeagueDerivedAgg, "is_archival")
     selected_columns = [
         id_column,
         competition_id_column,
         player_id_column,
         version_column,
-        getattr(SummerLeaguePlayerSeason, "as_of"),
+        getattr(SummerLeagueDerivedAgg, "as_of"),
         published_at_column,
         effective_day.label("effective_day"),
         archival_column,
-        getattr(SummerLeaguePlayerSeason, "trend_competition_bands"),
-        getattr(SummerLeaguePlayerSeason, "trend_season_bands"),
-        getattr(SummerLeaguePlayerSeason, "trend_season_as_of"),
-        *[getattr(SummerLeaguePlayerSeason, key).label(key) for key in keys],
+        getattr(SummerLeagueDerivedAgg, "trend_competition_bands"),
+        getattr(SummerLeagueDerivedAgg, "trend_season_bands"),
+        getattr(SummerLeagueDerivedAgg, "trend_season_as_of"),
+        *[getattr(SummerLeagueDerivedAgg, key).label(key) for key in keys],
     ]
     # Publication versions are allocated globally, while the archival backfill
     # publishes each competition/day in its own candidate version. Partitioning

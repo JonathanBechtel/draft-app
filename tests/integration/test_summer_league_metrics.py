@@ -25,7 +25,7 @@ from app.schemas.summer_league import (
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeagueMetricModel,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services.summer_league.metrics import rebuild
 from tests.integration.conftest import make_player
@@ -211,9 +211,9 @@ async def test_rebuild_materializes_metrics_and_gates_pools(
     elig = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == elig_id,
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == elig_id,
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -235,9 +235,9 @@ async def test_rebuild_materializes_metrics_and_gates_pools(
     thin = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == thin_id,
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == thin_id,
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -277,8 +277,8 @@ async def test_rebuild_is_idempotent(db_session: AsyncSession) -> None:
     total = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.is_current.is_(True)  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.is_current.is_(True)  # type: ignore[attr-defined]
                 )
             )
         )
@@ -403,9 +403,9 @@ async def test_rebuild_excludes_non_season_game_until_it_is_final(
     initial_seasons = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == competition_id,  # type: ignore[arg-type]
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == competition_id,  # type: ignore[arg-type]
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -422,9 +422,9 @@ async def test_rebuild_excludes_non_season_game_until_it_is_final(
     final_seasons = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == competition_id,  # type: ignore[arg-type]
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == competition_id,  # type: ignore[arg-type]
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )

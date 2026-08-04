@@ -1,6 +1,6 @@
 """Integration tests for the Summer League Desk cohort-baseline builder (#502).
 
-Seeds `SummerLeagueEdition` + `SummerLeaguePlayerSeason` history plus draft
+Seeds `SummerLeagueEdition` + `SummerLeagueDerivedAgg` history plus draft
 slots on `PlayerMaster`, runs `build_baselines`, and asserts the persisted T1
 distributions and version-flip behavior end to end.
 """
@@ -26,7 +26,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league.cohort_baselines import build_baselines
 
 pytestmark = pytest.mark.asyncio
@@ -80,10 +80,10 @@ async def _seed_season(
     gmsc: float,
     minutes: float,
     gp: int,
-) -> SummerLeaguePlayerSeason:
+) -> SummerLeagueDerivedAgg:
     assert competition.id is not None
     assert player.id is not None
-    season = SummerLeaguePlayerSeason(
+    season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=year,

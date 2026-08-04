@@ -63,7 +63,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueCohortBaseline,
     SummerLeagueDeskGrain,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league.cohort_baselines import (
     DEFAULT_GAME_MIN_MINUTES,
     FirstQualifyingGame,
@@ -145,15 +145,15 @@ async def fetch_cohort_members(
     for (season_range, min_minutes), keys_in_group in groups.items():
         start_year, end_year = _parse_season_range(season_range)
         stmt = select(  # type: ignore[call-overload]
-            SummerLeaguePlayerSeason.player_id,
-            SummerLeaguePlayerSeason.year,
-            SummerLeaguePlayerSeason.gmsc,
-            SummerLeaguePlayerSeason.minutes,
-            SummerLeaguePlayerSeason.gp,
+            SummerLeagueDerivedAgg.player_id,
+            SummerLeagueDerivedAgg.year,
+            SummerLeagueDerivedAgg.gmsc,
+            SummerLeagueDerivedAgg.minutes,
+            SummerLeagueDerivedAgg.gp,
         ).where(
-            SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-            SummerLeaguePlayerSeason.year >= start_year,
-            SummerLeaguePlayerSeason.year <= end_year,
+            SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+            SummerLeagueDerivedAgg.year >= start_year,
+            SummerLeagueDerivedAgg.year <= end_year,
         )
         rows = (await db.execute(stmt)).all()
         events = blend_event_aggregates(rows, min_minutes=min_minutes)
@@ -433,15 +433,15 @@ async def fetch_prior_events(
     if not player_ids:
         return {}
     stmt = select(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.player_id,
-        SummerLeaguePlayerSeason.year,
-        SummerLeaguePlayerSeason.gmsc,
-        SummerLeaguePlayerSeason.minutes,
-        SummerLeaguePlayerSeason.gp,
+        SummerLeagueDerivedAgg.player_id,
+        SummerLeagueDerivedAgg.year,
+        SummerLeagueDerivedAgg.gmsc,
+        SummerLeagueDerivedAgg.minutes,
+        SummerLeagueDerivedAgg.gp,
     ).where(
-        SummerLeaguePlayerSeason.player_id.in_(player_ids),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.year < before_year,
+        SummerLeagueDerivedAgg.player_id.in_(player_ids),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.year < before_year,
     )
     rows = (await db.execute(stmt)).all()
     events = blend_event_aggregates(rows, min_minutes=0.0)
@@ -469,12 +469,10 @@ async def fetch_current_event_gp(
     """
     if not player_ids:
         return {}
-    stmt = select(
-        SummerLeaguePlayerSeason.player_id, SummerLeaguePlayerSeason.gp
-    ).where(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.player_id.in_(player_ids),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.year == year,
+    stmt = select(SummerLeagueDerivedAgg.player_id, SummerLeagueDerivedAgg.gp).where(  # type: ignore[call-overload]
+        SummerLeagueDerivedAgg.player_id.in_(player_ids),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.year == year,
     )
     rows = (await db.execute(stmt)).all()
     out: dict[int, int] = defaultdict(int)

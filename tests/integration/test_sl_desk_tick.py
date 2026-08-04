@@ -56,7 +56,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskStoryline,
     SummerLeagueDeskTriggerType,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league.raw_ingestion import GAME_ENDPOINTS
@@ -322,7 +322,7 @@ async def _seed_season(
     assert competition.id is not None
     assert player.id is not None
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=year,

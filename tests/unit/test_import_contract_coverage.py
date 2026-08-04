@@ -14,7 +14,7 @@ coupling it exists to prevent walks straight through.
 
 As shipped, the list named 11 of 11 service modules but only 2 of 5 schema modules. The
 omissions included ``app.schemas.summer_league_metrics``, which holds
-``SummerLeaguePlayerSeason``, ``SummerLeagueMetricContext`` and ``SummerLeagueMetricModel`` —
+``SummerLeagueDerivedAgg``, ``SummerLeagueMetricContext`` and ``SummerLeagueMetricModel`` —
 the tables a lifted stat engine is most likely to reach for. The contract would have stayed
 green through exactly the coupling it exists to prevent.
 

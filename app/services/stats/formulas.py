@@ -70,7 +70,7 @@ def game_score_line(
     game logs, the explorer) that need Game Score from a box line — be it one
     game, a summed competition, or a summed career. Because Game Score is linear
     in the box stats, ``game_score_line(summed) / gp`` equals the mean per-game
-    Game Score, matching the materialized ``SummerLeaguePlayerSeason.gmsc`` --
+    Game Score, matching the materialized ``SummerLeagueDerivedAgg.gmsc`` --
     this is precisely what ``app.services.stats.registry``'s ``gmsc`` entry
     declares as ``RollupClass.RECOMBINABLE`` (see the module-level assertion
     below, T8b / #729): recompute from summed box components at the target

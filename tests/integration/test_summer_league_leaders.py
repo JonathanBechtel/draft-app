@@ -24,7 +24,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league_leaders_service import get_leaders
 from tests.integration.conftest import make_player
 
@@ -421,7 +421,7 @@ async def _season(
     db.add(player)
     await db.flush()
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=comp.id,
             player_id=player.id,
             year=comp.year,
@@ -507,7 +507,7 @@ async def test_advanced_all_blend_math(
     )
     for comp, minutes, per, ws, pts, fga, fgm, fg3m, fg3a, fta in pools:
         db_session.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=comp.id,
                 player_id=star.id,
                 year=comp.year,

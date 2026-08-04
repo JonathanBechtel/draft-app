@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services.summer_league.metric_compaction import compact_metric_versions
 from app.services.summer_league.metric_publish import publish_metric_version
@@ -74,7 +74,7 @@ async def _seed_historical_competition(
         is_published = version == published_version
         for model, extra in (
             (SummerLeagueMetricContext, {}),
-            (SummerLeaguePlayerSeason, {"player_id": player.id}),
+            (SummerLeagueDerivedAgg, {"player_id": player.id}),
         ):
             db.add(
                 model(  # type: ignore[call-arg]
@@ -96,7 +96,7 @@ async def _seed_historical_competition(
 async def _scopes_without_current_rows(db: AsyncSession) -> set[int]:
     """Return competition ids that hold projection rows but no current one."""
     orphaned: set[int] = set()
-    for model in (SummerLeagueMetricContext, SummerLeaguePlayerSeason):
+    for model in (SummerLeagueMetricContext, SummerLeagueDerivedAgg):
         rows = (
             await db.execute(
                 select(model.competition_id, model.is_current)  # type: ignore[attr-defined]
@@ -162,9 +162,9 @@ async def test_flip_refuses_when_compaction_removed_the_candidate(
     current_versions = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason.version).where(
-                    SummerLeaguePlayerSeason.competition_id == competition_id,
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg.version).where(
+                    SummerLeagueDerivedAgg.competition_id == competition_id,
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -221,9 +221,9 @@ async def test_compaction_spares_an_in_flight_candidate(
     current_versions = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason.version).where(
-                    SummerLeaguePlayerSeason.competition_id == competition_id,
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg.version).where(
+                    SummerLeagueDerivedAgg.competition_id == competition_id,
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )

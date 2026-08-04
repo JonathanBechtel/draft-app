@@ -119,7 +119,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.stats.percentiles import percentile
 from app.services.summer_league.metrics import game_score_from_row
 
@@ -303,7 +303,7 @@ class EventAggregate:
 def blend_event_aggregates(
     rows: Sequence[Any], *, min_minutes: float
 ) -> dict[tuple[int, int], EventAggregate]:
-    """Blend same-year, cross-venue ``SummerLeaguePlayerSeason`` rows into events.
+    """Blend same-year, cross-venue ``SummerLeagueDerivedAgg`` rows into events.
 
     Reuses the games-weighted GmSc blend from
     ``summer_league_metrics_service._blend_leader_values`` (GmSc is a
@@ -508,7 +508,7 @@ async def build_baselines(
 ) -> str:
     """Build a new versioned T1 baseline set from SL history and activate it.
 
-    Reads every ``SummerLeaguePlayerSeason`` row within ``season_range``,
+    Reads every ``SummerLeagueDerivedAgg`` row within ``season_range``,
     blends each player's same-year rows into an event-aggregate GmSc (the
     min-minutes gate applied here), and assigns each event to its player's
     slot/round/status cohort (event grain); separately reads every
@@ -548,15 +548,15 @@ async def build_baselines(
     start_year, end_year = _parse_season_range(season_range)
 
     stmt = select(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.player_id,
-        SummerLeaguePlayerSeason.year,
-        SummerLeaguePlayerSeason.gmsc,
-        SummerLeaguePlayerSeason.minutes,
-        SummerLeaguePlayerSeason.gp,
+        SummerLeagueDerivedAgg.player_id,
+        SummerLeagueDerivedAgg.year,
+        SummerLeagueDerivedAgg.gmsc,
+        SummerLeagueDerivedAgg.minutes,
+        SummerLeagueDerivedAgg.gp,
     ).where(
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.year >= start_year,
-        SummerLeaguePlayerSeason.year <= end_year,
+        SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.year >= start_year,
+        SummerLeagueDerivedAgg.year <= end_year,
     )
     rows = (await db.execute(stmt)).all()
 

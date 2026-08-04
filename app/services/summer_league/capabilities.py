@@ -81,7 +81,7 @@ def pool_provides(
         adv_eligible: Whether this pool cleared the box-completeness threshold that makes
             team/opponent box totals and pool-relative recalibration (VOP, DRB%, pace, BPM fit)
             trustworthy -- ``SummerLeagueMetricContext.adv_eligible`` /
-            ``SummerLeaguePlayerSeason.adv_eligible`` in
+            ``SummerLeagueDerivedAgg.adv_eligible`` in
             :mod:`app.services.summer_league.metrics`. Not owned by ``normalization.py``, so
             callers that only have the competition row (not its metric context) pass whatever
             they already have; ``False`` is the conservative default.
@@ -112,7 +112,7 @@ def competition_capability_provides(
     canonical ``provides`` set :mod:`app.services.stats.capabilities` derives
     computability from, instead of leaving each caller to re-check the flags
     individually as ad-hoc gates. ``adv_eligible`` lives on
-    ``SummerLeagueMetricContext``/``SummerLeaguePlayerSeason`` (owned by
+    ``SummerLeagueMetricContext``/``SummerLeagueDerivedAgg`` (owned by
     :mod:`app.services.summer_league.metrics`), so a caller that has already
     resolved it for this competition's pool passes it through; callers that have
     not get the conservative default of ``False``.

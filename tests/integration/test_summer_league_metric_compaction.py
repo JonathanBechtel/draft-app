@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services.summer_league.metric_compaction import compact_metric_versions
 from tests.integration.conftest import make_player
@@ -61,7 +61,7 @@ async def _seed_versions(db: AsyncSession) -> int:
         for player in players:
             assert player.id is not None
             db.add(
-                SummerLeaguePlayerSeason(
+                SummerLeagueDerivedAgg(
                     competition_id=competition.id,
                     player_id=player.id,
                     year=2026,
@@ -121,11 +121,11 @@ async def test_compaction_keeps_published_close_current_and_inflight_candidate(
     seasons = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason)
-                .where(SummerLeaguePlayerSeason.competition_id == competition_id)
+                select(SummerLeagueDerivedAgg)
+                .where(SummerLeagueDerivedAgg.competition_id == competition_id)
                 .order_by(
-                    SummerLeaguePlayerSeason.player_id,
-                    SummerLeaguePlayerSeason.version,
+                    SummerLeagueDerivedAgg.player_id,
+                    SummerLeagueDerivedAgg.version,
                 )
             )
         )
@@ -176,7 +176,7 @@ async def test_effective_day_cutoff_uses_eastern_calendar_boundary(
     effective_day = date(2026, 7, 6)
     for version, is_current in ((1, False), (2, False), (3, True)):
         db_session.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition.id,
                 player_id=player.id,
                 year=2026,
@@ -251,7 +251,7 @@ async def test_legacy_day_partition_uses_publication_stamp_not_source_currency(
             )
         )
         db_session.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition.id,
                 player_id=player.id,
                 year=2026,
@@ -287,8 +287,8 @@ async def test_legacy_day_partition_uses_publication_stamp_not_source_currency(
     surviving_seasons = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason.version).where(
-                    SummerLeaguePlayerSeason.competition_id == competition.id
+                select(SummerLeagueDerivedAgg.version).where(
+                    SummerLeagueDerivedAgg.competition_id == competition.id
                 )
             )
         )
@@ -336,7 +336,7 @@ async def test_compaction_preserves_archive_over_later_ordinary_rebuild(
             )
         )
         db_session.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=competition.id,
                 player_id=player.id,
                 year=2026,
@@ -374,9 +374,9 @@ async def test_compaction_preserves_archive_over_later_ordinary_rebuild(
         (
             await db_session.execute(
                 select(
-                    SummerLeaguePlayerSeason.version,
-                    SummerLeaguePlayerSeason.is_archival,
-                ).where(SummerLeaguePlayerSeason.competition_id == competition.id)
+                    SummerLeagueDerivedAgg.version,
+                    SummerLeagueDerivedAgg.is_archival,
+                ).where(SummerLeagueDerivedAgg.competition_id == competition.id)
             )
         )
         .tuples()

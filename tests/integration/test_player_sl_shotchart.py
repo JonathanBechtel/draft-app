@@ -5,7 +5,7 @@ Exercises two surfaces:
   - GET /players/{slug}/summer-league/{year} — per-season page
 
 Cases:
-  1. Player with resolved shot events + SummerLeaguePlayerSeason  → chart rendered.
+  1. Player with resolved shot events + SummerLeagueDerivedAgg  → chart rendered.
   2. Player with game logs but no shot events                     → graceful empty.
   3. Player with no SL data at all                                → section absent.
 """
@@ -28,7 +28,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueShotEvent,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from tests.integration.conftest import make_player
 
 # ---------------------------------------------------------------------------
@@ -181,7 +181,7 @@ async def _seed_rich_player(
     *,
     year: int = 2024,
 ) -> tuple[PlayerMaster, SummerLeagueEdition]:
-    """Seed a player with ≥20 shot events and a SummerLeaguePlayerSeason row."""
+    """Seed a player with ≥20 shot events and a SummerLeagueDerivedAgg row."""
     player = make_player("Shot", "Charter", school="Duke")
     db.add(player)
     await db.flush()
@@ -242,8 +242,8 @@ async def _seed_rich_player(
         db.add(ev)
     await db.flush()
 
-    # Seed a SummerLeaguePlayerSeason row with shot-diet rates.
-    season_row = SummerLeaguePlayerSeason(
+    # Seed a SummerLeagueDerivedAgg row with shot-diet rates.
+    season_row = SummerLeagueDerivedAgg(
         competition_id=comp.id,
         player_id=player.id,
         year=year,
@@ -526,7 +526,7 @@ async def test_competition_resolver_honors_venue(db_session: AsyncSession) -> No
     for comp, venue in ((lv, "las_vegas"), (slc, "salt_lake_city")):
         assert comp.id is not None
         db_session.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=comp.id,
                 player_id=player.id,
                 year=2024,
@@ -564,8 +564,8 @@ async def test_season_page_shows_advanced_metrics_for_eligible_year(
     player, comp = await _seed_rich_player(db_session, year=2023)
     row = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()

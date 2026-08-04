@@ -47,7 +47,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.nba_stats_client import NBAStatsClient
 from app.cli.sl_desk_tick import run_desk_tick
@@ -175,7 +175,7 @@ async def _seed_roster_scenario(
             )
         )
         db.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=comp.id,
                 player_id=player.id,
                 year=year,

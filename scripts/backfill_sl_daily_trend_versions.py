@@ -44,7 +44,7 @@ from app.schemas.summer_league import (
 )
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.metric_publish import (
@@ -286,18 +286,18 @@ async def _has_complete_archival_close(
     """Return whether both projection families have a published daily close."""
     context_current: Any = getattr(SummerLeagueMetricContext, "is_current")
     context_published: Any = getattr(SummerLeagueMetricContext, "published_at")
-    season_current: Any = getattr(SummerLeaguePlayerSeason, "is_current")
-    season_published: Any = getattr(SummerLeaguePlayerSeason, "published_at")
+    season_current: Any = getattr(SummerLeagueDerivedAgg, "is_current")
+    season_published: Any = getattr(SummerLeagueDerivedAgg, "published_at")
     context_competition_id: Any = getattr(SummerLeagueMetricContext, "competition_id")
     context_effective_day: Any = getattr(SummerLeagueMetricContext, "effective_day")
     context_archival: Any = getattr(SummerLeagueMetricContext, "is_archival")
-    season_competition_id: Any = getattr(SummerLeaguePlayerSeason, "competition_id")
-    season_effective_day: Any = getattr(SummerLeaguePlayerSeason, "effective_day")
-    season_archival: Any = getattr(SummerLeaguePlayerSeason, "is_archival")
+    season_competition_id: Any = getattr(SummerLeagueDerivedAgg, "competition_id")
+    season_effective_day: Any = getattr(SummerLeagueDerivedAgg, "effective_day")
+    season_archival: Any = getattr(SummerLeagueDerivedAgg, "is_archival")
     season_competition_bands: Any = getattr(
-        SummerLeaguePlayerSeason, "trend_competition_bands"
+        SummerLeagueDerivedAgg, "trend_competition_bands"
     )
-    season_year_bands: Any = getattr(SummerLeaguePlayerSeason, "trend_season_bands")
+    season_year_bands: Any = getattr(SummerLeagueDerivedAgg, "trend_season_bands")
     context_count = await db.scalar(
         select(func.count())
         .select_from(SummerLeagueMetricContext)
@@ -311,7 +311,7 @@ async def _has_complete_archival_close(
     )
     season_count = await db.scalar(
         select(func.count())
-        .select_from(SummerLeaguePlayerSeason)
+        .select_from(SummerLeagueDerivedAgg)
         .where(
             season_competition_id == competition_id,
             season_effective_day == effective_day,

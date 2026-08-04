@@ -37,7 +37,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services import consensus_service as svc
 from tests.integration.conftest import (
     make_article,
@@ -198,7 +198,7 @@ async def _seed_summer_league(
         )
     )
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=competition.year,

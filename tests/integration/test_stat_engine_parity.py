@@ -14,7 +14,7 @@ For one deterministic, hand-built competition it asserts, for a fixed player::
 across the four independently-computed surfaces:
 
 * **engine**    -- ``compute()`` called directly (in-memory, pre-persistence).
-* **stored**    -- ``rebuild()``'s materialized ``SummerLeaguePlayerSeason`` row.
+* **stored**    -- ``rebuild()``'s materialized ``SummerLeagueDerivedAgg`` row.
 * **Explorer**  -- ``run_explorer_query()`` (the real read path the page uses),
   ``subject="players"``, ``grain="per_competition"``.
 * **leaderboard** -- ``get_leaders(mode="advanced", ...)`` (the real read path
@@ -61,7 +61,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league.metrics import compute, rebuild
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
@@ -275,10 +275,10 @@ async def test_engine_stored_explorer_and_leaderboard_agree_on_recombinable_metr
     await db_session.commit()
     stored = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.competition_id == comp_id,
-                SummerLeaguePlayerSeason.player_id == target.id,
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.competition_id == comp_id,
+                SummerLeagueDerivedAgg.player_id == target.id,
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
         )
     ).scalar_one()
@@ -357,10 +357,10 @@ async def test_default_explorer_reads_current_snapshot_and_exposes_source_curren
     await db_session.commit()
     stored = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.competition_id == comp_id,
-                SummerLeaguePlayerSeason.player_id == target.id,
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.competition_id == comp_id,
+                SummerLeagueDerivedAgg.player_id == target.id,
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
         )
     ).scalar_one()
@@ -417,10 +417,10 @@ async def test_engine_stored_explorer_and_leaderboard_agree_on_pool_recalibrated
     await db_session.commit()
     stored = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.competition_id == comp_id,
-                SummerLeaguePlayerSeason.player_id == target.id,
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.competition_id == comp_id,
+                SummerLeagueDerivedAgg.player_id == target.id,
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
         )
     ).scalar_one()

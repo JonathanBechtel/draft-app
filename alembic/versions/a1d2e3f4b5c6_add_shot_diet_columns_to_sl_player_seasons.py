@@ -32,7 +32,7 @@ def upgrade() -> None:
     """Add nullable shot-diet rate columns.
 
     Guarded with IF NOT EXISTS so a fresh-DB create_all (which already
-    reflects the updated SummerLeaguePlayerSeason model) does not error.
+    reflects the updated SummerLeagueDerivedAgg model) does not error.
     """
     for col in _COLS:
         op.execute(
