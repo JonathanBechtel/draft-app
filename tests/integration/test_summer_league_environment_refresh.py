@@ -36,7 +36,7 @@ from app.services.summer_league.environment_refresh import (
     refresh_environment_profiles_for_year,
     rollback_environment_profile,
 )
-from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
+from app.services.ingest.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_service import (
     EnvironmentScope,
     get_environment_profile,

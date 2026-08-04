@@ -26,7 +26,7 @@ from app.schemas.summer_league_metrics import (
 from app.services.summer_league.metric_publish import (
     publish_archival_metric_version,
 )
-from app.services.summer_league.write_lock import _SUMMER_LEAGUE_WRITER_LOCK_KEY
+from app.services.ingest.write_lock import _SUMMER_LEAGUE_WRITER_LOCK_KEY
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from scripts.backfill_sl_daily_trend_versions import (
     _has_complete_archival_close,

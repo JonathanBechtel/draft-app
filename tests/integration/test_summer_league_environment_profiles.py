@@ -49,7 +49,7 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentSeasonMembership,
 )
 from app.services.summer_league.metrics import Box
-from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
+from app.services.ingest.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import CALCULATION_VERSION
 from app.services.summer_league_environment_service import (
     EnvironmentScope,

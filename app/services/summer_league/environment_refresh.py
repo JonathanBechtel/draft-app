@@ -31,7 +31,7 @@ surfaces (#607/#608 reads) should call rather than re-deriving the threshold.
 Durable run outcome is recorded on the existing
 :class:`~app.schemas.summer_league_pipeline.SummerLeaguePipelineState` table
 under the ``environment_refresh`` job (see
-:mod:`app.services.summer_league.pipeline_state`) -- the same
+:mod:`app.services.ingest.pipeline_state`) -- the same
 success/failure/timestamp machinery ``desk``/``full_ingestion`` already use,
 per "keep operational state centralized." This is how a failed incremental
 refresh stays "visible and retryable" (contract §8) without erasing the last
@@ -53,12 +53,12 @@ from sqlmodel import col
 
 from app.schemas.summer_league_environment import SummerLeagueEnvironmentProfile
 from app.schemas.summer_league_pipeline import SummerLeaguePipelineJob
-from app.services.summer_league.pipeline_state import (
+from app.services.ingest.pipeline_state import (
     complete_pipeline,
     record_pipeline_failure,
 )
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
-from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import is_profile_stale
 from app.services.summer_league_environment_service import (
     EnvironmentRebuildResult,

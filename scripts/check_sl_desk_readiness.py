@@ -119,7 +119,7 @@ from app.services.summer_league.desk_read import (  # noqa: E402
 from app.services.summer_league.scoreboard_ingest import (  # noqa: E402
     EVENT_KEY_SUMMER_LEAGUE,
 )
-from app.services.summer_league.pipeline_state import get_pipeline_freshness  # noqa: E402
+from app.services.ingest.pipeline_state import get_pipeline_freshness  # noqa: E402
 from app.utils.db_async import SessionLocal, engine  # noqa: E402
 
 ReadinessMode = Literal["preflight", "post-tick"]

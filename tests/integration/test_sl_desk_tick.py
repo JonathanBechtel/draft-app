@@ -58,9 +58,9 @@ from app.schemas.summer_league_desk import (
 )
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league.raw_ingestion import GAME_ENDPOINTS
-from app.services.summer_league.write_lock import (
+from app.services.ingest.write_lock import (
     SummerLeagueWriterLockTimeout,
     acquire_summer_league_writer_lock,
 )

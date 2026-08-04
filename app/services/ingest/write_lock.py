@@ -124,7 +124,7 @@ async def acquire_summer_league_writer_lock_bounded_timed(
     callers (the Summer League Desk tick) that want the wait recorded under
     its own greppable ``writer_lock_wait_ms`` field rather than folded into a
     step's generic ``duration_ms`` -- see
-    ``app.services.summer_league.pipeline_telemetry.PipelineTelemetry.step``.
+    ``app.services.ingest.pipeline_telemetry.PipelineTelemetry.step``.
 
     Args:
         db: Active database session (caller controls the transaction).

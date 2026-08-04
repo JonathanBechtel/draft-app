@@ -49,7 +49,7 @@ from app.services.summer_league.desk_tick.shared import (  # noqa: E402
     DeskLatencyClass,
     TickContext,
 )
-from app.services.summer_league.pipeline_telemetry import (  # noqa: E402
+from app.services.ingest.pipeline_telemetry import (  # noqa: E402
     PipelineTelemetry,
 )
 

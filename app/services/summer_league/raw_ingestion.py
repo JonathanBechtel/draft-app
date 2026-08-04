@@ -367,7 +367,7 @@ def dirty_game_ids_from_manifest(
     silently never get reprocessed unless something outside that table
     proves the underlying file actually changed. Callers (see
     ``app.cli.summer_league_ingest_runner``) feed this set into
-    ``app.services.summer_league.batch_progress.invalidate_batch_progress``
+    ``app.services.ingest.batch_progress.invalidate_batch_progress``
     to clear exactly the stale progress markers before the next batched
     normalization pass, so a dirty game re-enters the ordinary "remaining"
     filter instead of being skipped forever.

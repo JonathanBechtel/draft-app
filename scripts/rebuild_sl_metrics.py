@@ -21,7 +21,7 @@ from app.services.summer_league.metrics import (
     rebuild_staged,
     set_repeatable_read_snapshot,
 )
-from app.services.summer_league.write_lock import (
+from app.services.ingest.write_lock import (
     acquire_summer_league_writer_lock_bounded,
 )
 from app.utils.db_async import SessionLocal, engine

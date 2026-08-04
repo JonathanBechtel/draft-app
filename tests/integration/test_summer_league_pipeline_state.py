@@ -14,13 +14,13 @@ from app.schemas.summer_league_pipeline import (
     SummerLeaguePipelineOutcome,
     SummerLeaguePipelineState,
 )
-from app.services.summer_league.batch_progress import (
+from app.services.ingest.batch_progress import (
     count_pending_batch_games,
     get_completed_batch_game_ids,
     invalidate_batch_progress,
     record_batch_progress,
 )
-from app.services.summer_league.pipeline_state import (
+from app.services.ingest.pipeline_state import (
     complete_pipeline,
     defer_full_reconciliation,
     full_reconciliation_is_pending,
@@ -261,7 +261,7 @@ async def test_older_completion_cannot_overwrite_a_newer_pipeline_start(
 
 
 # ---------------------------------------------------------------------------
-# Batch-progress tracking (app.services.summer_league.batch_progress)
+# Batch-progress tracking (app.services.ingest.batch_progress)
 # ---------------------------------------------------------------------------
 
 

@@ -18,7 +18,7 @@ import pytest
 
 from app.services import summer_league_environment_registry as registry_mod
 from app.services.summer_league import environment_refresh as refresh_mod
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league_environment_service import EnvironmentRebuildResult
 
 

@@ -55,7 +55,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueDerivedAgg,
 )
 from app.services.event_desk.timeutils import to_eastern_date
-from app.services.summer_league.write_lock import (
+from app.services.ingest.write_lock import (
     acquire_summer_league_writer_lock_bounded,
 )
 

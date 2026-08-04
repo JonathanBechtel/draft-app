@@ -270,7 +270,7 @@ def _log_machine_status(status: MachineImageStatus) -> None:
 
     Mirrors ``PipelineTelemetry.step``'s "one structured log record per
     observation" philosophy (see
-    ``app.services.summer_league.pipeline_telemetry``), but this script runs
+    ``app.services.ingest.pipeline_telemetry``), but this script runs
     as a standalone ``flyctl``-shelling CLI outside the async DB pipeline --
     no ``AsyncSession``, no pipeline ``job``/``run_id`` -- so it cannot
     import and use ``PipelineTelemetry`` directly. This is the comparable

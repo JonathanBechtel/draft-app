@@ -64,7 +64,7 @@ from typing import Any, AsyncIterator, Optional, Sequence
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.services.summer_league.write_lock import (
+from app.services.ingest.write_lock import (
     acquire_summer_league_writer_lock,
 )
 

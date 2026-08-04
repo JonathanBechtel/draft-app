@@ -52,7 +52,7 @@ from app.utils.network_guard import transaction_depth
 from app.schemas.summer_league_pipeline import SummerLeagueBatchPhase
 from app.services.player_mention_service import _normalized_name_key
 from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.batch_progress import (
+from app.services.ingest.batch_progress import (
     get_completed_batch_game_ids,
     invalidate_batch_progress,
 )
@@ -65,7 +65,7 @@ from app.services.summer_league.player_resolution import (
     apply_source_player_resolution_plan as _real_apply_source_player_resolution_plan,
 )
 from app.services.summer_league.raw_ingestion import dirty_game_ids_from_manifest
-from app.services.summer_league.write_lock import (
+from app.services.ingest.write_lock import (
     try_acquire_summer_league_writer_lock,
 )
 

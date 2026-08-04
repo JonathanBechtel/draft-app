@@ -61,9 +61,9 @@ from app.services.event_desk.registry import (
 from app.services.event_desk.state_machine import inner_state
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league.scoreboard_ingest import resolve_target_competitions
-from app.services.summer_league.write_lock import (
+from app.services.ingest.write_lock import (
     acquire_summer_league_writer_lock_bounded_timed,
 )
 
@@ -92,7 +92,7 @@ class DeskLatencyClass(str, Enum):
     """One independently-scheduled Summer League Desk workload (spec §2).
 
     The value is the ``job`` label
-    :class:`~app.services.summer_league.pipeline_telemetry.PipelineTelemetry`
+    :class:`~app.services.ingest.pipeline_telemetry.PipelineTelemetry`
     stamps on every structured log line, so "the tick was slow" resolves to
     *which* class without reading the code -- ticket #699's per-class
     telemetry requirement.
@@ -132,7 +132,7 @@ class WriterLockPolicy:
     Attributes:
         enabled: Whether :meth:`acquire` actually takes the shared lock.
         max_wait_seconds: Bounded wait forwarded to
-            :func:`~app.services.summer_league.write_lock.acquire_summer_league_writer_lock_bounded_timed`.
+            :func:`~app.services.ingest.write_lock.acquire_summer_league_writer_lock_bounded_timed`.
         telemetry: Optional run timer; each acquire is recorded as its own
             step so a contended backbone run is visible in logs.
     """

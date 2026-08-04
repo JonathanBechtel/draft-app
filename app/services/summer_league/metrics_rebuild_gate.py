@@ -28,15 +28,15 @@ from app.services.summer_league.metrics import (
 )
 from app.services.summer_league.metric_publish import publish_metric_version
 from app.services.summer_league.metrics_input import calculate_metrics_input_watermark
-from app.services.summer_league.pipeline_state import (
+from app.services.ingest.pipeline_state import (
     SummerLeaguePipelineJob,
     complete_pipeline,
     defer_full_reconciliation,
     full_reconciliation_is_pending,
     get_pipeline_freshness,
 )
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
-from app.services.summer_league.write_lock import (
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.write_lock import (
     try_acquire_summer_league_writer_lock_yielding,
 )
 

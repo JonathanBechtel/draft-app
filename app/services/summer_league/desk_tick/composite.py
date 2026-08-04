@@ -56,7 +56,7 @@ from app.services.summer_league.desk_tick.shared import (
 )
 from app.services.summer_league.live_ingestion import LiveIngestionReport
 from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league.scoreboard_ingest import (
     ScoreboardIngestReport,
     resolve_target_competitions,

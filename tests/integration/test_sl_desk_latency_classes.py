@@ -60,8 +60,8 @@ from app.services.summer_league.desk_tick.shared import (
     WriterLockPolicy,
 )
 from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
-from app.services.summer_league.write_lock import SummerLeagueWriterLockTimeout
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.write_lock import SummerLeagueWriterLockTimeout
 from tests.integration._desk_replay import (
     CAPTURE_REFERENCE_NOW,
     ReplaySession,

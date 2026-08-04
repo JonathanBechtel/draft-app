@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.summer_league import write_lock
+from app.services.ingest import write_lock
 
 
 @pytest.mark.asyncio

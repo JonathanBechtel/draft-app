@@ -55,7 +55,7 @@ Environment overrides:
     SL_INGEST_FULL_RECONCILE - when set to a truthy value ("1", "true",
         "yes"), forces a complete shot/PBP reprocess for every venue this
         run by clearing all of that venue/year's durable batch-progress
-        rows (see app.services.summer_league.batch_progress) before the
+        rows (see app.services.ingest.batch_progress) before the
         batched phases run, bypassing the "already completed, skip it"
         filter entirely. An operator escape hatch for repair -- e.g. after
         a raw-snapshot backfill/migration that could have silently changed
@@ -112,7 +112,7 @@ from app.services.summer_league.player_resolution import (
     revalidate_source_player_resolution_plan,
 )
 from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.batch_progress import (
+from app.services.ingest.batch_progress import (
     count_pending_batch_games,
     get_completed_batch_game_ids,
     invalidate_batch_progress,
@@ -127,11 +127,11 @@ from app.services.summer_league.normalization import (
     normalize_pbp_events,
     normalize_shot_events,
 )
-from app.services.summer_league.pipeline_state import (
+from app.services.ingest.pipeline_state import (
     defer_full_reconciliation,
     record_pipeline_failure,
 )
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league.raw_ingestion import (
     RawIngestionOptions,
     SummerLeagueRawIngestor,
@@ -143,7 +143,7 @@ from app.services.summer_league.scoreboard_ingest import (
     resolve_target_competitions,
     run_scoreboard_ingest,
 )
-from app.services.summer_league.write_lock import (
+from app.services.ingest.write_lock import (
     try_acquire_summer_league_writer_lock,
     try_acquire_summer_league_writer_lock_yielding,
 )
@@ -525,7 +525,7 @@ async def _run_lock_bounded_batches(
     :func:`_run_batched_phase` (shot/PBP normalization) and
     :func:`_run_resolution_phase` (identity resolution): open ``db.begin()``,
     try the writer lock (yielding first to a waiting Desk tick via
-    :func:`~app.services.summer_league.write_lock.try_acquire_summer_league_writer_lock_yielding`),
+    :func:`~app.services.ingest.write_lock.try_acquire_summer_league_writer_lock_yielding`),
     defer and stop on contention, otherwise run ``process_batch`` for this
     batch and move on. Releasing the lock between batches is what bounds how
     long either kind of lower-priority writer can starve the hourly Summer
@@ -597,14 +597,14 @@ async def _run_batched_phase(
     """Normalize ``game_ids`` for one phase in small, independently committed batches.
 
     Reads durable per-game progress (see
-    :mod:`app.services.summer_league.batch_progress`) first so a run
+    :mod:`app.services.ingest.batch_progress`) first so a run
     resumed after a crash/interruption only reprocesses games that were
     never committed for this phase -- and, as a side effect, a routine run
     against an already-fully-normalized venue only ever processes newly
     discovered games. Each batch then commits in its own
     ``db.begin()``/advisory-lock lifetime, releasing the writer lock
     between batches via
-    :func:`~app.services.summer_league.write_lock.try_acquire_summer_league_writer_lock_yielding`
+    :func:`~app.services.ingest.write_lock.try_acquire_summer_league_writer_lock_yielding`
     (which yields to a waiting Desk tick before each reacquisition), so one
     venue's shot/PBP volume can never again hold the lock for the venue's
     full duration (the 87.7-minute production incident this module exists to
@@ -901,7 +901,7 @@ async def _log_batch_backlog(
 ) -> None:
     """Log the SHOT/PBP dirty-game backlog left outstanding for this venue.
 
-    Surfaces :func:`~app.services.summer_league.batch_progress.count_pending_batch_games`
+    Surfaces :func:`~app.services.ingest.batch_progress.count_pending_batch_games`
     (#626) as a queryable/loggable metric (this ticket's scope item) rather
     than something an operator can only infer from raw file timestamps.
     Runs from the caller's ``finally`` block so the backlog is reported
@@ -981,7 +981,7 @@ async def _run_venue(
     Desk tick: previously the whole block ran for as long as 87.7 minutes in
     production; now the lock is released and reacquired (yielding first to
     a waiting Desk tick, see
-    :func:`~app.services.summer_league.write_lock.try_acquire_summer_league_writer_lock_yielding`)
+    :func:`~app.services.ingest.write_lock.try_acquire_summer_league_writer_lock_yielding`)
     at every phase and batch boundary.
 
     Before the batched shot/PBP phases run, :func:`_reconcile_batch_progress`

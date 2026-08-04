@@ -83,7 +83,7 @@ from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
 
 # discipline: file-size formula audit keeps this legacy aggregation module reviewable.
 from app.services.stats.formulas import pace_per_48, points_per_100
-from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
+from app.services.ingest.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import (
     CALCULATION_VERSION,
     FIELD_COMPOSITION_ATTRIBUTES,

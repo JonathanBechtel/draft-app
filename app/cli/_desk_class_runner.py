@@ -39,12 +39,12 @@ from typing import Optional, TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.summer_league.desk_tick.shared import DeskLatencyClass
-from app.services.summer_league.pipeline_state import (
+from app.services.ingest.pipeline_state import (
     complete_pipeline,
     record_pipeline_failure,
     start_pipeline,
 )
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
 from app.utils.db_async import SessionLocal, engine
 
 logger = logging.getLogger(__name__)
