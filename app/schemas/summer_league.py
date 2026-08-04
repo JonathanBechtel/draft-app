@@ -202,8 +202,12 @@ class SummerLeagueRawFile(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
-class SummerLeagueCompetition(SQLModel, table=True):  # type: ignore[call-arg]
-    """One normalized Summer League competition for a year and NBA.com LeagueID."""
+class SummerLeagueEdition(SQLModel, table=True):  # type: ignore[call-arg]
+    """One normalized Summer League competition for a year and NBA.com LeagueID.
+
+    The recurring series is the competition; this row is one dated instance of
+    it — an edition (journey-graph §7).
+    """
 
     __tablename__ = "summer_league_competitions"
     __table_args__ = (

@@ -69,7 +69,7 @@ from app.schemas.event_desk import (
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
@@ -417,8 +417,8 @@ async def _resolve_window_state(
         comp_ids = (
             (
                 await db.execute(
-                    select(SummerLeagueCompetition.id).where(  # type: ignore[call-overload]
-                        SummerLeagueCompetition.year == year  # type: ignore[arg-type]
+                    select(SummerLeagueEdition.id).where(  # type: ignore[call-overload]
+                        SummerLeagueEdition.year == year  # type: ignore[arg-type]
                     )
                 )
             )

@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueTeamEntry,
@@ -37,10 +37,10 @@ _N = {"i": 0}
 
 async def _seed_game_context(
     db: AsyncSession,
-) -> tuple[SummerLeagueCompetition, SummerLeagueGame]:
+) -> tuple[SummerLeagueEdition, SummerLeagueGame]:
     _N["i"] += 1
     idx = _N["i"]
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="15",
         venue_slug="las_vegas",

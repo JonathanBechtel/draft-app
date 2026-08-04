@@ -31,7 +31,7 @@ from app.schemas.player_content_mentions import (
 )
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
@@ -128,7 +128,7 @@ async def _seed_summer_league(
     db: AsyncSession, player: PlayerMaster
 ) -> SummerLeagueGame:
     """Seed a populated event, player log, and published trend projection."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",

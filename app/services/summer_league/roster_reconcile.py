@@ -83,7 +83,7 @@ class RosterReconcileReport:
     """Announced-vs-played reconciliation for one competition.
 
     Args:
-        competition_id: PK of the ``SummerLeagueCompetition`` row.
+        competition_id: PK of the ``SummerLeagueEdition`` row.
         total_announced: Distinct roster-sourced participants for the competition.
         total_played: Distinct box-score source players for the competition.
         announced_and_played: Count present in both sets (excluded from the
@@ -111,7 +111,7 @@ async def reconcile_competition(
 
     Args:
         db: Async database session.
-        competition_id: PK of the ``SummerLeagueCompetition`` row to reconcile.
+        competition_id: PK of the ``SummerLeagueEdition`` row to reconcile.
 
     Returns:
         A ``RosterReconcileReport`` with totals and the two flagged entry lists.

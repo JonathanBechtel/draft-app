@@ -40,7 +40,7 @@ from app.schemas.event_desk import (
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
@@ -175,9 +175,9 @@ async def _seed_competition(
     venue_slug: str = "las_vegas",
     starts_on: date | None = None,
     ends_on: date | None = None,
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     idx = _next_idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"{venue_slug}-{idx}",
@@ -215,7 +215,7 @@ def _schedule_payload_with_game(
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     idx = _next_idx()
     assert competition.id is not None
@@ -233,7 +233,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -280,7 +280,7 @@ async def _seed_player(
 
 async def _roster_player(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
 ) -> None:
@@ -312,7 +312,7 @@ async def _roster_player(
 async def _seed_season(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     player: PlayerMaster,
     year: int,
     gmsc: float,

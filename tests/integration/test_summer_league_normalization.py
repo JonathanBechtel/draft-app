@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
@@ -487,7 +487,7 @@ async def test_normalize_competition_games_advances_scores_across_partial_passes
         db_session, raw_root=tmp_path, year=2024, league_id="15"
     )
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -573,7 +573,7 @@ async def test_normalize_competition_games_populates_score_from_teamstats_when_g
     )
     _rewrite_team_gamelog_empty(tmp_path)
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -680,7 +680,7 @@ async def test_normalize_competition_games_teamstats_fallback_never_clobbers_exi
     )
     _rewrite_team_gamelog_empty(tmp_path)
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -757,7 +757,7 @@ async def test_normalize_competition_games_is_idempotent(
     )
 
     competition_count = await db_session.scalar(
-        select(func.count()).select_from(SummerLeagueCompetition)
+        select(func.count()).select_from(SummerLeagueEdition)
     )
     team_count = await db_session.scalar(
         select(func.count()).select_from(SummerLeagueTeamEntry)
@@ -840,7 +840,7 @@ async def test_normalize_competition_games_never_promotes_a_scoreboard_scheduled
     # Scheduled before normalization ever runs (mirrors `upsert_scoreboard_games`
     # creating the row first; `_upsert_competition`'s (year, league_id) upsert
     # reuses this same competition row).
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -891,7 +891,7 @@ async def test_normalize_competition_games_keeps_final_monotonic_against_partial
         db_session, raw_root=tmp_path, year=2024, league_id="15"
     )
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -947,9 +947,9 @@ async def test_normalize_competition_games_sets_competition_date_window_from_gam
 
     competition = (
         await db_session.execute(
-            select(SummerLeagueCompetition).where(
-                SummerLeagueCompetition.year == 2024,  # type: ignore[arg-type]
-                SummerLeagueCompetition.league_id == "15",  # type: ignore[arg-type]
+            select(SummerLeagueEdition).where(
+                SummerLeagueEdition.year == 2024,  # type: ignore[arg-type]
+                SummerLeagueEdition.league_id == "15",  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -966,7 +966,7 @@ async def test_refresh_competition_date_window_spans_min_and_max_game_dates(
     Seeds three games directly (bypassing the raw-file pipeline) with dates
     out of order, so a naive "last game wins" implementation would fail.
     """
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",
@@ -999,7 +999,7 @@ async def test_refresh_competition_date_window_ignores_null_game_dates(
     db_session: AsyncSession,
 ) -> None:
     """A game row with no ``game_date`` yet must not corrupt the aggregate."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2025,
         league_id="14",
         venue_slug="orlando",
@@ -1042,7 +1042,7 @@ async def test_refresh_competition_date_window_leaves_null_with_zero_dated_games
     That is expected and low-urgency -- this test only proves the helper
     itself is a safe no-op rather than nulling out or erroring.
     """
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2027,
         league_id="15",
         venue_slug="las_vegas",

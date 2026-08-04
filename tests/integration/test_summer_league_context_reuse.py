@@ -22,7 +22,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
@@ -69,9 +69,9 @@ def _team_line(*, pts: int, fga: int, fg3a: int, tov: int) -> dict:
 
 async def _competition(
     db: AsyncSession, *, year: int, venue_slug: str, league_id: str
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,

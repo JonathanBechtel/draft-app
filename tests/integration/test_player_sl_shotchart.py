@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
@@ -49,18 +49,18 @@ def _uid() -> str:
 
 async def _make_competition(
     db: AsyncSession, *, year: int, venue_slug: str = "las_vegas"
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     existing = (
         await db.execute(
-            select(SummerLeagueCompetition).where(  # type: ignore[call-overload]
-                SummerLeagueCompetition.year == year,
-                SummerLeagueCompetition.venue_slug == venue_slug,
+            select(SummerLeagueEdition).where(  # type: ignore[call-overload]
+                SummerLeagueEdition.year == year,
+                SummerLeagueEdition.venue_slug == venue_slug,
             )
         )
     ).scalar_one_or_none()
     if existing is not None:
         return existing
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=f"15-{_uid()}",
         venue_slug=venue_slug,
@@ -103,7 +103,7 @@ async def _make_game_and_log(
     *,
     player: PlayerMaster,
     source_player: SummerLeagueSourcePlayer,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     game_date: date,
 ) -> SummerLeagueGame:
     """Seed one game + log for a player."""
@@ -180,7 +180,7 @@ async def _seed_rich_player(
     db: AsyncSession,
     *,
     year: int = 2024,
-) -> tuple[PlayerMaster, SummerLeagueCompetition]:
+) -> tuple[PlayerMaster, SummerLeagueEdition]:
     """Seed a player with ≥20 shot events and a SummerLeaguePlayerSeason row."""
     player = make_player("Shot", "Charter", school="Duke")
     db.add(player)

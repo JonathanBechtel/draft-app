@@ -93,7 +93,7 @@ from app.schemas.event_desk import (  # noqa: E402
     EventLifecyclePhase,
 )
 from app.schemas.event_desk_render_snapshot import EventDeskRenderSnapshot  # noqa: E402
-from app.schemas.summer_league import SummerLeagueCompetition  # noqa: E402
+from app.schemas.summer_league import SummerLeagueEdition  # noqa: E402
 from app.schemas.summer_league_pipeline import (  # noqa: E402
     SummerLeaguePipelineJob,
     SummerLeaguePipelineOutcome,
@@ -183,8 +183,8 @@ async def _check_registration(
     db: AsyncSession, *, mode: ReadinessMode, today_year: int, event_key: str
 ) -> CheckResult:
     """Category 1 -- this year's competition(s) registered, plus (post-tick) a synced events row."""
-    comp_stmt = select(SummerLeagueCompetition).where(
-        SummerLeagueCompetition.year == today_year  # type: ignore[arg-type]
+    comp_stmt = select(SummerLeagueEdition).where(
+        SummerLeagueEdition.year == today_year  # type: ignore[arg-type]
     )
     competitions = (await db.execute(comp_stmt)).scalars().all()
     if not competitions:
@@ -572,8 +572,8 @@ async def _resolve_lifecycle(
         competitions = (
             (
                 await db.execute(
-                    select(SummerLeagueCompetition).where(
-                        SummerLeagueCompetition.id.in_(competition_ids)  # type: ignore[union-attr]
+                    select(SummerLeagueEdition).where(
+                        SummerLeagueEdition.id.in_(competition_ids)  # type: ignore[union-attr]
                     )
                 )
             )

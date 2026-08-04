@@ -49,7 +49,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.event_desk import EventDailyState, EventLifecyclePhase
 from app.schemas.player_affiliation import AffiliationStatus
-from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueGame
+from app.schemas.summer_league import SummerLeagueEdition, SummerLeagueGame
 from app.schemas.summer_league_desk import SummerLeagueCohortBaseline
 from app.schemas.summer_league_pipeline import SummerLeaguePipelineJob
 from app.services.event_desk.lifecycle import lifecycle_phase
@@ -301,7 +301,7 @@ _BOOTSTRAP_ELIGIBLE_PHASES = frozenset(
 
 
 def synthetic_calendar_dates(
-    competitions: Sequence[SummerLeagueCompetition],
+    competitions: Sequence[SummerLeagueEdition],
 ) -> tuple[date, ...]:
     """Every day spanned by each competition's configured ``starts_on``/``ends_on``.
 

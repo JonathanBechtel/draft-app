@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
@@ -63,13 +63,13 @@ async def test_older_full_flip_keeps_newer_scoped_publication_current(
 ) -> None:
     """A late full flip cannot regress a newer scope and preserves audit timestamps."""
     competitions = [
-        SummerLeagueCompetition(
+        SummerLeagueEdition(
             year=2026,
             league_id="publish-guard-a",
             venue_slug="venue-a",
             display_name="Publish Guard A",
         ),
-        SummerLeagueCompetition(
+        SummerLeagueEdition(
             year=2026,
             league_id="publish-guard-b",
             venue_slug="venue-b",

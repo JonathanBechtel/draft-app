@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.event_desk import Event, EventCalendarSource, EventType
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
 )
@@ -279,10 +279,10 @@ SUMMER_LEAGUE_WINDOW_PRIORS = WindowPriors(
 
 async def _resolve_current_year_summer_league_competitions(
     db: AsyncSession, *, today: date
-) -> list[SummerLeagueCompetition]:
+) -> list[SummerLeagueEdition]:
     """Every `summer_league_competitions` row for `today`'s year (registration source)."""
-    stmt = select(SummerLeagueCompetition).where(
-        SummerLeagueCompetition.year == today.year  # type: ignore[arg-type]
+    stmt = select(SummerLeagueEdition).where(
+        SummerLeagueEdition.year == today.year  # type: ignore[arg-type]
     )
     return list((await db.execute(stmt)).scalars().all())
 

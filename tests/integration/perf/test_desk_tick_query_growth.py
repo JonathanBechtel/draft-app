@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
@@ -98,7 +98,7 @@ async def _seed_roster_scenario(
     growth variable this test measures.
     """
     today = to_eastern_date(now)
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug=f"growth-{_idx()}",

@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
@@ -42,9 +42,9 @@ def _next() -> int:
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, league_id: str, venue_slug: str
-) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry, SummerLeagueTeamEntry]:
+) -> tuple[SummerLeagueEdition, SummerLeagueTeamEntry, SummerLeagueTeamEntry]:
     """Seed one competition with two team entries."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -74,7 +74,7 @@ async def _seed_competition(
 async def _seed_final_game(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     box_complete: bool = True,
@@ -129,7 +129,7 @@ async def _seed_final_game(
 async def _seed_scheduled_game(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
 ) -> None:
@@ -169,7 +169,7 @@ async def _seed_source_player(
 async def _seed_player_log(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
     source: SummerLeagueSourcePlayer,
@@ -198,7 +198,7 @@ async def _seed_player_log(
 async def _seed_shot(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
     source: SummerLeagueSourcePlayer,

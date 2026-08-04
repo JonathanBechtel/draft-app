@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamGameLog,
@@ -355,8 +355,8 @@ async def get_summer_league_profile_by_player_id(
     stmt = (
         select(
             game.id.label("sl_game_id"),  # type: ignore[union-attr]
-            SummerLeagueCompetition.year,
-            SummerLeagueCompetition.venue_slug,
+            SummerLeagueEdition.year,
+            SummerLeagueEdition.venue_slug,
             game.game_date,
             opponent.raw_team_abbreviation,
             opponent.raw_team_name,
@@ -382,7 +382,7 @@ async def get_summer_league_profile_by_player_id(
             *team_box_columns(opponent_log, "opp"),
         )  # type: ignore[call-overload, misc]
         .select_from(pgl)
-        .join(SummerLeagueCompetition, SummerLeagueCompetition.id == pgl.competition_id)
+        .join(SummerLeagueEdition, SummerLeagueEdition.id == pgl.competition_id)
         .join(game, game.id == pgl.game_id)
         .outerjoin(
             team_log,

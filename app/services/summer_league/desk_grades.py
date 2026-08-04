@@ -42,7 +42,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_desk import (
     SummerLeagueCohortBaseline,
     SummerLeagueDeskGrade,
@@ -263,7 +263,7 @@ async def grade_player_event(
             year, or no active T1 baseline row exists for the player's
             cohort under ``baseline_version``.
     """
-    competition = await session.get(SummerLeagueCompetition, competition_id)
+    competition = await session.get(SummerLeagueEdition, competition_id)
     if competition is None:
         raise ValueError(f"No summer_league_competitions row for id={competition_id}.")
 
@@ -398,7 +398,7 @@ async def grade_players_bulk(
     if not player_ids:
         return {}
 
-    competition = await session.get(SummerLeagueCompetition, competition_id)
+    competition = await session.get(SummerLeagueEdition, competition_id)
     if competition is None:
         raise ValueError(f"No summer_league_competitions row for id={competition_id}.")
 

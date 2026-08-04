@@ -26,7 +26,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayByPlayEvent,
@@ -157,8 +157,8 @@ async def _raw_file(
 
 async def _competition(
     db: AsyncSession, *, year: int, venue: str, league_id: str
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue,
@@ -426,7 +426,7 @@ async def test_profile_traces_to_raw_run_and_discloses_source_status(
     comp_id, roster = await _seed_competition(
         db_session, year=2025, venue="las_vegas", league_id="15"
     )
-    comp = await db_session.get(SummerLeagueCompetition, comp_id)
+    comp = await db_session.get(SummerLeagueEdition, comp_id)
     assert comp is not None
     comp.raw_run_id = raw_run.id
     await db_session.flush()
@@ -514,7 +514,7 @@ async def test_shot_coverage_ignores_stale_run_failure(
     """A stale raw file left by an older, non-pinned scrape run must not
     uncertify a game whose *current* pinned raw run parsed successfully.
 
-    Without scoping by ``SummerLeagueCompetition.raw_run_id``, the worst-case
+    Without scoping by ``SummerLeagueEdition.raw_run_id``, the worst-case
     reduction across every raw file matching a game id -- regardless of which
     scrape manifest produced it -- would fold an unrelated older run's
     ``PARSE_FAILED`` row into this competition's certification, contradicting
@@ -541,7 +541,7 @@ async def test_shot_coverage_ignores_stale_run_failure(
     comp_id, _ = await _seed_competition(
         db_session, year=2025, venue="las_vegas", league_id="15", n_games=1
     )
-    comp = await db_session.get(SummerLeagueCompetition, comp_id)
+    comp = await db_session.get(SummerLeagueEdition, comp_id)
     assert comp is not None
     comp.raw_run_id = current_run.id
     await db_session.flush()
@@ -652,7 +652,7 @@ async def test_shot_coverage_ignores_stale_run_success(
     comp_id, _ = await _seed_competition(
         db_session, year=2025, venue="las_vegas", league_id="15", n_games=1
     )
-    comp = await db_session.get(SummerLeagueCompetition, comp_id)
+    comp = await db_session.get(SummerLeagueEdition, comp_id)
     assert comp is not None
     comp.raw_run_id = current_run.id
     await db_session.flush()
@@ -735,7 +735,7 @@ async def test_non_final_games_disclosed_in_scheduled_count(
     )
     comp = (
         await db_session.execute(
-            select(SummerLeagueCompetition).where(SummerLeagueCompetition.id == comp_id)
+            select(SummerLeagueEdition).where(SummerLeagueEdition.id == comp_id)
         )
     ).scalar_one()
     team_a = await _team(db_session, comp_id, 3)

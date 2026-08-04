@@ -45,7 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.event_desk import Event
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueTeamEntry,
@@ -352,7 +352,7 @@ def parse_scoreboard_games(
 
 async def resolve_target_competitions(
     db: AsyncSession, *, today: date, event_key: str = EVENT_KEY_SUMMER_LEAGUE
-) -> list[SummerLeagueCompetition]:
+) -> list[SummerLeagueEdition]:
     """Resolve which Summer League competitions Job B step 0 should poll today.
 
     Prefers the registered ``events`` row's ``calendar_ref["competition_ids"]``
@@ -368,7 +368,7 @@ async def resolve_target_competitions(
             ``"summer_league"``.
 
     Returns:
-        The resolved :class:`SummerLeagueCompetition` rows (possibly empty).
+        The resolved :class:`SummerLeagueEdition` rows (possibly empty).
     """
     event_stmt = select(Event).where(
         Event.key == event_key,  # type: ignore[arg-type]
@@ -383,12 +383,12 @@ async def resolve_target_competitions(
             competition_ids = [int(raw_id) for raw_id in raw_ids]
 
     if competition_ids is not None:
-        comp_stmt = select(SummerLeagueCompetition).where(
-            SummerLeagueCompetition.id.in_(competition_ids)  # type: ignore[union-attr]
+        comp_stmt = select(SummerLeagueEdition).where(
+            SummerLeagueEdition.id.in_(competition_ids)  # type: ignore[union-attr]
         )
     else:
-        comp_stmt = select(SummerLeagueCompetition).where(
-            SummerLeagueCompetition.year == today.year  # type: ignore[arg-type]
+        comp_stmt = select(SummerLeagueEdition).where(
+            SummerLeagueEdition.year == today.year  # type: ignore[arg-type]
         )
     result = await db.execute(comp_stmt)
     return list(result.scalars().all())

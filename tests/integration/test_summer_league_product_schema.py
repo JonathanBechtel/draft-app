@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
@@ -42,13 +42,13 @@ def _raw_run() -> SummerLeagueRawRun:
 
 async def _seed_game_context(
     db_session: AsyncSession,
-) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry, SummerLeagueGame]:
+) -> tuple[SummerLeagueEdition, SummerLeagueTeamEntry, SummerLeagueGame]:
     raw_run = _raw_run()
     db_session.add(raw_run)
     await db_session.flush()
     assert raw_run.id is not None
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",

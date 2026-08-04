@@ -20,7 +20,7 @@ from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.positions import Position
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
@@ -48,7 +48,7 @@ _N = {"i": 0}
 
 async def _comp(db: AsyncSession, *, year: int, venue_slug: str, league_id: str) -> int:
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -5180,9 +5180,9 @@ _CC = {"n": 0}
 
 async def _cc_competition(
     db: AsyncSession, *, year: int, venue: str
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     _CC["n"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=f"cc-league-{_CC['n']}",
         venue_slug=venue,

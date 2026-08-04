@@ -28,7 +28,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueTeamEntry,
@@ -57,8 +57,8 @@ def _idx() -> int:
 
 async def _seed_competition(
     db: AsyncSession, *, starts_on: date, ends_on: date, year: int = 2026
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug=f"state-budget-{_idx()}",
@@ -73,7 +73,7 @@ async def _seed_competition(
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     i = _idx()
     assert competition.id is not None
@@ -91,7 +91,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,

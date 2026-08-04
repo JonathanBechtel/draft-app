@@ -14,7 +14,7 @@ from app.schemas.player_affiliation import (
 )
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
@@ -115,7 +115,7 @@ async def _seed_valid_slice(db_session: AsyncSession) -> None:
         )
     db_session.add_all(raw_files)
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -290,7 +290,7 @@ async def test_run_summer_league_backbone_qa_reports_expected_invalid_codes(
         ]
     )
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -432,7 +432,7 @@ async def _seed_slice_with_reconcile_findings(db_session: AsyncSession) -> None:
         )
     db_session.add_all(raw_files)
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2025,
         league_id="13",
         venue_slug="california_classic",

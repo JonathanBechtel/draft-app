@@ -22,7 +22,7 @@ from app.schemas.player_affiliation import (
     PlayerAffiliation,
 )
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
@@ -548,7 +548,7 @@ async def refresh_competition_date_window(
     min_date, max_date = result.one()
     if min_date is None or max_date is None:
         return
-    competition = await db.get(SummerLeagueCompetition, competition_id)
+    competition = await db.get(SummerLeagueEdition, competition_id)
     if competition is None:
         return
     competition.starts_on = min_date
@@ -699,7 +699,7 @@ async def normalize_player_game_logs(
 
 
 def _raise_availability_flag(
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     attr: str,
     *,
     has_events: bool,
@@ -743,7 +743,7 @@ async def normalize_shot_events(
     SummerLeagueShotEvent keyed on (nba_stats_game_id, nba_stats_game_event_id).
 
     Also updates SummerLeagueRawFile.parse_status for the shotchartdetail
-    endpoint and sets SummerLeagueCompetition.shotchart_available only when
+    endpoint and sets SummerLeagueEdition.shotchart_available only when
     at least one game has parsed shot rows.
 
     Args:
@@ -941,7 +941,7 @@ async def normalize_pbp_events(
     (nba_stats_game_id, event_num).
 
     Also updates SummerLeagueRawFile.parse_status for the playbyplayv2
-    endpoint and sets SummerLeagueCompetition.pbp_available only when at
+    endpoint and sets SummerLeagueEdition.pbp_available only when at
     least one game has parsed PBP rows.  A game with no PBP file yields zero
     events and pbp_available stays False.
 
@@ -1515,11 +1515,11 @@ async def _get_competition(
     *,
     year: int,
     league_id: str,
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     result = await db.execute(
-        select(SummerLeagueCompetition).where(
-            SummerLeagueCompetition.year == year,  # type: ignore[arg-type]
-            SummerLeagueCompetition.league_id == league_id,  # type: ignore[arg-type]
+        select(SummerLeagueEdition).where(
+            SummerLeagueEdition.year == year,  # type: ignore[arg-type]
+            SummerLeagueEdition.league_id == league_id,  # type: ignore[arg-type]
         )
     )
     competition = result.scalar_one_or_none()
@@ -1567,16 +1567,16 @@ async def _upsert_competition(
     db: AsyncSession,
     raw_run: SummerLeagueRawRun,
     quality: SummerLeagueDataQuality,
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     result = await db.execute(
-        select(SummerLeagueCompetition).where(
-            SummerLeagueCompetition.year == raw_run.year,  # type: ignore[arg-type]
-            SummerLeagueCompetition.league_id == raw_run.league_id,  # type: ignore[arg-type]
+        select(SummerLeagueEdition).where(
+            SummerLeagueEdition.year == raw_run.year,  # type: ignore[arg-type]
+            SummerLeagueEdition.league_id == raw_run.league_id,  # type: ignore[arg-type]
         )
     )
     row = result.scalar_one_or_none()
     if row is None:
-        row = SummerLeagueCompetition(
+        row = SummerLeagueEdition(
             year=raw_run.year,
             league_id=raw_run.league_id,
             venue_slug=raw_run.venue_slug,

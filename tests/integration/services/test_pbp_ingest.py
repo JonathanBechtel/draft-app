@@ -24,7 +24,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeaguePlayByPlayEvent,
     SummerLeagueRawFile,
     SummerLeagueRawFileStatus,
@@ -471,7 +471,7 @@ async def test_normalize_pbp_events_no_pbp_file_yields_zero_events(
     )
 
     competition = (
-        await db_session.execute(select(SummerLeagueCompetition))
+        await db_session.execute(select(SummerLeagueEdition))
     ).scalar_one()
     event_count = await db_session.scalar(
         select(func.count()).select_from(SummerLeaguePlayByPlayEvent)
@@ -511,7 +511,7 @@ async def test_normalize_pbp_events_empty_file_leaves_flag_false(
     )
 
     competition = (
-        await db_session.execute(select(SummerLeagueCompetition))
+        await db_session.execute(select(SummerLeagueEdition))
     ).scalar_one()
     event_count = await db_session.scalar(
         select(func.count()).select_from(SummerLeaguePlayByPlayEvent)
@@ -551,7 +551,7 @@ async def test_normalize_pbp_events_sets_available_when_rows_exist(
     )
 
     competition = (
-        await db_session.execute(select(SummerLeagueCompetition))
+        await db_session.execute(select(SummerLeagueEdition))
     ).scalar_one()
     assert competition.pbp_available is True
 
@@ -785,7 +785,7 @@ async def test_normalize_pbp_events_batch_call_never_downgrades_availability_fla
         game_ids={"1522400001"},
     )
     competition_after_first = (
-        await db_session.execute(select(SummerLeagueCompetition))
+        await db_session.execute(select(SummerLeagueEdition))
     ).scalar_one()
     assert competition_after_first.pbp_available is True
 
@@ -797,6 +797,6 @@ async def test_normalize_pbp_events_batch_call_never_downgrades_availability_fla
         game_ids={"1522400002"},
     )
     competition_after_second = (
-        await db_session.execute(select(SummerLeagueCompetition))
+        await db_session.execute(select(SummerLeagueEdition))
     ).scalar_one()
     assert competition_after_second.pbp_available is True

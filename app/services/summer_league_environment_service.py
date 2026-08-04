@@ -51,7 +51,7 @@ from app.schemas.players_master import PlayerMaster
 from app.schemas.player_status import PlayerStatus
 from app.schemas.positions import Position
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
@@ -885,19 +885,19 @@ async def _target_competitions(
     *,
     year: Optional[int],
     competition_id: Optional[int],
-) -> list[SummerLeagueCompetition]:
+) -> list[SummerLeagueEdition]:
     """Resolve the competitions in scope for a rebuild request (set-based)."""
-    stmt = select(SummerLeagueCompetition)
+    stmt = select(SummerLeagueEdition)
     if competition_id is not None:
-        stmt = stmt.where(col(SummerLeagueCompetition.id) == competition_id)
+        stmt = stmt.where(col(SummerLeagueEdition.id) == competition_id)
     elif year is not None:
-        stmt = stmt.where(col(SummerLeagueCompetition.year) == year)
-    stmt = stmt.order_by(col(SummerLeagueCompetition.id))
+        stmt = stmt.where(col(SummerLeagueEdition.year) == year)
+    stmt = stmt.order_by(col(SummerLeagueEdition.id))
     return list((await db.execute(stmt)).scalars())
 
 
 async def _load_competition_inputs(
-    db: AsyncSession, competitions: list[SummerLeagueCompetition]
+    db: AsyncSession, competitions: list[SummerLeagueEdition]
 ) -> dict[int, _CompetitionInputs]:
     """Load every eligible-final-game fact for ``competitions`` in bulk.
 
@@ -1317,7 +1317,7 @@ async def _load_raw_run_status(
     """Bulk-load each contributing competition's raw-run (source) status.
 
     One set-based query keyed by the distinct ``raw_run_id`` values already
-    captured on ``inputs`` (from ``SummerLeagueCompetition.raw_run_id``) --
+    captured on ``inputs`` (from ``SummerLeagueEdition.raw_run_id``) --
     populates the "source status" disclosure (contract: "populate ... source
     status where modeled").
     """
@@ -1360,7 +1360,7 @@ async def _load_game_parse_status(
     are left absent from both dicts.
 
     A raw file's own ``raw_run_id`` is matched against the competition's
-    pinned ``SummerLeagueCompetition.raw_run_id`` (the exact scrape manifest
+    pinned ``SummerLeagueEdition.raw_run_id`` (the exact scrape manifest
     ``raw_run_ids`` provenance already traces the profile to -- see
     ``_load_raw_run_status``). Without this, a stale file left behind by an
     older/failed scrape re-run for the same NBA game id would pool into the
@@ -1490,11 +1490,11 @@ async def _load_player_attributes(
     game = SummerLeagueGame
     year_rows = (
         await db.execute(
-            select(pgl.player_id, SummerLeagueCompetition.year)  # type: ignore[call-overload]
+            select(pgl.player_id, SummerLeagueEdition.year)  # type: ignore[call-overload]
             .join(game, col(game.id) == col(pgl.game_id))
             .join(
-                SummerLeagueCompetition,
-                col(SummerLeagueCompetition.id) == col(pgl.competition_id),
+                SummerLeagueEdition,
+                col(SummerLeagueEdition.id) == col(pgl.competition_id),
             )
             .where(
                 col(game.status) == SummerLeagueGameStatus.FINAL,

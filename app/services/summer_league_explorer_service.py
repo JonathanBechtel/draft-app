@@ -58,7 +58,7 @@ from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.positions import Position
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamEntry,
@@ -1866,7 +1866,7 @@ class ExplorerQuery:
     # Any combination of box/shot/PBP completeness requirements. Multiple
     # values compose with AND semantics; an empty tuple applies no requirement.
     coverage: tuple[str, ...] = ()
-    # Stable SummerLeagueCompetition.id — authoritative for competition detail
+    # Stable SummerLeagueEdition.id — authoritative for competition detail
     # (never a projection row id). Set together with profile_scope="competition".
     competition_id: Optional[int] = None
     # Selects which season row the detail panel shows (profile_scope="season").
@@ -2428,9 +2428,9 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
         int(y)
         for (y,) in (
             await db.execute(
-                select(SummerLeagueCompetition.year)  # type: ignore[call-overload]
+                select(SummerLeagueEdition.year)  # type: ignore[call-overload]
                 .distinct()
-                .order_by(SummerLeagueCompetition.year.desc())  # type: ignore[attr-defined]
+                .order_by(SummerLeagueEdition.year.desc())  # type: ignore[attr-defined]
             )
         ).all()
     ]
@@ -2438,9 +2438,9 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
         v
         for (v,) in (
             await db.execute(
-                select(SummerLeagueCompetition.venue_slug)  # type: ignore[call-overload]
+                select(SummerLeagueEdition.venue_slug)  # type: ignore[call-overload]
                 .distinct()
-                .order_by(SummerLeagueCompetition.venue_slug)  # type: ignore[attr-defined]
+                .order_by(SummerLeagueEdition.venue_slug)  # type: ignore[attr-defined]
             )
         ).all()
     ]
@@ -3233,7 +3233,7 @@ async def _query_players_per_competition(
     is shown and the composite columns are omitted from the column list.
     """
     ps = SummerLeaguePlayerSeason
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     pm = PlayerMaster
 
     # Detect single-competition scope: composites are only valid within one pool.
@@ -3518,7 +3518,7 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
     Count uses a wrapping COUNT(*) subquery.
     """
     pgl = SummerLeaguePlayerGameLog
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     pm = PlayerMaster
     game = SummerLeagueGame
     player_team = aliased(SummerLeagueTeamEntry)
@@ -3769,7 +3769,7 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     but `_paginate()` is gone — we inline the sort + slice here.
     """
     te = SummerLeagueTeamEntry
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
 
     conds: list[Any] = []
     if q.year_min is not None:
@@ -3913,7 +3913,7 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     """One row per game: matchup/score in the label, total + margin sortable in SQL."""
     game = SummerLeagueGame
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     home = aliased(SummerLeagueTeamEntry)
     away = aliased(SummerLeagueTeamEntry)
 

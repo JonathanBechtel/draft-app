@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
@@ -74,9 +74,9 @@ def _load_fixture(path: Path) -> dict[str, object]:
 
 async def _competition(
     db: AsyncSession, *, year: int, league_id: str, venue: str
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"{venue}-{_N['i']}",
@@ -90,7 +90,7 @@ async def _competition(
 
 
 async def _seed_real_games(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> None:
     """Seed summer_league_games from the real captured 2026 live-capture fixture."""
     payload = _load_fixture(_REAL_LIVE_FIXTURE)

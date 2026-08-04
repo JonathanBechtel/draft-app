@@ -35,7 +35,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
@@ -95,7 +95,7 @@ _LINE_B = dict(
 
 async def _seed_two_game_logs(db: AsyncSession) -> tuple[int, int]:
     """Seed a player with two game logs; return their (id_a, id_b)."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",

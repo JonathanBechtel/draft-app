@@ -53,7 +53,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.event_desk import EventDailyState
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.summer_league.desk_tick.shared import (
     TickContext,
@@ -89,7 +89,7 @@ class BackboneTickResult:
 
 
 async def normalize_competition(
-    db: AsyncSession, competition: SummerLeagueCompetition, *, raw_root: Path
+    db: AsyncSession, competition: SummerLeagueEdition, *, raw_root: Path
 ) -> bool:
     """Best-effort normalize one competition's audited raw data.
 
@@ -137,7 +137,7 @@ async def run_backbone_tick(
     db: AsyncSession,
     ctx: TickContext,
     *,
-    competitions: Optional[tuple[SummerLeagueCompetition, ...]] = None,
+    competitions: Optional[tuple[SummerLeagueEdition, ...]] = None,
     daily_state: Optional[EventDailyState] = None,
 ) -> BackboneTickResult:
     """Normalize audited raw data and rebuild the metrics it invalidated.

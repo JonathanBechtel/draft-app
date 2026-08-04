@@ -13,7 +13,7 @@ from sqlalchemy import String, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
@@ -173,10 +173,10 @@ async def calculate_metrics_input_watermark(db: AsyncSession) -> str:
     competitions = (
         await db.execute(
             select(  # type: ignore[call-overload]
-                SummerLeagueCompetition.id,
-                SummerLeagueCompetition.year,
-                SummerLeagueCompetition.venue_slug,
-            ).order_by(SummerLeagueCompetition.id)
+                SummerLeagueEdition.id,
+                SummerLeagueEdition.year,
+                SummerLeagueEdition.venue_slug,
+            ).order_by(SummerLeagueEdition.id)
         )
     ).all()
     _add_rows(digest, label="competitions", rows=competitions)

@@ -8,7 +8,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league.metric_trends import get_daily_trend
 from app.services.summer_league_explorer_service import (
@@ -32,7 +32,7 @@ async def test_archival_close_wins_over_later_normal_same_day_version(
     db_session: AsyncSession,
 ) -> None:
     """A later full rebuild cannot retroactively replace a cutoff-bound close."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="trend-archive-wins",
         venue_slug="las_vegas",
@@ -95,7 +95,7 @@ async def test_daily_close_winner_ignores_source_currency(
     deliberately inverts them -- the winning version 2 carries the *older*
     watermark and the losing version 1 the newer one.
     """
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="trend-as-of-inverted",
         venue_slug="las_vegas",
@@ -155,7 +155,7 @@ async def test_trend_ignores_legacy_rows_without_an_event_day(
     db_session: AsyncSession,
 ) -> None:
     """A job publication timestamp cannot fabricate a historical event close."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="trend-no-publication-day",
         venue_slug="las_vegas",
@@ -195,7 +195,7 @@ async def test_trend_does_not_mix_partial_later_version_with_older_cohort(
     db_session: AsyncSession,
 ) -> None:
     """A later partial publication wins the day, so stale players are excluded."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="trend-coherent",
         venue_slug="las_vegas",
@@ -275,7 +275,7 @@ async def test_trend_route_exposes_response_model_and_deterministic_payload(
     app_client: AsyncClient,
 ) -> None:
     """The public route returns the typed trend point shape in HTTP order."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="trend-route",
         venue_slug="las_vegas",
@@ -328,13 +328,13 @@ async def test_season_scope_combines_latest_close_for_each_competition(
     competition before combining the cohorts; selecting one global winner would
     silently hide sibling competitions published at a lower version.
     """
-    competition_a = SummerLeagueCompetition(
+    competition_a = SummerLeagueEdition(
         year=2026,
         league_id="trend-season-a",
         venue_slug="las_vegas",
         display_name="Trend Season A",
     )
-    competition_b = SummerLeagueCompetition(
+    competition_b = SummerLeagueEdition(
         year=2026,
         league_id="trend-season-b",
         venue_slug="sacramento",
@@ -404,7 +404,7 @@ async def test_trend_share_model_reads_real_daily_close_rows(
     db_session: AsyncSession,
 ) -> None:
     """The share-card model uses the same published trend read as the page."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="trend-share-model",
         venue_slug="las_vegas",
@@ -454,7 +454,7 @@ async def test_explorer_snapshot_matches_final_through_day_trend_value(
     db_session: AsyncSession,
 ) -> None:
     """The historical Explorer snapshot and trend read share the same final row."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2018,
         league_id="trend-explorer-seam",
         venue_slug="las_vegas",

@@ -21,7 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayByPlayEvent,
@@ -40,8 +40,8 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _make_competition() -> SummerLeagueCompetition:
-    return SummerLeagueCompetition(
+def _make_competition() -> SummerLeagueEdition:
+    return SummerLeagueEdition(
         year=2025,
         league_id="15",
         venue_slug="vegas",

@@ -53,7 +53,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
@@ -819,7 +819,7 @@ async def compute_desk_storylines(
     Returns:
         The ranked slate plus an optional quiet-slate fallback hero.
     """
-    competition = await session.get(SummerLeagueCompetition, competition_id)
+    competition = await session.get(SummerLeagueEdition, competition_id)
     if competition is None:
         raise ValueError(f"No summer_league_competitions row for id={competition_id}.")
 

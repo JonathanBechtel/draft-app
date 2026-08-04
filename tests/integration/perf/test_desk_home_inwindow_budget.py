@@ -36,7 +36,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
@@ -115,7 +115,7 @@ async def _seed_active_desk(
     today = to_eastern_date(now)
     year = today.year
 
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug=f"vegas-inwindow-{_idx()}",

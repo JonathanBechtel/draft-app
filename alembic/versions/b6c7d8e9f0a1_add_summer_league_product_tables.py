@@ -12,7 +12,7 @@ from alembic import op  # type: ignore[attr-defined]
 from sqlmodel import SQLModel
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
@@ -28,7 +28,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 SUMMER_LEAGUE_PRODUCT_TABLES = [
-    SummerLeagueCompetition.__table__,  # type: ignore[attr-defined]
+    SummerLeagueEdition.__table__,  # type: ignore[attr-defined]
     SummerLeagueTeamEntry.__table__,  # type: ignore[attr-defined]
     SummerLeagueGame.__table__,  # type: ignore[attr-defined]
     SummerLeagueSourcePlayer.__table__,  # type: ignore[attr-defined]

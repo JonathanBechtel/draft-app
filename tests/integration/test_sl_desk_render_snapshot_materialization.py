@@ -33,7 +33,7 @@ from app.schemas.event_desk_render_snapshot import EventDeskRenderSnapshot
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
@@ -112,9 +112,9 @@ class _FakeSession:
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, starts_on: date, ends_on: date
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     idx = _next_idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug=f"vegas-snap-{idx}",
@@ -129,7 +129,7 @@ async def _seed_competition(
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     idx = _next_idx()
     assert competition.id is not None
@@ -148,7 +148,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -179,7 +179,7 @@ async def _seed_game(
 
 async def _seed_roster_player(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     *,
     year: int,

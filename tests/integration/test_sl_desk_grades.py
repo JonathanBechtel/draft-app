@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_desk import (
     SummerLeagueDeskGrade,
     SummerLeagueDeskPlayerGrade,
@@ -34,8 +34,8 @@ pytestmark = pytest.mark.asyncio
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, venue_slug: str = "las_vegas", league_id: str = "13"
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -74,7 +74,7 @@ async def _seed_player(
 async def _seed_season(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     player: PlayerMaster,
     year: int,
     gmsc: float,

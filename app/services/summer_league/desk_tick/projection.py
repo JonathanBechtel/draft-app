@@ -57,7 +57,7 @@ from typing import Literal, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.event_desk import EventDailyState, EventDeskState
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.services.event_desk.controller import run_event_desk_tick
 from app.services.event_desk.render_snapshots import (
     RenderSnapshotWrite,
@@ -158,7 +158,7 @@ async def run_projection_tick(
     db: AsyncSession,
     ctx: TickContext,
     *,
-    competitions: Optional[tuple[SummerLeagueCompetition, ...]] = None,
+    competitions: Optional[tuple[SummerLeagueEdition, ...]] = None,
     daily_state: Optional[EventDailyState] = None,
 ) -> ProjectionTickResult:
     """Rebuild the Desk projection from canonical data (spec §2, medium class).

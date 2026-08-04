@@ -29,7 +29,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
@@ -69,7 +69,7 @@ async def _seed_retained_history(
     Returns:
         The seeded player and its competition id.
     """
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id=league_id,
         venue_slug="las_vegas",
@@ -140,7 +140,7 @@ async def _seed_retained_only_year(
     db: AsyncSession, *, player: PlayerMaster, year: int, league_id: str
 ) -> None:
     """Seed an earlier summer that exists only as a superseded (never current) row."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug="las_vegas",

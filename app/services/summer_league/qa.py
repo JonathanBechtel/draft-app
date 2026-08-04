@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
@@ -562,7 +562,7 @@ async def validate_historical_data_quality(
 
 
 def _validate_competition_quality_flags(
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
 ) -> list[SummerLeagueQAFinding]:
     expected_pbp = competition.data_quality == SummerLeagueDataQuality.FULL
     expected_shotchart = competition.data_quality == SummerLeagueDataQuality.FULL
@@ -784,11 +784,11 @@ async def _load_raw_run(
 async def _load_competition(
     db: AsyncSession,
     slice_: SummerLeagueSlice,
-) -> SummerLeagueCompetition | None:
+) -> SummerLeagueEdition | None:
     result = await db.execute(
-        select(SummerLeagueCompetition).where(
-            SummerLeagueCompetition.year == slice_.year,  # type: ignore[arg-type]
-            SummerLeagueCompetition.league_id == slice_.league_id,  # type: ignore[arg-type]
+        select(SummerLeagueEdition).where(
+            SummerLeagueEdition.year == slice_.year,  # type: ignore[arg-type]
+            SummerLeagueEdition.league_id == slice_.league_id,  # type: ignore[arg-type]
         )
     )
     return result.scalar_one_or_none()
@@ -911,10 +911,10 @@ async def _count_competitions(
         total += await _scalar_count(
             db,
             select(func.count())
-            .select_from(SummerLeagueCompetition)
+            .select_from(SummerLeagueEdition)
             .where(
-                SummerLeagueCompetition.year == slice_.year,  # type: ignore[arg-type]
-                SummerLeagueCompetition.league_id == slice_.league_id,  # type: ignore[arg-type]
+                SummerLeagueEdition.year == slice_.year,  # type: ignore[arg-type]
+                SummerLeagueEdition.league_id == slice_.league_id,  # type: ignore[arg-type]
             ),
         )
     return total

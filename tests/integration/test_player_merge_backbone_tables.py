@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
@@ -64,7 +64,7 @@ async def _seed_summer_league(
     """Give ``player`` a row in each Summer League table that references players_master."""
     assert player.id is not None
 
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2026,
         league_id=f"15-{_uid()}",
         venue_slug="las_vegas",
@@ -341,7 +341,7 @@ async def test_merge_desk_grades_conflict(db_session: AsyncSession) -> None:
     discard = await _make_player(db_session, "Graded", "Discard")
     assert keep.id is not None and discard.id is not None
 
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2026,
         league_id=f"15-{_uid()}",
         venue_slug="las_vegas",

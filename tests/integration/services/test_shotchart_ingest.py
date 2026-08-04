@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueRawFileStatus,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
@@ -720,7 +720,7 @@ async def test_normalize_shot_events_empty_file_leaves_flag_false(
     )
 
     competition_after = (
-        await db_session.execute(select(SummerLeagueCompetition))
+        await db_session.execute(select(SummerLeagueEdition))
     ).scalar_one()
     shot_count = await db_session.scalar(
         select(func.count()).select_from(SummerLeagueShotEvent)
@@ -756,7 +756,7 @@ async def test_normalize_shot_events_sets_available_when_rows_exist(
     await normalize_shot_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
 
     competition = (
-        await db_session.execute(select(SummerLeagueCompetition))
+        await db_session.execute(select(SummerLeagueEdition))
     ).scalar_one()
     assert competition.shotchart_available is True
 
@@ -915,7 +915,7 @@ async def test_normalize_shot_events_batch_call_never_downgrades_availability_fl
         game_ids={"1522400001"},
     )
     competition_after_first = (
-        await db_session.execute(select(SummerLeagueCompetition))
+        await db_session.execute(select(SummerLeagueEdition))
     ).scalar_one()
     assert competition_after_first.shotchart_available is True
 
@@ -927,6 +927,6 @@ async def test_normalize_shot_events_batch_call_never_downgrades_availability_fl
         game_ids={"1522400002"},
     )
     competition_after_second = (
-        await db_session.execute(select(SummerLeagueCompetition))
+        await db_session.execute(select(SummerLeagueEdition))
     ).scalar_one()
     assert competition_after_second.shotchart_available is True

@@ -21,7 +21,7 @@ from app.schemas.event_desk import (
     EventLifecyclePhase,
 )
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
 )
@@ -37,8 +37,8 @@ _YEAR = 2026
 
 async def _make_competition(
     db: AsyncSession, *, venue_slug: str = "vegas"
-) -> SummerLeagueCompetition:
-    competition = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    competition = SummerLeagueEdition(
         year=_YEAR,
         league_id="10",
         venue_slug=venue_slug,

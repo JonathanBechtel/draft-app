@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeaguePlayerSeason,
@@ -19,7 +19,7 @@ from tests.integration.conftest import make_player
 
 async def _seed_versions(db: AsyncSession) -> int:
     """Seed one competition with daily versions, a current row, and candidates."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="compaction-test",
         venue_slug="las_vegas",
@@ -162,7 +162,7 @@ async def test_effective_day_cutoff_uses_eastern_calendar_boundary(
     db_session: AsyncSession,
 ) -> None:
     """A UTC run just after midnight does not close the still-current ET day."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="compaction-effective-day",
         venue_slug="las_vegas",
@@ -219,7 +219,7 @@ async def test_legacy_day_partition_uses_publication_stamp_not_source_currency(
     while its ``as_of`` falls on July 2: it therefore owns its own daily
     partition and survives, and only the superseded July 2 row is removed.
     """
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="compaction-legacy-day",
         venue_slug="las_vegas",
@@ -304,7 +304,7 @@ async def test_compaction_preserves_archive_over_later_ordinary_rebuild(
     db_session: AsyncSession,
 ) -> None:
     """A historical close survives two later ordinary rebuilds of its event day."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="compaction-archive",
         venue_slug="las_vegas",

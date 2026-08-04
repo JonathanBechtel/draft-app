@@ -35,7 +35,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.services.stats.inputs import BOX_INT_FIELDS
 
 # Every box line the Summer League pipeline persists carries these -- the raw counting-stat
@@ -72,10 +72,10 @@ def pool_provides(
     """Canonical inputs a competition/pool provides, from its own availability flags.
 
     Args:
-        pbp_available: ``SummerLeagueCompetition.pbp_available`` -- at least one game in this
+        pbp_available: ``SummerLeagueEdition.pbp_available`` -- at least one game in this
             competition has parsed play-by-play (see
             :func:`app.services.summer_league.normalization.normalize_pbp_events`).
-        shotchart_available: ``SummerLeagueCompetition.shotchart_available`` -- at least one
+        shotchart_available: ``SummerLeagueEdition.shotchart_available`` -- at least one
             game has parsed shot-location rows (see
             :func:`app.services.summer_league.normalization.normalize_shot_events`).
         adv_eligible: Whether this pool cleared the box-completeness threshold that makes
@@ -102,7 +102,7 @@ def pool_provides(
 
 
 def competition_capability_provides(
-    competition: SummerLeagueCompetition, *, adv_eligible: bool = False
+    competition: SummerLeagueEdition, *, adv_eligible: bool = False
 ) -> frozenset[str]:
     """The T8 capability declaration for one competition (#728).
 

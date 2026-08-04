@@ -19,7 +19,7 @@ from app.schemas.player_affiliation import PlayerAffiliation
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
     SummerLeaguePlayerResolutionReview,
@@ -1050,16 +1050,16 @@ async def _load_source_players(
     # Build shared competition filter clauses (applied to both subqueries below).
     comp_filters = []
     if year is not None:
-        comp_filters.append(SummerLeagueCompetition.year == year)  # type: ignore[arg-type]
+        comp_filters.append(SummerLeagueEdition.year == year)  # type: ignore[arg-type]
     if league_id is not None:
-        comp_filters.append(SummerLeagueCompetition.league_id == league_id)  # type: ignore[arg-type]
+        comp_filters.append(SummerLeagueEdition.league_id == league_id)  # type: ignore[arg-type]
 
     # Source players reachable via game logs (pre-2026 stats pipeline).
     gamelog_subq = (
         select(SummerLeaguePlayerGameLog.source_player_id)  # type: ignore[call-overload]
         .join(
-            SummerLeagueCompetition,
-            SummerLeagueCompetition.id == SummerLeaguePlayerGameLog.competition_id,  # type: ignore[arg-type]
+            SummerLeagueEdition,
+            SummerLeagueEdition.id == SummerLeaguePlayerGameLog.competition_id,  # type: ignore[arg-type]
         )
         .where(*comp_filters)
     )
@@ -1068,8 +1068,8 @@ async def _load_source_players(
     participation_subq = (
         select(SummerLeagueParticipation.source_player_id)  # type: ignore[call-overload]
         .join(
-            SummerLeagueCompetition,
-            SummerLeagueCompetition.id == SummerLeagueParticipation.competition_id,  # type: ignore[arg-type]
+            SummerLeagueEdition,
+            SummerLeagueEdition.id == SummerLeagueParticipation.competition_id,  # type: ignore[arg-type]
         )
         .where(*comp_filters)
     )

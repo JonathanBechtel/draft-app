@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
@@ -129,7 +129,7 @@ async def test_qa_reports_count_mismatches_and_unresolved_players(
     raw_run.team_gamelog_rows = 3
     raw_run.player_gamelog_rows = 2
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -274,7 +274,7 @@ async def test_qa_reports_orphaned_normalized_rows(
 ) -> None:
     """Normalized rows without the right parent slice links emit orphan codes."""
     orphan_case = _db_case("orphan_competition")
-    target = SummerLeagueCompetition(
+    target = SummerLeagueEdition(
         year=int(orphan_case["year"]),
         league_id=str(orphan_case["league_id"]),
         venue_slug=str(orphan_case["venue_slug"]),
@@ -284,7 +284,7 @@ async def test_qa_reports_orphaned_normalized_rows(
         shotchart_available=False,
         raw_run_id=None,
     )
-    other = SummerLeagueCompetition(
+    other = SummerLeagueEdition(
         year=2024,
         league_id="99",
         venue_slug="other_fixture",

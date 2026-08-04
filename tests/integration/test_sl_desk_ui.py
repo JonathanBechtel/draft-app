@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
@@ -109,9 +109,9 @@ def _fake_client() -> NBAStatsClient:
 
 async def _seed_competition(
     db: AsyncSession, *, today: date
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     idx = _idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=today.year,
         league_id="15",
         venue_slug=f"vegas-desk-ui-{idx}",
@@ -126,7 +126,7 @@ async def _seed_competition(
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition, *, franchise_stats_id: str
+    db: AsyncSession, competition: SummerLeagueEdition, *, franchise_stats_id: str
 ) -> SummerLeagueTeamEntry:
     idx = _idx()
     assert competition.id is not None
@@ -145,7 +145,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -196,7 +196,7 @@ async def _seed_player(
 
 async def _roster_player(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
 ) -> SummerLeagueSourcePlayer:
@@ -268,7 +268,7 @@ async def _seed_baseline(db: AsyncSession, *, baseline_version: str) -> None:
 async def _seed_game_log(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
     source_player: SummerLeagueSourcePlayer,

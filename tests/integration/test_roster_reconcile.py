@@ -37,7 +37,7 @@ from app.schemas.player_affiliation import (
 )
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
@@ -59,8 +59,8 @@ T0 = datetime(2026, 7, 1, 0, 0, 0)
 
 
 async def _make_competition(db: AsyncSession) -> int:
-    """Create and flush a minimal ``SummerLeagueCompetition`` row; return its id."""
-    competition = SummerLeagueCompetition(
+    """Create and flush a minimal ``SummerLeagueEdition`` row; return its id."""
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="15",
         venue_slug="las_vegas",

@@ -32,7 +32,7 @@ from sqlalchemy import select as _select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_environment import (
     SCOPE_KIND_COMPETITION,
     SCOPE_KIND_SEASON,
@@ -266,7 +266,7 @@ async def seed_competition_context_demo(
 
     # --- Competitions (FK targets for competition profiles + membership) ---
     comps = {
-        "lv2023": SummerLeagueCompetition(
+        "lv2023": SummerLeagueEdition(
             year=2023,
             league_id="15",
             venue_slug="las_vegas",
@@ -275,7 +275,7 @@ async def seed_competition_context_demo(
             starts_on=date(2023, 7, 7),
             ends_on=date(2023, 7, 17),
         ),
-        "lv2024": SummerLeagueCompetition(
+        "lv2024": SummerLeagueEdition(
             year=2024,
             league_id="15",
             venue_slug="las_vegas",
@@ -283,7 +283,7 @@ async def seed_competition_context_demo(
             starts_on=date(2024, 7, 12),
             ends_on=date(2024, 7, 22),
         ),
-        "cc2024": SummerLeagueCompetition(
+        "cc2024": SummerLeagueEdition(
             year=2024,
             league_id="13",
             venue_slug="california_classic",
@@ -292,7 +292,7 @@ async def seed_competition_context_demo(
             starts_on=date(2024, 7, 6),
             ends_on=date(2024, 7, 9),
         ),
-        "slc2024": SummerLeagueCompetition(
+        "slc2024": SummerLeagueEdition(
             year=2024,
             league_id="16",
             venue_slug="salt_lake_city",
@@ -300,7 +300,7 @@ async def seed_competition_context_demo(
             starts_on=date(2024, 7, 8),
             ends_on=date(2024, 7, 12),
         ),
-        "lv2025": SummerLeagueCompetition(
+        "lv2025": SummerLeagueEdition(
             year=2025,
             league_id="15",
             venue_slug="las_vegas",
@@ -316,9 +316,9 @@ async def seed_competition_context_demo(
     for key, comp in comps.items():
         existing = (
             await session.execute(
-                _select(SummerLeagueCompetition).where(
-                    SummerLeagueCompetition.year == comp.year,  # type: ignore[arg-type]
-                    SummerLeagueCompetition.league_id == comp.league_id,  # type: ignore[arg-type]
+                _select(SummerLeagueEdition).where(
+                    SummerLeagueEdition.year == comp.year,  # type: ignore[arg-type]
+                    SummerLeagueEdition.league_id == comp.league_id,  # type: ignore[arg-type]
                 )
             )
         ).scalar_one_or_none()

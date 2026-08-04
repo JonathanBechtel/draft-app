@@ -13,7 +13,7 @@ from app.schemas.player_aliases import PlayerAlias
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
@@ -53,8 +53,8 @@ async def _seed_game_context(
     *,
     year: int = 2024,
     league_id: str = "15",
-) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry, SummerLeagueGame]:
-    competition = SummerLeagueCompetition(
+) -> tuple[SummerLeagueEdition, SummerLeagueTeamEntry, SummerLeagueGame]:
+    competition = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug="las_vegas",
@@ -96,7 +96,7 @@ async def _source_with_log(
     *,
     raw_name: str,
     person_id: str,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     game: SummerLeagueGame,
     canonical_player_id: int | None = None,

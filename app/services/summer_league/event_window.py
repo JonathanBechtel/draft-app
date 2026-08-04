@@ -9,7 +9,7 @@ import os
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.event_desk import EventLifecyclePhase
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.services.event_desk.lifecycle import lifecycle_phase
 from app.services.event_desk.registry import DeskEvent, SUMMER_LEAGUE_REGISTRATION
 from app.services.event_desk.timeutils import to_eastern_date
@@ -82,7 +82,7 @@ def has_force_override() -> bool:
 
 
 def synthetic_schedule_dates(
-    competitions: Sequence[SummerLeagueCompetition],
+    competitions: Sequence[SummerLeagueEdition],
 ) -> tuple[date, ...]:
     """Expand configured competition date windows into a lifecycle calendar."""
     dates: list[date] = []

@@ -110,7 +110,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
 )
@@ -572,8 +572,8 @@ async def build_baselines(
             SummerLeaguePlayerGameLog, SummerLeagueGame.game_date
         )
         .join(
-            SummerLeagueCompetition,
-            SummerLeagueCompetition.id == SummerLeaguePlayerGameLog.competition_id,  # type: ignore[arg-type]
+            SummerLeagueEdition,
+            SummerLeagueEdition.id == SummerLeaguePlayerGameLog.competition_id,  # type: ignore[arg-type]
         )
         .join(
             SummerLeagueGame,
@@ -581,8 +581,8 @@ async def build_baselines(
         )
         .where(
             SummerLeaguePlayerGameLog.player_id.is_not(None),  # type: ignore[union-attr]
-            SummerLeagueCompetition.year >= start_year,  # type: ignore[arg-type]
-            SummerLeagueCompetition.year <= end_year,  # type: ignore[arg-type]
+            SummerLeagueEdition.year >= start_year,  # type: ignore[arg-type]
+            SummerLeagueEdition.year <= end_year,  # type: ignore[arg-type]
         )
     )
     game_rows_with_dates = (await db.execute(game_stmt)).all()

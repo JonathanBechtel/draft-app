@@ -22,7 +22,7 @@ from app.schemas.image_snapshots import (
     PlayerImageSnapshot,
 )
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueParticipation,
     SummerLeagueSourcePlayer,
     SummerLeagueTeamEntry,
@@ -34,9 +34,9 @@ from tests.integration.conftest import make_player
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, league_id: str, venue_slug: str
-) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry]:
+) -> tuple[SummerLeagueEdition, SummerLeagueTeamEntry]:
     """Seed one Summer League competition with a single team entry."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,

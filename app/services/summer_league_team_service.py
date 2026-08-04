@@ -22,7 +22,7 @@ from app.schemas.nba_teams import NbaTeam
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
@@ -80,7 +80,7 @@ class VenueDetail:
     date_end: Optional[str]
     data_quality: str
     standings: list[TeamStanding]
-    # The canonical SummerLeagueCompetition id this (year, venue_slug) pair
+    # The canonical SummerLeagueEdition id this (year, venue_slug) pair
     # resolves to — already available from the header lookup below, so
     # Competition Context reuse (#610) can key its profile lookup off the
     # exact competition edition without a second resolution query.
@@ -166,7 +166,7 @@ async def get_venue(
     db: AsyncSession, year: int, venue_slug: str
 ) -> Optional[VenueDetail]:
     """Return one venue's competition meta + computed standings, or ``None``."""
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     header = (
         await db.execute(
             select(
@@ -260,7 +260,7 @@ async def get_team_season(
     db: AsyncSession, year: int, venue_slug: str, team_slug: str
 ) -> Optional[TeamSeason]:
     """Return one team's venue-year record, quick stats, roster, and schedule."""
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     te = SummerLeagueTeamEntry
     header = (
         await db.execute(
@@ -527,7 +527,7 @@ async def get_venue_bracket(
     home = aliased(SummerLeagueTeamEntry)
     away = aliased(SummerLeagueTeamEntry)
     game = SummerLeagueGame
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
 
     rows = (
         await db.execute(

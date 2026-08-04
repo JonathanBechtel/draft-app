@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
@@ -27,7 +27,7 @@ async def test_idempotent_timestamp_touch_does_not_advance_input_watermark(
     db_session: AsyncSession,
 ) -> None:
     """Content, not routine ``updated_at`` churn, controls rebuild invalidation."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="15",
         venue_slug="las_vegas",
@@ -59,7 +59,7 @@ async def test_out_of_band_game_log_edit_forces_the_next_rebuild(
     await db_session.flush()
     assert player.id is not None
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="15",
         venue_slug="watermark_repair",

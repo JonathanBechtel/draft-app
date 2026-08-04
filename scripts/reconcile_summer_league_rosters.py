@@ -2,7 +2,7 @@ r"""Print a read-only announced-vs-played reconcile report for a Summer League.
 
 Wraps ``reconcile_competition`` (``app/services/summer_league/roster_reconcile.py``)
 in a CLI: resolves ``--year``/``--league-id`` to the matching
-``SummerLeagueCompetition`` row(s), runs the reconcile, and prints totals plus
+``SummerLeagueEdition`` row(s), runs the reconcile, and prints totals plus
 the two flagged lists (announced-but-never-played, played-but-never-announced).
 
 This script issues only ``SELECT`` statements — it never writes to the database.
@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.services.summer_league.endpoints import (
     SUPPORTED_SUMMER_LEAGUES,
     normalize_league_id,
@@ -122,9 +122,9 @@ async def _run(*, year: int, league_ids: list[str]) -> int:
         for league_id in league_ids:
             venue = SUPPORTED_SUMMER_LEAGUES[league_id]
             result = await session.execute(
-                select(SummerLeagueCompetition).where(
-                    SummerLeagueCompetition.year == int(season),  # type: ignore[arg-type]
-                    SummerLeagueCompetition.league_id == league_id,  # type: ignore[arg-type]
+                select(SummerLeagueEdition).where(
+                    SummerLeagueEdition.year == int(season),  # type: ignore[arg-type]
+                    SummerLeagueEdition.league_id == league_id,  # type: ignore[arg-type]
                 )
             )
             competition = result.scalar_one_or_none()

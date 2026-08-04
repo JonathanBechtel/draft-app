@@ -15,7 +15,7 @@ from app.services.summer_league.qa import (
     compare_idempotency_snapshots,
 )
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
@@ -233,7 +233,7 @@ def _raw_file(
     return SummerLeagueRawFile(**data)
 
 
-def _competition(**overrides: object) -> SummerLeagueCompetition:
+def _competition(**overrides: object) -> SummerLeagueEdition:
     data: dict[str, object] = {
         "id": 30,
         "year": 2024,
@@ -246,7 +246,7 @@ def _competition(**overrides: object) -> SummerLeagueCompetition:
         "raw_run_id": 10,
     }
     data.update(overrides)
-    return SummerLeagueCompetition(**data)
+    return SummerLeagueEdition(**data)
 
 
 def _source_player(**overrides: object) -> SummerLeagueSourcePlayer:
@@ -384,7 +384,7 @@ async def test_normalization_parity_reports_count_and_link_mismatches(
 
     async def fake_competition(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueCompetition:
+    ) -> SummerLeagueEdition:
         return _competition(raw_run_id=99)
 
     async def fake_games(_db: object, competition_id: int) -> int:
@@ -444,7 +444,7 @@ async def test_player_resolution_reports_inconsistent_source_and_log_links(
 
     async def fake_competition(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueCompetition:
+    ) -> SummerLeagueEdition:
         return _competition()
 
     async def fake_rows(
@@ -475,7 +475,7 @@ async def test_historical_data_quality_reports_flag_and_year_findings(
 
     async def fake_competition(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueCompetition:
+    ) -> SummerLeagueEdition:
         return _competition(pbp_available=False, shotchart_available=False)
 
     async def fake_sources(
@@ -517,7 +517,7 @@ async def test_referential_integrity_reports_game_and_log_mismatches(
 
     async def fake_competition(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueCompetition:
+    ) -> SummerLeagueEdition:
         return _competition(raw_run_id=None)
 
     async def fake_games(_db: object, competition_id: int) -> list[SummerLeagueGame]:

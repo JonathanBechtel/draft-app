@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeaguePlayByPlayEvent,
@@ -53,8 +53,8 @@ async def _make_player(db: AsyncSession, *, slug: str) -> PlayerMaster:
 
 async def _make_competition(
     db: AsyncSession, *, year: int = 2024, league_id: str = "15"
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"las_vegas_{year}_{league_id}",

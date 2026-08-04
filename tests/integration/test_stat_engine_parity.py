@@ -54,7 +54,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
@@ -144,7 +144,7 @@ async def _seed_fixture(db: AsyncSession) -> tuple[int, str]:
     below), so plus-minus totals +8 over the 4 games (not asserted on here,
     but keeps the fixture's shape self-documenting for anyone extending it).
     """
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=_YEAR,
         league_id="15",
         venue_slug=_VENUE,

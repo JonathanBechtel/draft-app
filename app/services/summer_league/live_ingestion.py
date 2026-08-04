@@ -34,7 +34,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
@@ -178,12 +178,12 @@ async def select_active_window_games(
     stmt = (
         select(  # type: ignore[call-overload]
             SummerLeagueGame.nba_stats_game_id,
-            SummerLeagueCompetition.year,
-            SummerLeagueCompetition.league_id,
+            SummerLeagueEdition.year,
+            SummerLeagueEdition.league_id,
         )
         .join(
-            SummerLeagueCompetition,
-            SummerLeagueGame.competition_id == SummerLeagueCompetition.id,  # type: ignore[arg-type]
+            SummerLeagueEdition,
+            SummerLeagueGame.competition_id == SummerLeagueEdition.id,  # type: ignore[arg-type]
         )
         .where(
             or_(

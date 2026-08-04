@@ -15,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueParticipation,
 )
 
@@ -57,7 +57,7 @@ async def summer_league_cohort(
         set of ``source_player_id``s in scope.
     """
     part = SummerLeagueParticipation
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
 
     stmt = (
         select(part.player_id, part.source_player_id)  # type: ignore[call-overload]

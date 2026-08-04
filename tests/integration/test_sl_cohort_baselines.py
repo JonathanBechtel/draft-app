@@ -1,6 +1,6 @@
 """Integration tests for the Summer League Desk cohort-baseline builder (#502).
 
-Seeds `SummerLeagueCompetition` + `SummerLeaguePlayerSeason` history plus draft
+Seeds `SummerLeagueEdition` + `SummerLeaguePlayerSeason` history plus draft
 slots on `PlayerMaster`, runs `build_baselines`, and asserts the persisted T1
 distributions and version-flip behavior end to end.
 """
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
@@ -34,8 +34,8 @@ pytestmark = pytest.mark.asyncio
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, venue_slug: str, league_id: str
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -74,7 +74,7 @@ async def _seed_player(
 async def _seed_season(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     player: PlayerMaster,
     year: int,
     gmsc: float,
@@ -107,7 +107,7 @@ def _next_game_idx() -> int:
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     idx = _next_game_idx()
     assert competition.id is not None
@@ -125,7 +125,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
 ) -> SummerLeagueGame:
@@ -166,7 +166,7 @@ async def _seed_source_player(
 async def _seed_game_log(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
     source_player: SummerLeagueSourcePlayer,

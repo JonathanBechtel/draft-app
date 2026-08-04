@@ -19,7 +19,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueSourcePlayer,
@@ -34,8 +34,8 @@ _SEQ = {"n": 0}
 
 async def _competition(
     db: AsyncSession, *, year: int, venue_slug: str, league_id: str
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -56,7 +56,7 @@ async def _player(db: AsyncSession, first: str, last: str):
 async def _season(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     player,
     adv_eligible: bool = True,
     **metrics,
@@ -214,7 +214,7 @@ async def test_percentage_columns_not_rescaled(db_session: AsyncSession) -> None
 
 
 async def _seed_minimal_game_log(
-    db: AsyncSession, *, comp: SummerLeagueCompetition, player
+    db: AsyncSession, *, comp: SummerLeagueEdition, player
 ) -> None:
     """Seed one game log so the player-detail SL section renders for the page."""
     _SEQ["n"] += 1

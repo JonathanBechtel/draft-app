@@ -20,7 +20,7 @@ from app.schemas.consensus import BigBoardConsensus, ConsensusSnapshot, Consensu
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
@@ -55,8 +55,8 @@ def _next_idx() -> int:
 
 async def _seed_competition(
     db: AsyncSession, *, year: int = 2026
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug="las_vegas",
@@ -69,7 +69,7 @@ async def _seed_competition(
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     idx = _next_idx()
     assert competition.id is not None
@@ -87,7 +87,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -132,7 +132,7 @@ async def _seed_player(
 
 async def _roster_player(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
 ) -> SummerLeagueSourcePlayer:
@@ -165,7 +165,7 @@ async def _roster_player(
 async def _seed_game_log(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
@@ -206,7 +206,7 @@ async def _seed_game_log(
 async def _seed_prior_game_log(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
     source_player: SummerLeagueSourcePlayer,
@@ -281,7 +281,7 @@ async def _seed_grade(
     db: AsyncSession,
     *,
     player: PlayerMaster,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     cohort_key: str,
     pctl: float,
     subject_value: float = 15.0,

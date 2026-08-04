@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.schemas.nba_teams import NbaTeam
 from app.schemas.organization import Organization, OrgKind, TeamProgram
-from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueTeamEntry
+from app.schemas.summer_league import SummerLeagueEdition, SummerLeagueTeamEntry
 from app.services.player_affiliation import (
     NbaTeamRef,
     TeamProgramRef,
@@ -54,7 +54,7 @@ async def _seed_team_and_program(
 
 async def _seed_competition(db: AsyncSession) -> int:
     """Seed one minimal Summer League competition to satisfy the FK."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2026,
         league_id="test-sl-backfill-league",
         venue_slug="test-sl-backfill-venue",

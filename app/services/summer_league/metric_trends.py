@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.temporal import Watermark
 from app.models.summer_league_trends import TrendCohortBand, TrendPoint
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
 from app.services.stats.registry import get_metric
 
@@ -108,8 +108,8 @@ async def resolve_scope_label(db: AsyncSession, scope_key: str) -> str:
     scope_kind, scope_value = _scope_filter(scope_key)
     if scope_kind == "season":
         return f"{scope_value} Summer League"
-    display_name_column: Any = getattr(SummerLeagueCompetition, "display_name")
-    id_column: Any = getattr(SummerLeagueCompetition, "id")
+    display_name_column: Any = getattr(SummerLeagueEdition, "display_name")
+    id_column: Any = getattr(SummerLeagueEdition, "id")
     display_name = (
         await db.execute(select(display_name_column).where(id_column == scope_value))
     ).scalar_one_or_none()

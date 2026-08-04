@@ -307,7 +307,7 @@ class SummerLeagueEnvironmentProfile(DatedVersionMixin, SQLModel, table=True):  
         sa_column=Column(JSONB, nullable=True),
         description=(
             "Distinct SummerLeagueRawRun.id values for every contributing "
-            "competition (SummerLeagueCompetition.raw_run_id) -- the exact "
+            "competition (SummerLeagueEdition.raw_run_id) -- the exact "
             "raw scrape manifests this profile can be traced back to and "
             "reproduced/audited from. Sorted ascending; null when no "
             "contributing competition has a linked raw run."

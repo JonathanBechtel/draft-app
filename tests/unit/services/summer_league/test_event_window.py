@@ -6,13 +6,13 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.services.summer_league import event_window
 
 
-def _competition() -> SummerLeagueCompetition:
+def _competition() -> SummerLeagueEdition:
     """Build a configured competition window for lifecycle tests."""
-    return SummerLeagueCompetition(
+    return SummerLeagueEdition(
         year=2026,
         league_id="15",
         venue_slug="las_vegas",
@@ -35,7 +35,7 @@ async def test_window_guard_allows_active_event(
 ) -> None:
     """An active configured event permits the caller to poll its source."""
 
-    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
+    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueEdition]:
         return [_competition()]
 
     monkeypatch.setattr(event_window, "resolve_target_competitions", _resolve)
@@ -52,7 +52,7 @@ async def test_window_guard_rejects_archived_event(
 ) -> None:
     """A finished event outside the post-roll tail stays network-free."""
 
-    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
+    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueEdition]:
         return [_competition()]
 
     monkeypatch.setattr(event_window, "resolve_target_competitions", _resolve)
@@ -68,7 +68,7 @@ async def test_window_guard_scopes_requested_year(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A requested roster year cannot inherit another season's window."""
-    other_year = SummerLeagueCompetition(
+    other_year = SummerLeagueEdition(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",
@@ -77,7 +77,7 @@ async def test_window_guard_scopes_requested_year(
         ends_on=date(2025, 7, 19),
     )
 
-    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
+    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueEdition]:
         return [_competition(), other_year]
 
     monkeypatch.setattr(event_window, "resolve_target_competitions", _resolve)
@@ -89,9 +89,9 @@ async def test_window_guard_scopes_requested_year(
     )
 
 
-def _2027_competition() -> SummerLeagueCompetition:
+def _2027_competition() -> SummerLeagueEdition:
     """Build a 2027 competition window, mirroring the 2026 fixture a year later."""
-    return SummerLeagueCompetition(
+    return SummerLeagueEdition(
         year=2027,
         league_id="15",
         venue_slug="las_vegas",
@@ -112,7 +112,7 @@ async def test_year_scoped_to_finished_event_stays_closed(
     """
     monkeypatch.setenv("SL_ROSTER_YEAR", "2027")
 
-    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
+    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueEdition]:
         return [_2027_competition()]
 
     monkeypatch.setattr(event_window, "resolve_target_competitions", _resolve)
@@ -138,7 +138,7 @@ async def test_no_year_set_opens_in_announced_window_next_season(
     # bypass branch rather than the window logic actually under test.
     monkeypatch.delenv("SL_ROSTER_FORCE", raising=False)
 
-    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
+    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueEdition]:
         return [_2027_competition()]
 
     monkeypatch.setattr(event_window, "resolve_target_competitions", _resolve)
@@ -162,7 +162,7 @@ async def test_force_flag_bypasses_window_regardless_of_year(
 
     async def _unexpected_resolve(
         _db: object, *, today: date
-    ) -> list[SummerLeagueCompetition]:
+    ) -> list[SummerLeagueEdition]:
         raise AssertionError("a force override should not resolve the active event")
 
     monkeypatch.setattr(
@@ -188,7 +188,7 @@ async def test_year_alone_no_longer_bypasses_window(
     monkeypatch.setenv("SL_ROSTER_YEAR", "2025")
     monkeypatch.delenv("SL_ROSTER_FORCE", raising=False)
 
-    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueCompetition]:
+    async def _resolve(_db: object, *, today: date) -> list[SummerLeagueEdition]:
         return [_competition()]
 
     monkeypatch.setattr(event_window, "resolve_target_competitions", _resolve)

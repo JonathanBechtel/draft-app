@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueRawFile,
@@ -373,7 +373,7 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
             parse_status=SummerLeagueRawFileStatus.PARSED,
         )
     ]
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         id=10,
         year=2007,
         league_id="15",
@@ -443,7 +443,7 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
 
     async def fake_upsert_competition(
         *_args: object, **_kwargs: object
-    ) -> SummerLeagueCompetition:
+    ) -> SummerLeagueEdition:
         return competition
 
     async def fake_upsert_team_entry(

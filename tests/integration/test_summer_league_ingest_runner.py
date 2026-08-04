@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.cli import summer_league_ingest_runner as runner
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
@@ -148,9 +148,9 @@ async def _seed_competition(
     venue_slug: str = "las_vegas",
     starts_on: date | None,
     ends_on: date | None,
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     idx = _next_idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"{venue_slug}-{idx}",
@@ -477,7 +477,7 @@ async def _seed_pending_source_player(
     raw_name: str,
 ) -> SummerLeagueSourcePlayer:
     """Seed one game-logged, still-unresolved source player for this venue/year."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"lock-lifetime-{_next_idx()}",

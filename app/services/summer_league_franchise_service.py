@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.nba_teams import NbaTeam
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamEntry,
@@ -135,7 +135,7 @@ async def get_franchise_history(
         return None
 
     te = SummerLeagueTeamEntry
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     entry_rows = (
         await db.execute(
             select(

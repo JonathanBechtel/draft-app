@@ -28,7 +28,7 @@ from app.schemas.player_affiliation import (
     PlayerAffiliation,
 )
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueParticipation,
     SummerLeagueResolutionStatus,
     SummerLeagueSourcePlayer,
@@ -45,7 +45,7 @@ from app.services.summer_league.roster_parse import RosterEntry
 
 @dataclass(frozen=True)
 class CompetitionKey:
-    """Minimal key to look up or create a ``SummerLeagueCompetition`` row.
+    """Minimal key to look up or create a ``SummerLeagueEdition`` row.
 
     Args:
         year: Summer League season year (e.g. 2026).
@@ -138,25 +138,25 @@ def _display_name(year: int, venue_slug: str) -> str:
 async def _upsert_roster_competition(
     db: AsyncSession,
     key: CompetitionKey,
-) -> SummerLeagueCompetition:
-    """Get or create a ``SummerLeagueCompetition`` row for the given key.
+) -> SummerLeagueEdition:
+    """Get or create a ``SummerLeagueEdition`` row for the given key.
 
     Args:
         db: Async database session.
         key: Competition key (year, league_id, venue_slug).
 
     Returns:
-        The existing or newly-created ``SummerLeagueCompetition`` row.
+        The existing or newly-created ``SummerLeagueEdition`` row.
     """
     result = await db.execute(
-        select(SummerLeagueCompetition).where(
-            SummerLeagueCompetition.year == key.year,  # type: ignore[arg-type]
-            SummerLeagueCompetition.league_id == key.league_id,  # type: ignore[arg-type]
+        select(SummerLeagueEdition).where(
+            SummerLeagueEdition.year == key.year,  # type: ignore[arg-type]
+            SummerLeagueEdition.league_id == key.league_id,  # type: ignore[arg-type]
         )
     )
     row = result.scalar_one_or_none()
     if row is None:
-        row = SummerLeagueCompetition(
+        row = SummerLeagueEdition(
             year=key.year,
             league_id=key.league_id,
             venue_slug=key.venue_slug,

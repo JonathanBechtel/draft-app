@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_environment import (
     SCOPE_KIND_COMPETITION,
     SCOPE_KIND_SEASON,
@@ -38,9 +38,9 @@ from app.services.summer_league_environment_service import (
 
 async def _make_competition(
     db: AsyncSession, *, year: int, venue_slug: str
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     """Seed one competition for FK targets."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug=venue_slug,

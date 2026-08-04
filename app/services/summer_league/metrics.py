@@ -57,7 +57,7 @@ from app.services.event_desk.timeutils import to_eastern_date
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayByPlayEvent,
@@ -602,7 +602,7 @@ async def _load(
     through_day: Optional[date] = None,
 ) -> tuple[Any, ...]:
     """Load the raw rows needed for a full build or selected competitions."""
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     tgl = SummerLeagueTeamGameLog
     pgl = SummerLeaguePlayerGameLog
     scope = frozenset(competition_ids) if competition_ids is not None else None

@@ -26,7 +26,7 @@ from sqlalchemy.orm import aliased
 from app.schemas.players_master import PlayerMaster
 from app.services.stats.formulas import efg_pct_line, ts_pct_line
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamGameLog,
@@ -250,9 +250,9 @@ def _pct(fraction: Optional[float]) -> Optional[float]:
 async def get_leaders_years(db: AsyncSession) -> list[int]:
     """Return Summer League years that have player logs, newest first."""
     rows = await db.execute(
-        select(SummerLeagueCompetition.year)  # type: ignore[call-overload]
+        select(SummerLeagueEdition.year)  # type: ignore[call-overload]
         .distinct()
-        .order_by(SummerLeagueCompetition.year.desc())  # type: ignore[attr-defined]
+        .order_by(SummerLeagueEdition.year.desc())  # type: ignore[attr-defined]
     )
     return [int(y) for (y,) in rows.all()]
 
@@ -269,7 +269,7 @@ async def get_leaders_venues(db: AsyncSession) -> list[tuple[str, str]]:
     of the Summer League surfaces.
     """
     rows = await db.execute(
-        select(SummerLeagueCompetition.venue_slug).distinct()  # type: ignore[call-overload]
+        select(SummerLeagueEdition.venue_slug).distinct()  # type: ignore[call-overload]
     )
     slugs = {v for (v,) in rows.all()}
     ordered = sorted(
@@ -533,7 +533,7 @@ async def _aggregate(
     2012--2016) absent instead of turning a few NBA pace rows into a ranking.
     """
     pgl: Any = SummerLeaguePlayerGameLog
-    comp: Any = SummerLeagueCompetition
+    comp: Any = SummerLeagueEdition
     game: Any = SummerLeagueGame
     team_log: Any = aliased(SummerLeagueTeamGameLog)
     opponent_log: Any = aliased(SummerLeagueTeamGameLog)

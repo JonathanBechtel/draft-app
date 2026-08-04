@@ -42,7 +42,7 @@ from app.schemas.event_desk import (
 )
 from app.schemas.event_desk_render_snapshot import EventDeskRenderSnapshot
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
 )
@@ -72,8 +72,8 @@ _NOW = datetime(
 )  # 4:00pm ET (EDT, UTC-4) -- mirrors test_sl_desk_tick.py
 
 
-async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug="las_vegas",
@@ -118,7 +118,7 @@ async def _seed_all_required_baselines(db: AsyncSession) -> None:
 async def _seed_event(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     empty_calendar_ref: bool = False,
     active_window: bool = True,
 ) -> Event:
@@ -256,7 +256,7 @@ async def _assert_no_writes(db: AsyncSession, *, before: dict[str, int]) -> None
             (await db.execute(select(EventDeskRenderSnapshot))).scalars().all()
         ),
         "competitions": len(
-            (await db.execute(select(SummerLeagueCompetition))).scalars().all()
+            (await db.execute(select(SummerLeagueEdition))).scalars().all()
         ),
         "baselines": len(
             (await db.execute(select(SummerLeagueCohortBaseline))).scalars().all()
@@ -275,7 +275,7 @@ async def _table_counts(db: AsyncSession) -> dict[str, int]:
             (await db.execute(select(EventDeskRenderSnapshot))).scalars().all()
         ),
         "competitions": len(
-            (await db.execute(select(SummerLeagueCompetition))).scalars().all()
+            (await db.execute(select(SummerLeagueEdition))).scalars().all()
         ),
         "baselines": len(
             (await db.execute(select(SummerLeagueCohortBaseline))).scalars().all()

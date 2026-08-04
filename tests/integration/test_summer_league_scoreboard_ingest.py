@@ -37,7 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.schemas.event_desk import Event, EventCalendarSource, EventType
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueTeamEntry,
@@ -113,9 +113,9 @@ async def _competition(
     year: int = 2026,
     league_id: str = "15",
     venue: str = "las_vegas",
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"{venue}-{_N['i']}",
@@ -129,7 +129,7 @@ async def _competition(
 
 
 async def _team(
-    db: AsyncSession, competition: SummerLeagueCompetition, *, nba_stats_team_id: str
+    db: AsyncSession, competition: SummerLeagueEdition, *, nba_stats_team_id: str
 ) -> SummerLeagueTeamEntry:
     _N["i"] += 1
     assert competition.id is not None
@@ -833,7 +833,7 @@ async def test_run_scoreboard_ingest_extends_competition_date_window_to_include_
     not-yet-tipped Scheduled games through 2026-07-19), the window should
     span that fixture's actual date range.
     """
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2026,
         league_id="15",
         venue_slug="las_vegas",

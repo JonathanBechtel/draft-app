@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueParticipation,
 )
@@ -159,7 +159,7 @@ def season_range_start(season_range: str) -> int:
 async def commentary_for_competition(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     baseline_version: str,
     game_date: date,
     grade_by_player: dict[int, GradeRow],

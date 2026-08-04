@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_affiliation import AffiliationStatus, PlayerAffiliation
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueParticipation,
     SummerLeagueSourcePlayer,
 )
@@ -30,12 +30,12 @@ async def changed_source_player_ids(
             SummerLeagueParticipation.affiliation_id == PlayerAffiliation.id,
         )
         .join(
-            SummerLeagueCompetition,
-            SummerLeagueParticipation.competition_id == SummerLeagueCompetition.id,
+            SummerLeagueEdition,
+            SummerLeagueParticipation.competition_id == SummerLeagueEdition.id,
         )
         .where(
-            SummerLeagueCompetition.year == year,  # type: ignore[arg-type]
-            SummerLeagueCompetition.league_id == league_id,
+            SummerLeagueEdition.year == year,  # type: ignore[arg-type]
+            SummerLeagueEdition.league_id == league_id,
             PlayerAffiliation.recorded_at == recorded_at,
             PlayerAffiliation.status.in_(  # type: ignore[attr-defined]
                 [AffiliationStatus.ANNOUNCED, AffiliationStatus.CUT]

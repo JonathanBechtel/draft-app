@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
@@ -140,7 +140,7 @@ async def _seed_pool(  # noqa: PLR0913 - fixture parameters describe the seeded 
     n_games: int,
 ) -> int:
     """Seed a two-team pool with ``n_games`` complete games; return competition id."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue,
@@ -995,14 +995,14 @@ def _write_raw_fixture(raw_root: Path, *, year: int) -> None:
 
 async def _seed_state_unlocking_game(
     db: AsyncSession, *, year: int, league_id: str, game_date: date, tip: datetime
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     """Pre-seed a competition + FINAL game so the tick resolves an active state.
 
     The Job B dormancy pre-check runs *before* normalize can create
     anything, so ``game_date`` needs a game that already exists.
     """
     i = _next_idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"vegas-tick-{i}",
@@ -1131,7 +1131,7 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
     # excludes it entirely -- this tick never normalizes, grades, or
     # rebuilds anything for it. Its season row must come out byte-for-byte
     # identical to how it went in.
-    competition_b = SummerLeagueCompetition(
+    competition_b = SummerLeagueEdition(
         year=year - 1,
         league_id="15",
         venue_slug="vegas-untouched",
@@ -1277,7 +1277,7 @@ async def test_desk_tick_off_window_never_touches_player_seasons(
     year = 2099
     now = datetime(year, 1, 15, 12, 0)
 
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year, league_id="15", venue_slug="off-window", display_name="off-window"
     )
     db_session.add(comp)

@@ -10,7 +10,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
@@ -68,7 +68,7 @@ async def _seed_event_day(
     Returns:
         The seeded ``(competition_id, first_player_id)`` pair.
     """
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=year,
         league_id=f"archive-seeded-{year}",
         venue_slug="las_vegas",
@@ -178,7 +178,7 @@ async def test_backfill_guard_rejects_ordinary_demoted_publications(
     db_session: AsyncSession,
 ) -> None:
     """Only an explicit cutoff-bound archive can make a target complete."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2021,
         league_id="ordinary-close-not-archive",
         venue_slug="las_vegas",
@@ -229,7 +229,7 @@ async def test_backfill_targets_only_metric_eligible_game_statuses(
     db_session: AsyncSession,
 ) -> None:
     """Stale logs on unresolved game statuses cannot create archival closes."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2022,
         league_id="archive-status-filter",
         venue_slug="las_vegas",
@@ -301,7 +301,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
     db_session: AsyncSession,
 ) -> None:
     """Archival stamping leaves the current pointer and its values byte-for-byte intact."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2017,
         league_id="archive-cannot-demote",
         venue_slug="las_vegas",
@@ -470,7 +470,7 @@ async def test_archival_rows_feed_the_public_trend_endpoint(
     db_session: AsyncSession, app_client: AsyncClient
 ) -> None:
     """A published archival season is returned by the existing trend API."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2018,
         league_id="archive-trend-endpoint",
         venue_slug="las_vegas",

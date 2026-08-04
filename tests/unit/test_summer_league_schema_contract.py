@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
@@ -108,7 +108,7 @@ def test_product_enum_values_match_spec() -> None:
 
 def test_product_table_names_are_grouped_under_summer_league_prefix() -> None:
     """Normalized product tables use explicit Summer League table names."""
-    assert SummerLeagueCompetition.__table__.name == "summer_league_competitions"  # type: ignore[attr-defined]
+    assert SummerLeagueEdition.__table__.name == "summer_league_competitions"  # type: ignore[attr-defined]
     assert SummerLeagueTeamEntry.__table__.name == "summer_league_team_entries"  # type: ignore[attr-defined]
     assert SummerLeagueGame.__table__.name == "summer_league_games"  # type: ignore[attr-defined]
     assert SummerLeagueSourcePlayer.__table__.name == "summer_league_source_players"  # type: ignore[attr-defined]
@@ -119,7 +119,7 @@ def test_product_table_names_are_grouped_under_summer_league_prefix() -> None:
 def test_product_table_uniqueness_constraints_are_named() -> None:
     """Product tables expose stable uniqueness constraints for upsert services."""
     tables = [
-        SummerLeagueCompetition.__table__,  # type: ignore[attr-defined]
+        SummerLeagueEdition.__table__,  # type: ignore[attr-defined]
         SummerLeagueTeamEntry.__table__,  # type: ignore[attr-defined]
         SummerLeagueGame.__table__,  # type: ignore[attr-defined]
         SummerLeagueSourcePlayer.__table__,  # type: ignore[attr-defined]
