@@ -1,6 +1,11 @@
 # Journey-Graph Domain Vocabulary
 
-**Status:** Design spec. Strategy document — no code changes proposed inline.
+**Status:** Design spec. Strategy document — no code changes proposed inline. **`temporal.py`
+SHIPPED 2026-08-03** (Phase 4, #780) — `app/domain/temporal.py` defines `Watermark`,
+`VersionStamps`, `Scope` as frozen dataclasses, adopted at the trend read seam
+(`latest_trend_watermark()`). The rest of the catalog below (`identity.py`, `canon.py`,
+`assertions.py`, `provenance.py`, `spoke.py`, `stats.py`) remains scheduled for Wave C — see
+Sequencing at the bottom.
 
 **Purpose:** make the journey-graph vocabulary **real in code**, so the backbone doc and the
 codebase describe the same system in the same words. Companion to
@@ -79,8 +84,12 @@ means "unresolved" is a legitimate, renderable state — not a null to be papere
 | `TeamEntryRef` | a team's entry in one edition | `team_entry_id`, `team_program_ref`, `edition_ref` |
 | `GameRef` | a game within an edition | `game_id`, `edition_ref`, `tip_at`, `status` |
 
-**The `CompetitionRef` / `EditionRef` split is the point.** Today `SummerLeagueCompetition` names
-the parent concept while modelling the child; two types make the distinction unmissable.
+**The `CompetitionRef` / `EditionRef` split is the point.** Before Phase 4, `SummerLeagueCompetition`
+named the parent concept while modelling the child; the class is now `SummerLeagueEdition` (#786),
+which is the correct name for what it models — but the parent `Competition` entity it was
+conflated with still doesn't exist as its own table, so `CompetitionRef` remains aspirational
+until Wave C promotes a real `competitions` table. The two types stay the reason to keep the
+distinction unmissable when that lands.
 
 ### Assertions (§0, §5b, §5c)
 
@@ -163,12 +172,18 @@ Wave A of the alignment doc — these are free, encode decisions already made, a
 mechanical. Practical order:
 
 1. `temporal.py` (`Watermark`, `VersionStamps`, `Scope`) — needed by docs #2 and #3 immediately,
-   and the highest-value types since they encode P2 and the freshness contract.
-2. `stats.py` — lands with the engine extraction (doc #2 Issue A).
+   and the highest-value types since they encode P2 and the freshness contract. **✅ SHIPPED
+   2026-08-03 (#780).**
+2. `stats.py` — lands with the engine extraction (doc #2 Issue A). **Not yet built** — the stat
+   engine (doc #2) shipped in Phase 2 without a corresponding `app/domain/stats.py`; `StatInputs`
+   and friends still live in `app/services/stats/`. Remains scheduled, no committed date.
 3. `identity.py`, `spoke.py` — describe what already exists; adopting them is mostly renaming at
-   call sites.
+   call sites. **Not yet built.** Scheduled for Wave C.
 4. `canon.py`, `provenance.py`, `assertions.py` — introduce alongside the org model and canon-entity
-   promotion (alignment doc Waves B/C), where they gain real second consumers.
+   promotion (alignment doc Waves B/C), where they gain real second consumers. **Not yet built.**
+   Wave B (the org model) shipped 2026-08-03 without these — the decision was to hold them for
+   Wave C alongside canon-entity promotion rather than introduce them ahead of a second consumer.
+   Scheduled for Wave C, deliberately deferred (not next-up).
 
 **Adopt incrementally at the seams**, not in a sweeping refactor: use the types in new and
 touched code paths first. A big-bang vocabulary migration is exactly the kind of broad change this

@@ -144,12 +144,20 @@ section. A slow backbone job must never be able to starve a fast user-facing one
 
 - **The backbone is further along than it looks.** Participation and supersession-first
   affiliations have shipped. The canon-entity and provenance layers exist too — namespaced under
-  `summer_league_`.
-- **One blocker gates the second spoke:** the organization → team/program model. Until it ships,
-  `player_affiliations.team_program_id` stays reserved and no non-NBA source can assert an
-  affiliation at all.
-- **One anti-pattern violates P2** in an otherwise longitudinal-first codebase: the Summer League
-  metrics rebuild destroys history on every run.
+  `summer_league_`, with class vocabulary now aligned to backbone terms (Phase 4:
+  `SummerLeagueEdition`, `SummerLeagueSourceDocument`, `SummerLeagueSourceRecord`,
+  `SummerLeagueIngestionRun`, `SummerLeagueDerivedAgg`).
+- **The organization → team/program blocker shipped (Phase 4, 2026-08-03).** `Organization` /
+  `TeamProgram` / `OrganizationRelationship` exist (`app/schemas/organization.py`), and both
+  `player_affiliations.team_program_id` and `summer_league_team_entries.team_program_id` are live,
+  resolvable columns — a non-NBA source *can* now assert an affiliation. Two things this did not
+  do: populate `player_affiliations.team_program_id` (zero dev rows — SL roster ingest never wrote
+  `nba_team_id` on affiliations either, so there was nothing to backfill from) or move any live
+  read path off `nba_team_id` (SL's team/franchise services still read it directly). See
+  `summer-league-journey-graph-alignment.md` §3.
+- **The P2 anti-pattern in the metrics rebuild is resolved.** `SummerLeagueDerivedAgg` (formerly
+  `SummerLeaguePlayerSeason`) adopted `DatedVersionMixin` and the rebuild now version-flips
+  (`is_current`) instead of deleting.
 - **One subsystem needs simplification before generalization:** the Event Desk — good product,
   fragile plumbing, framework-shaped at N=1.
 
