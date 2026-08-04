@@ -8,9 +8,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from app.domain.temporal import Watermark
+from app.models.summer_league_trends import TrendCohortBand, TrendPoint
 from app.services.summer_league.metric_trends import (
     _effective_day_expression,
     get_daily_trend,
+    latest_trend_watermark,
 )
 
 
@@ -135,3 +138,53 @@ def test_effective_day_expression_does_not_use_publication_time() -> None:
 
     assert "effective_day" in sql
     assert "published_at" not in sql
+
+
+def _trend_point(day: date, as_of: datetime | None) -> TrendPoint:
+    return TrendPoint(
+        metric_key="gmsc",
+        effective_day=day,
+        value=1.0,
+        cohort_band=TrendCohortBand(median=1.0, q1=0.0, q3=2.0),
+        as_of=as_of,
+    )
+
+
+def test_latest_trend_watermark_empty_points_has_no_source_currency() -> None:
+    """An empty trend series is a fully unknown watermark, never a bare None."""
+    watermark = latest_trend_watermark([])
+
+    assert watermark == Watermark(
+        source_as_of=None, projection_built_at=None, projection_version=None
+    )
+
+
+def test_latest_trend_watermark_uses_newest_day_max_as_of() -> None:
+    """The watermark's source currency is the newest day's max per-point as_of."""
+    points = [
+        _trend_point(date(2026, 7, 1), datetime(2026, 7, 1, 10)),
+        _trend_point(date(2026, 7, 2), datetime(2026, 7, 2, 9)),
+        _trend_point(date(2026, 7, 2), datetime(2026, 7, 2, 12)),
+    ]
+
+    watermark = latest_trend_watermark(points)
+
+    assert watermark == Watermark(
+        source_as_of=datetime(2026, 7, 2, 12),
+        projection_built_at=None,
+        projection_version=None,
+    )
+
+
+def test_latest_trend_watermark_unknown_currency_on_newest_day_is_none() -> None:
+    """A missing as_of on the newest day degrades the whole watermark, not one point."""
+    points = [
+        _trend_point(date(2026, 7, 1), datetime(2026, 7, 1, 10)),
+        _trend_point(date(2026, 7, 2), None),
+    ]
+
+    watermark = latest_trend_watermark(points)
+
+    assert watermark == Watermark(
+        source_as_of=None, projection_built_at=None, projection_version=None
+    )

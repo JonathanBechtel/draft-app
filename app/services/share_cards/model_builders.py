@@ -46,7 +46,7 @@ from app.services.share_cards.render_models import (
 from app.services.similarity_service import get_similar_players
 from app.services.summer_league.metric_trends import (
     get_daily_trend,
-    latest_trend_as_of,
+    latest_trend_watermark,
     resolve_scope_label,
 )
 
@@ -1155,7 +1155,7 @@ async def build_sl_trend_model(
         )
         for lane, key in enumerate(key for key in keys if key in available_keys)
     ]
-    latest_as_of = latest_trend_as_of(points)
+    latest_as_of = latest_trend_watermark(points).source_as_of
     as_of = latest_as_of.date().isoformat() if latest_as_of else "—"
     # A share card leaves the site: it carries the event's name, never the
     # internal scope key it was rendered from.

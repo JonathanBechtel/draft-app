@@ -13,3 +13,7 @@ describes the domain; it does not know how the domain is persisted or served. Wr
 contract before the package exists is why it starts green and stays green — see
 ``docs/plans/programmatic-code-discipline.md`` §3.1.
 """
+
+from app.domain.temporal import Scope, VersionStamps, Watermark
+
+__all__ = ["Scope", "VersionStamps", "Watermark"]

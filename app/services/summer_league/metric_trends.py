@@ -9,12 +9,13 @@ the implementation resolves those keys to the persisted projection columns.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.temporal import Watermark
 from app.models.summer_league_trends import TrendCohortBand, TrendPoint
 from app.schemas.summer_league import SummerLeagueCompetition
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
@@ -41,17 +42,34 @@ AS_OF_UNKNOWN_LABEL = "not reported"
 FALLBACK_SCOPE_LABEL = "Summer League"
 
 
-def latest_trend_as_of(points: Sequence[TrendPoint]) -> datetime | None:
-    """Return source currency for the newest day without masking unknown data."""
+def latest_trend_watermark(points: Sequence[TrendPoint]) -> Watermark:
+    """Return the freshness contract for the newest day without masking unknown data.
+
+    ``source_as_of`` is the max per-point source currency for the latest
+    ``effective_day``, or ``None`` when any point on that day cannot state its
+    currency -- P4 requires the gap stay visible rather than being papered over
+    with a sibling point's value. The trend projection does not currently carry
+    a build timestamp or a projection-version counter, so
+    ``projection_built_at``/``projection_version`` are ``None`` here; adding them
+    is a follow-up to this read path, not a value this seam can invent.
+    """
     if not points:
-        return None
+        return Watermark(
+            source_as_of=None, projection_built_at=None, projection_version=None
+        )
     latest_day = max(point.effective_day for point in points)
     latest_values = [
         point.as_of for point in points if point.effective_day == latest_day
     ]
     if not latest_values or any(value is None for value in latest_values):
-        return None
-    return max(value for value in latest_values if value is not None)
+        return Watermark(
+            source_as_of=None, projection_built_at=None, projection_version=None
+        )
+    return Watermark(
+        source_as_of=max(value for value in latest_values if value is not None),
+        projection_built_at=None,
+        projection_version=None,
+    )
 
 
 def _scope_filter(scope_key: str) -> tuple[str, int]:
@@ -326,7 +344,7 @@ def trend_points_to_context(
     if not metric_keys:
         metric_keys = list(dict.fromkeys(p.metric_key for p in ordered))
     latest_day = max(point.effective_day for point in ordered)
-    latest_as_of = latest_trend_as_of(ordered)
+    latest_as_of = latest_trend_watermark(ordered).source_as_of
     return {
         "scope_key": scope_key,
         "scope_label": scope_label,
