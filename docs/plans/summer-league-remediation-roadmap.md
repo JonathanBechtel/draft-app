@@ -222,6 +222,10 @@ harness; the trend surface renders from retained history.
 **Why here:** the largest architecture-shaping phase, now protected by Phase 0's contracts and
 informed by a stabilized stat/ops layer.
 
+**Detail spec:** `summer-league-phase4-journey-graph-conversion-spec.md` — scopes this phase to
+Waves A + B (vocabulary, namespacing, mixin adoption, service shape, and the org-model migration)
+and defers canon-entity promotion to Wave C alongside spoke #2.
+
 | Item | Spec |
 |---|---|
 | Domain vocabulary — `temporal.py` first (`Watermark`, `VersionStamps`, `Scope`), then identity/spoke | vocabulary doc |
