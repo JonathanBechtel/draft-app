@@ -44,7 +44,7 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -288,7 +288,7 @@ async def _roster_player(
     assert competition.id is not None
     assert team.id is not None
     assert player.id is not None
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"src-{idx}",
         raw_player_name=player.display_name or "Test Player",
         normalized_name=(player.display_name or "test player").lower(),

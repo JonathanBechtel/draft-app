@@ -19,7 +19,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -151,10 +151,10 @@ async def _seed_scheduled_game(
 
 async def _seed_source_player(
     db: AsyncSession, *, name: str, canonical_player_id: int | None
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     """Seed one NBA-source player identity, resolved or not."""
     n = _next()
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"person-{n}",
         raw_player_name=name,
         normalized_name=name.lower(),
@@ -172,7 +172,7 @@ async def _seed_player_log(
     comp: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
-    source: SummerLeagueSourcePlayer,
+    source: SummerLeagueSourceRecord,
     canonical_player_id: int | None,
     minutes_seconds: int | None,
 ) -> None:
@@ -201,7 +201,7 @@ async def _seed_shot(
     comp: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
-    source: SummerLeagueSourcePlayer,
+    source: SummerLeagueSourceRecord,
 ) -> None:
     """Seed one shot event so a game counts as shot-covered."""
     n = _next()

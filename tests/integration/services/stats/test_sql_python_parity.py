@@ -38,7 +38,7 @@ from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.stats.formulas import efg_pct_ratio, ts_pct_ratio, tov_pct_ratio
@@ -121,7 +121,7 @@ async def _seed_two_game_logs(db: AsyncSession) -> tuple[int, int]:
     await db.flush()
     assert player.id is not None
 
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id="sp-sql-parity",
         raw_player_name=player.display_name or "P",
         normalized_name=(player.display_name or "p").lower(),

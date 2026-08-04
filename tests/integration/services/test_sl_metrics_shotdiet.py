@@ -29,7 +29,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -104,8 +104,8 @@ async def _make_source_player(
     *,
     nba_stats_person_id: str,
     canonical_player_id: int | None = None,
-) -> SummerLeagueSourcePlayer:
-    sp = SummerLeagueSourcePlayer(
+) -> SummerLeagueSourceRecord:
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=nba_stats_person_id,
         raw_player_name=f"Player {nba_stats_person_id}",
         normalized_name=f"player{nba_stats_person_id}",

@@ -20,12 +20,12 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
     SummerLeagueParticipation,
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -39,15 +39,15 @@ from app.services.summer_league.roster_reconcile import ROSTER_SOURCE
 
 
 def _raw_file(
-    raw_run: SummerLeagueRawRun,
+    raw_run: SummerLeagueIngestionRun,
     *,
     endpoint: str,
     relative_path: str,
     game_id: str | None = None,
     parse_status: SummerLeagueRawFileStatus = SummerLeagueRawFileStatus.PARSED,
     row_count: int = 1,
-) -> SummerLeagueRawFile:
-    return SummerLeagueRawFile(
+) -> SummerLeagueSourceDocument:
+    return SummerLeagueSourceDocument(
         raw_run_id=raw_run.id or 0,
         year=raw_run.year,
         league_id=raw_run.league_id,
@@ -62,7 +62,7 @@ def _raw_file(
 
 
 async def _seed_valid_slice(db_session: AsyncSession) -> None:
-    raw_run = SummerLeagueRawRun(
+    raw_run = SummerLeagueIngestionRun(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -180,7 +180,7 @@ async def _seed_valid_slice(db_session: AsyncSession) -> None:
     db_session.add(player)
     await db_session.flush()
 
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id="1640001",
         raw_player_name="Resolved Prospect",
         normalized_name=_normalized_name_key("Resolved Prospect"),
@@ -258,7 +258,7 @@ async def test_run_summer_league_backbone_qa_reports_expected_invalid_codes(
     db_session: AsyncSession,
 ) -> None:
     """Invalid raw, normalized, resolution, and reference rows emit QA codes."""
-    raw_run = SummerLeagueRawRun(
+    raw_run = SummerLeagueIngestionRun(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -325,7 +325,7 @@ async def test_run_summer_league_backbone_qa_reports_expected_invalid_codes(
     db_session.add(game)
     await db_session.flush()
 
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id="1640001",
         raw_player_name="Unresolved Prospect",
         normalized_name=_normalized_name_key("Unresolved Prospect"),
@@ -379,7 +379,7 @@ async def _seed_slice_with_reconcile_findings(db_session: AsyncSession) -> None:
     - announced-not-played (roster participation, no box-score row -> DNP/cut)
     - played-not-announced (box-score row, no roster participation -> late-add)
     """
-    raw_run = SummerLeagueRawRun(
+    raw_run = SummerLeagueIngestionRun(
         year=2025,
         league_id="13",
         venue_slug="california_classic",
@@ -493,19 +493,19 @@ async def _seed_slice_with_reconcile_findings(db_session: AsyncSession) -> None:
         ]
     )
 
-    announced_and_played = SummerLeagueSourcePlayer(
+    announced_and_played = SummerLeagueSourceRecord(
         nba_stats_person_id="2650001",
         raw_player_name="Announced Played Prospect",
         normalized_name=_normalized_name_key("Announced Played Prospect"),
         resolution_status=SummerLeagueResolutionStatus.UNRESOLVED,
     )
-    announced_not_played = SummerLeagueSourcePlayer(
+    announced_not_played = SummerLeagueSourceRecord(
         nba_stats_person_id="2650002",
         raw_player_name="Announced DNP Prospect",
         normalized_name=_normalized_name_key("Announced DNP Prospect"),
         resolution_status=SummerLeagueResolutionStatus.UNRESOLVED,
     )
-    played_not_announced = SummerLeagueSourcePlayer(
+    played_not_announced = SummerLeagueSourceRecord(
         nba_stats_person_id="2650003",
         raw_player_name="Late Add Prospect",
         normalized_name=_normalized_name_key("Late Add Prospect"),

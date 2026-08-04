@@ -15,12 +15,12 @@ from app.schemas.summer_league import (
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -205,9 +205,9 @@ async def validate_raw_audit_integrity(
 
 
 def _validate_raw_file_duplicates(
-    raw_files: list[SummerLeagueRawFile],
+    raw_files: list[SummerLeagueSourceDocument],
 ) -> list[SummerLeagueQAFinding]:
-    grouped: dict[tuple[str, str | None], list[SummerLeagueRawFile]] = {}
+    grouped: dict[tuple[str, str | None], list[SummerLeagueSourceDocument]] = {}
     for raw_file in raw_files:
         grouped.setdefault((raw_file.endpoint, raw_file.game_id), []).append(raw_file)
 
@@ -230,7 +230,9 @@ def _validate_raw_file_duplicates(
     return findings
 
 
-def _validate_raw_file(raw_file: SummerLeagueRawFile) -> list[SummerLeagueQAFinding]:
+def _validate_raw_file(
+    raw_file: SummerLeagueSourceDocument,
+) -> list[SummerLeagueQAFinding]:
     findings: list[SummerLeagueQAFinding] = []
     file_error_severity = _raw_file_error_severity(raw_file)
     evidence = {
@@ -301,8 +303,8 @@ def _validate_raw_file(raw_file: SummerLeagueRawFile) -> list[SummerLeagueQAFind
 
 
 def _raw_run_error_severity(
-    raw_run: SummerLeagueRawRun,
-    raw_files: list[SummerLeagueRawFile],
+    raw_run: SummerLeagueIngestionRun,
+    raw_files: list[SummerLeagueSourceDocument],
 ) -> SummerLeagueQASeverity:
     error_files = [
         raw_file
@@ -319,14 +321,14 @@ def _raw_run_error_severity(
 
 
 def _raw_file_error_severity(
-    raw_file: SummerLeagueRawFile,
+    raw_file: SummerLeagueSourceDocument,
 ) -> SummerLeagueQASeverity:
     if _is_optional_game_detail_file(raw_file):
         return SummerLeagueQASeverity.WARNING
     return SummerLeagueQASeverity.ERROR
 
 
-def _is_optional_game_detail_file(raw_file: SummerLeagueRawFile) -> bool:
+def _is_optional_game_detail_file(raw_file: SummerLeagueSourceDocument) -> bool:
     return (
         raw_file.game_id is not None
         and raw_file.endpoint in OPTIONAL_GAME_DETAIL_ENDPOINTS
@@ -771,11 +773,11 @@ async def run_summer_league_backbone_qa(
 async def _load_raw_run(
     db: AsyncSession,
     slice_: SummerLeagueSlice,
-) -> SummerLeagueRawRun | None:
+) -> SummerLeagueIngestionRun | None:
     result = await db.execute(
-        select(SummerLeagueRawRun).where(
-            SummerLeagueRawRun.year == slice_.year,  # type: ignore[arg-type]
-            SummerLeagueRawRun.league_id == slice_.league_id,  # type: ignore[arg-type]
+        select(SummerLeagueIngestionRun).where(
+            SummerLeagueIngestionRun.year == slice_.year,  # type: ignore[arg-type]
+            SummerLeagueIngestionRun.league_id == slice_.league_id,  # type: ignore[arg-type]
         )
     )
     return result.scalar_one_or_none()
@@ -797,10 +799,10 @@ async def _load_competition(
 async def _load_raw_files(
     db: AsyncSession,
     raw_run_id: int,
-) -> list[SummerLeagueRawFile]:
+) -> list[SummerLeagueSourceDocument]:
     result = await db.execute(
-        select(SummerLeagueRawFile).where(
-            SummerLeagueRawFile.raw_run_id == raw_run_id  # type: ignore[arg-type]
+        select(SummerLeagueSourceDocument).where(
+            SummerLeagueSourceDocument.raw_run_id == raw_run_id  # type: ignore[arg-type]
         )
     )
     return list(result.scalars().all())
@@ -833,17 +835,17 @@ async def _load_teams_by_id(
 async def _load_player_log_resolution_rows(
     db: AsyncSession,
     competition_id: int,
-) -> list[tuple[SummerLeagueSourcePlayer, SummerLeaguePlayerGameLog]]:
+) -> list[tuple[SummerLeagueSourceRecord, SummerLeaguePlayerGameLog]]:
     result = await db.execute(
-        select(SummerLeagueSourcePlayer, SummerLeaguePlayerGameLog)
+        select(SummerLeagueSourceRecord, SummerLeaguePlayerGameLog)
         .join(
             SummerLeaguePlayerGameLog,
-            SummerLeaguePlayerGameLog.source_player_id == SummerLeagueSourcePlayer.id,  # type: ignore[arg-type]
+            SummerLeaguePlayerGameLog.source_player_id == SummerLeagueSourceRecord.id,  # type: ignore[arg-type]
         )
         .where(
             SummerLeaguePlayerGameLog.competition_id == competition_id  # type: ignore[arg-type]
         )
-        .order_by(SummerLeagueSourcePlayer.id)  # type: ignore[arg-type]
+        .order_by(SummerLeagueSourceRecord.id)  # type: ignore[arg-type]
     )
     return [(source_player, player_log) for source_player, player_log in result.all()]
 
@@ -851,17 +853,17 @@ async def _load_player_log_resolution_rows(
 async def _load_source_players_for_competition(
     db: AsyncSession,
     competition_id: int,
-) -> list[SummerLeagueSourcePlayer]:
+) -> list[SummerLeagueSourceRecord]:
     result = await db.execute(
-        select(SummerLeagueSourcePlayer)
+        select(SummerLeagueSourceRecord)
         .join(
             SummerLeaguePlayerGameLog,
-            SummerLeaguePlayerGameLog.source_player_id == SummerLeagueSourcePlayer.id,  # type: ignore[arg-type]
+            SummerLeaguePlayerGameLog.source_player_id == SummerLeagueSourceRecord.id,  # type: ignore[arg-type]
         )
         .where(
             SummerLeaguePlayerGameLog.competition_id == competition_id  # type: ignore[arg-type]
         )
-        .distinct(SummerLeagueSourcePlayer.id)  # type: ignore[arg-type]
+        .distinct(SummerLeagueSourceRecord.id)  # type: ignore[arg-type]
     )
     return list(result.scalars().all())
 
@@ -875,10 +877,10 @@ async def _count_raw_runs(
         total += await _scalar_count(
             db,
             select(func.count())
-            .select_from(SummerLeagueRawRun)
+            .select_from(SummerLeagueIngestionRun)
             .where(
-                SummerLeagueRawRun.year == slice_.year,  # type: ignore[arg-type]
-                SummerLeagueRawRun.league_id == slice_.league_id,  # type: ignore[arg-type]
+                SummerLeagueIngestionRun.year == slice_.year,  # type: ignore[arg-type]
+                SummerLeagueIngestionRun.league_id == slice_.league_id,  # type: ignore[arg-type]
             ),
         )
     return total
@@ -893,10 +895,10 @@ async def _count_raw_files(
         total += await _scalar_count(
             db,
             select(func.count())
-            .select_from(SummerLeagueRawFile)
+            .select_from(SummerLeagueSourceDocument)
             .where(
-                SummerLeagueRawFile.year == slice_.year,  # type: ignore[arg-type]
-                SummerLeagueRawFile.league_id == slice_.league_id,  # type: ignore[arg-type]
+                SummerLeagueSourceDocument.year == slice_.year,  # type: ignore[arg-type]
+                SummerLeagueSourceDocument.league_id == slice_.league_id,  # type: ignore[arg-type]
             ),
         )
     return total
@@ -999,11 +1001,11 @@ async def _count_source_players_for_competition(
     competition_id: int,
 ) -> int:
     result = await db.execute(
-        select(func.count(func.distinct(SummerLeagueSourcePlayer.id)))
-        .select_from(SummerLeagueSourcePlayer)
+        select(func.count(func.distinct(SummerLeagueSourceRecord.id)))
+        .select_from(SummerLeagueSourceRecord)
         .join(
             SummerLeaguePlayerGameLog,
-            SummerLeaguePlayerGameLog.source_player_id == SummerLeagueSourcePlayer.id,  # type: ignore[arg-type]
+            SummerLeaguePlayerGameLog.source_player_id == SummerLeagueSourceRecord.id,  # type: ignore[arg-type]
         )
         .where(
             SummerLeaguePlayerGameLog.competition_id == competition_id  # type: ignore[arg-type]
@@ -1059,7 +1061,7 @@ async def _validate_player_log_references(
             SummerLeaguePlayerGameLog,
             SummerLeagueGame,
             SummerLeagueTeamEntry,
-            SummerLeagueSourcePlayer,
+            SummerLeagueSourceRecord,
         )
         .join(
             SummerLeagueGame,
@@ -1070,8 +1072,8 @@ async def _validate_player_log_references(
             SummerLeagueTeamEntry.id == SummerLeaguePlayerGameLog.team_entry_id,  # type: ignore[arg-type]
         )
         .join(
-            SummerLeagueSourcePlayer,
-            SummerLeagueSourcePlayer.id == SummerLeaguePlayerGameLog.source_player_id,  # type: ignore[arg-type]
+            SummerLeagueSourceRecord,
+            SummerLeagueSourceRecord.id == SummerLeaguePlayerGameLog.source_player_id,  # type: ignore[arg-type]
         )
         .where(
             SummerLeaguePlayerGameLog.competition_id == competition_id  # type: ignore[arg-type]

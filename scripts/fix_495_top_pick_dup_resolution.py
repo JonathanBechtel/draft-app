@@ -34,7 +34,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerResolutionReview,
     SummerLeagueResolutionStatus,
     SummerLeagueReviewStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
 from app.services.player_merge_service import merge_players, preview_merge
 from app.services.summer_league.metrics import rebuild
@@ -157,8 +157,8 @@ async def main() -> None:
         for source_name, keep_name, discards in TARGETS:
             sp = (
                 await db.execute(
-                    select(SummerLeagueSourcePlayer).where(  # type: ignore[call-overload]
-                        SummerLeagueSourcePlayer.raw_player_name == source_name  # type: ignore[arg-type]
+                    select(SummerLeagueSourceRecord).where(  # type: ignore[call-overload]
+                        SummerLeagueSourceRecord.raw_player_name == source_name  # type: ignore[arg-type]
                     )
                 )
             ).scalar_one_or_none()
@@ -215,7 +215,7 @@ async def main() -> None:
         await db.rollback()
         async with db.begin():
             for sp_id, keep_id, discard_ids, review_id in resolved:
-                sp = await db.get(SummerLeagueSourcePlayer, sp_id)
+                sp = await db.get(SummerLeagueSourceRecord, sp_id)
                 assert sp is not None  # planned above; still present in this txn
                 existing_ext = await _find_external_id_player(
                     db, sp.nba_stats_person_id

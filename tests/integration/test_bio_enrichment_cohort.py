@@ -13,7 +13,7 @@ from app.schemas.player_status import PlayerStatus
 from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league.bio_enrichment_targets import (
@@ -63,7 +63,7 @@ async def _participate(  # noqa: PLR0913
     canonical_player_id: int | None,
 ) -> SummerLeagueParticipation:
     """Seed one participation row, resolved or unresolved."""
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=name,
         normalized_name=name.lower(),

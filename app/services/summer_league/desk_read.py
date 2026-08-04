@@ -74,7 +74,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -1022,14 +1022,14 @@ async def _fetch_current_live_snapshot_state(
         return _CurrentLiveSnapshotState(games={}, logs_by_game={}, players={})
 
     effective_player_id = func.coalesce(
-        SummerLeagueSourcePlayer.canonical_player_id,
+        SummerLeagueSourceRecord.canonical_player_id,
         SummerLeaguePlayerGameLog.player_id,
     )
     stmt = (
         select(  # type: ignore[call-overload]
             SummerLeagueGame,
             SummerLeaguePlayerGameLog,
-            SummerLeagueSourcePlayer.canonical_player_id,
+            SummerLeagueSourceRecord.canonical_player_id,
             PlayerMaster,
         )
         .outerjoin(
@@ -1037,8 +1037,8 @@ async def _fetch_current_live_snapshot_state(
             SummerLeaguePlayerGameLog.game_id == SummerLeagueGame.id,
         )
         .outerjoin(
-            SummerLeagueSourcePlayer,
-            SummerLeagueSourcePlayer.id == SummerLeaguePlayerGameLog.source_player_id,
+            SummerLeagueSourceRecord,
+            SummerLeagueSourceRecord.id == SummerLeaguePlayerGameLog.source_player_id,
         )
         .outerjoin(
             PlayerMaster,

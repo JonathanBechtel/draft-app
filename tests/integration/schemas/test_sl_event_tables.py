@@ -26,7 +26,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeaguePlayByPlayEvent,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 
@@ -67,8 +67,8 @@ def _make_team_entry(competition_id: int) -> SummerLeagueTeamEntry:
     )
 
 
-def _make_source_player(competition_id: int, team_entry_id: int) -> SummerLeagueSourcePlayer:
-    return SummerLeagueSourcePlayer(
+def _make_source_player(competition_id: int, team_entry_id: int) -> SummerLeagueSourceRecord:
+    return SummerLeagueSourceRecord(
         nba_stats_person_id="1629029",
         raw_player_name="Jordan Poole",
         normalized_name="jordan poole",

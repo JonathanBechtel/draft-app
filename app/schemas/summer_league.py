@@ -98,8 +98,11 @@ class SummerLeagueReviewStatus(str, Enum):
     STUB_CREATED = "STUB_CREATED"
 
 
-class SummerLeagueRawRun(SQLModel, table=True):  # type: ignore[call-arg]
-    """One audited Summer League raw scrape manifest."""
+class SummerLeagueIngestionRun(SQLModel, table=True):  # type: ignore[call-arg]
+    """One audited Summer League raw scrape manifest.
+
+    An ingestion run / document batch in backbone terms (journey-graph §10).
+    """
 
     __tablename__ = "summer_league_raw_runs"
     __table_args__ = (
@@ -142,8 +145,11 @@ class SummerLeagueRawRun(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
-class SummerLeagueRawFile(SQLModel, table=True):  # type: ignore[call-arg]
-    """One audited Summer League raw JSON snapshot file."""
+class SummerLeagueSourceDocument(SQLModel, table=True):  # type: ignore[call-arg]
+    """One audited Summer League raw JSON snapshot file.
+
+    A source document in backbone terms (journey-graph §10).
+    """
 
     __tablename__ = "summer_league_raw_files"
     __table_args__ = (
@@ -362,8 +368,11 @@ class SummerLeagueGame(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
-class SummerLeagueSourcePlayer(SQLModel, table=True):  # type: ignore[call-arg]
-    """One NBA.com source player identity before and after canonical resolution."""
+class SummerLeagueSourceRecord(SQLModel, table=True):  # type: ignore[call-arg]
+    """One NBA.com source player identity before and after canonical resolution.
+
+    A source record in backbone terms (journey-graph §10).
+    """
 
     __tablename__ = "summer_league_source_players"
     __table_args__ = (

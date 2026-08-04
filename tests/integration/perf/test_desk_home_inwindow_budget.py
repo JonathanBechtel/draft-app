@@ -41,7 +41,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -176,7 +176,7 @@ async def _seed_active_desk(
     await db.flush()
     assert player.id is not None
 
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"inwin-person-{_idx()}",
         raw_player_name=player.display_name or "Marquee Rookie",
         normalized_name=(player.display_name or "marquee rookie").lower(),

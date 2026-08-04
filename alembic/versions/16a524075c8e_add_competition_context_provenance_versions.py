@@ -23,7 +23,7 @@ convention for existing-table changes.
 * ``summer_league_environment_profiles.raw_run_ids`` — JSONB array of the
   exact ``summer_league_raw_runs.id`` values a profile can be traced back to.
 * ``summer_league_environment_provenance.source_status`` — worst-case
-  ``SummerLeagueRawRun.status`` across the contributing raw runs.
+  ``SummerLeagueIngestionRun.status`` across the contributing raw runs.
 """
 
 from typing import Sequence, Union

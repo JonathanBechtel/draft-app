@@ -8,7 +8,7 @@ asserts:
    False.
 3. An empty playbyplayv2 (zero rows) leaves pbp_available=False.
 4. pbp_available is set True when at least one event row is parsed.
-5. SummerLeagueRawFile.parse_status is set to PARSED for the playbyplayv2
+5. SummerLeagueSourceDocument.parse_status is set to PARSED for the playbyplayv2
    endpoint after parsing.
 
 Requires TEST_DATABASE_URL and PYTEST_ALLOW_DB=1.
@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeaguePlayByPlayEvent,
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
 )
 from app.services.summer_league.audit import audit_summer_league_raw
@@ -561,7 +561,7 @@ async def test_normalize_pbp_events_updates_raw_file_parse_status(
     db_session: AsyncSession,
     tmp_path: Path,
 ) -> None:
-    """SummerLeagueRawFile.parse_status is set to PARSED for playbyplayv2."""
+    """SummerLeagueSourceDocument.parse_status is set to PARSED for playbyplayv2."""
     game_dir = _write_season_skeleton(tmp_path)
     game_dir.joinpath("playbyplayv2.json").write_text(
         json.dumps(
@@ -583,9 +583,9 @@ async def test_normalize_pbp_events_updates_raw_file_parse_status(
 
     raw_file = (
         await db_session.execute(
-            select(SummerLeagueRawFile).where(
-                SummerLeagueRawFile.endpoint == "playbyplayv2",  # type: ignore[arg-type]
-                SummerLeagueRawFile.game_id == "1522400001",  # type: ignore[arg-type]
+            select(SummerLeagueSourceDocument).where(
+                SummerLeagueSourceDocument.endpoint == "playbyplayv2",  # type: ignore[arg-type]
+                SummerLeagueSourceDocument.game_id == "1522400001",  # type: ignore[arg-type]
             )
         )
     ).scalar_one_or_none()

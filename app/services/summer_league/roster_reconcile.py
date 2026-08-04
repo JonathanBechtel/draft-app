@@ -30,7 +30,7 @@ from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 
@@ -66,7 +66,7 @@ class ReconcileEntry:
     """One flagged player in a reconcile report.
 
     Args:
-        source_player_id: PK of the ``SummerLeagueSourcePlayer`` row.
+        source_player_id: PK of the ``SummerLeagueSourceRecord`` row.
         name: Canonical ``PlayerMaster.display_name`` if resolved, else the
             raw NBA.com roster/box-score name.
         team_name: ``SummerLeagueTeamEntry.raw_team_name`` for the team the
@@ -181,7 +181,7 @@ async def reconcile_competition(
     # team entries (raw team name).
     all_source_player_ids = announced_ids | played_ids
     source_players_by_id = await _fetch_by_id(
-        db, SummerLeagueSourcePlayer, all_source_player_ids
+        db, SummerLeagueSourceRecord, all_source_player_ids
     )
 
     all_team_entry_ids = {

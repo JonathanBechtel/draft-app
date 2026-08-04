@@ -25,7 +25,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -135,12 +135,12 @@ async def _roster_player(
     competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     idx = _next_idx()
     assert competition.id is not None
     assert team.id is not None
     assert player.id is not None
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"src-{idx}",
         raw_player_name=player.display_name or "Test Player",
         normalized_name=(player.display_name or "test player").lower(),
@@ -169,7 +169,7 @@ async def _seed_game_log(
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     minutes_seconds: int = 25 * 60,
     pts: float = 15.0,
 ) -> SummerLeaguePlayerGameLog:
@@ -209,7 +209,7 @@ async def _seed_prior_game_log(
     competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     game_date: date,
 ) -> None:
     """Seed one played prior game (game + box line ~18.4 GmSc) for a streak run."""

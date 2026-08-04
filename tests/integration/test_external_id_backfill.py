@@ -21,7 +21,7 @@ from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
 from app.services.summer_league.player_resolution import (
     NBA_STATS_SYSTEM,
@@ -44,13 +44,13 @@ def _make_source_player(
     person_id: str,
     name: str,
     canonical_player_id: int | None,
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     status = (
         SummerLeagueResolutionStatus.EXTERNAL_ID
         if canonical_player_id is not None
         else SummerLeagueResolutionStatus.UNRESOLVED
     )
-    return SummerLeagueSourcePlayer(
+    return SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=name,
         normalized_name=name.lower(),

@@ -22,7 +22,7 @@ from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
@@ -234,7 +234,7 @@ async def _seed_minimal_game_log(
     )
     db.add_all([team, opp])
     await db.flush()
-    source = SummerLeagueSourcePlayer(
+    source = SummerLeagueSourceRecord(
         nba_stats_person_id=f"sp-{_SEQ['n']}",
         raw_player_name=player.display_name or "P",
         normalized_name=(player.display_name or "p").lower(),

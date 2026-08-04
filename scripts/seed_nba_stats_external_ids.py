@@ -1,6 +1,6 @@
 r"""Seed ``player_external_ids(system='nba_stats')`` from resolved SL players.
 
-Every resolved ``SummerLeagueSourcePlayer`` already carries both a canonical
+Every resolved ``SummerLeagueSourceRecord`` already carries both a canonical
 ``player_id`` and an NBA Stats ``PERSON_ID``. This sweep promotes that pair into
 the canonical external-id table so that future Summer League resolution is
 deterministic (an O(1) PERSON_ID lookup rather than a fuzzy name match) and so

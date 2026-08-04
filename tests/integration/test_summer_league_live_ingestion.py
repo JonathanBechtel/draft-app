@@ -34,7 +34,7 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league.live_ingestion import (
@@ -177,7 +177,7 @@ async def test_select_active_window_games_selects_only_finals_missing_player_lin
         raw_team_name="Healthy Final Team",
         team_slug="healthy-final-team",
     )
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id="healthy-final-player",
         raw_player_name="Healthy Final Player",
         normalized_name="healthy final player",

@@ -18,7 +18,7 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -75,7 +75,7 @@ async def _players(db: AsyncSession, n: int) -> list:
         p = make_player(f"First{_N['i']}", f"Last{_N['i']}")
         db.add(p)
         await db.flush()
-        sp = SummerLeagueSourcePlayer(
+        sp = SummerLeagueSourceRecord(
             nba_stats_person_id=f"sp-{_N['i']}",
             raw_player_name=p.display_name or "P",
             normalized_name=(p.display_name or "p").lower(),

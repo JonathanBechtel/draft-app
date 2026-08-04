@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league.cohort import summer_league_cohort
@@ -58,7 +58,7 @@ async def _participate(
     canonical_player_id: int | None,
 ) -> SummerLeagueParticipation:
     """Seed one participation row, resolved or unresolved."""
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=name,
         normalized_name=name.lower(),

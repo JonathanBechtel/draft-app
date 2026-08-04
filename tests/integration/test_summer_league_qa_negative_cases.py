@@ -17,12 +17,12 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -43,12 +43,12 @@ def _db_case(name: str) -> dict[str, Any]:
 
 async def _load_raw_run(
     db_session: AsyncSession, *, year: int, league_id: str
-) -> SummerLeagueRawRun:
+) -> SummerLeagueIngestionRun:
     raw_run = (
         await db_session.execute(
-            select(SummerLeagueRawRun).where(
-                SummerLeagueRawRun.year == year,  # type: ignore[arg-type]
-                SummerLeagueRawRun.league_id == league_id,  # type: ignore[arg-type]
+            select(SummerLeagueIngestionRun).where(
+                SummerLeagueIngestionRun.year == year,  # type: ignore[arg-type]
+                SummerLeagueIngestionRun.league_id == league_id,  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -58,13 +58,13 @@ async def _load_raw_run(
 
 
 def _raw_file(
-    raw_run: SummerLeagueRawRun,
+    raw_run: SummerLeagueIngestionRun,
     *,
     endpoint: str,
     relative_path: str,
     game_id: str | None = None,
-) -> SummerLeagueRawFile:
-    return SummerLeagueRawFile(
+) -> SummerLeagueSourceDocument:
+    return SummerLeagueSourceDocument(
         raw_run_id=raw_run.id or 0,
         year=raw_run.year,
         league_id=raw_run.league_id,
@@ -180,7 +180,7 @@ async def test_qa_reports_count_mismatches_and_unresolved_players(
         )
     )
     unresolved = _db_case("unresolved_player")
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=str(unresolved["nba_stats_person_id"]),
         raw_player_name=str(unresolved["raw_player_name"]),
         normalized_name=_normalized_name_key(str(unresolved["raw_player_name"])),
@@ -224,7 +224,7 @@ async def test_qa_reports_duplicate_raw_file_rows(
 ) -> None:
     """Duplicate raw audit rows for one endpoint scope emit a duplicate code."""
     duplicate_case = _db_case("duplicate_raw_files")
-    raw_run = SummerLeagueRawRun(
+    raw_run = SummerLeagueIngestionRun(
         year=int(duplicate_case["year"]),
         league_id=str(duplicate_case["league_id"]),
         venue_slug=str(duplicate_case["venue_slug"]),

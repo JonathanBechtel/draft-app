@@ -11,7 +11,7 @@ from typing import Sequence, Union
 from alembic import op  # type: ignore[attr-defined]
 from sqlmodel import SQLModel
 
-from app.schemas.summer_league import SummerLeagueRawFile, SummerLeagueRawRun
+from app.schemas.summer_league import SummerLeagueSourceDocument, SummerLeagueIngestionRun
 
 # revision identifiers, used by Alembic.
 revision: str = "a6b7c8d9e0f1"
@@ -21,8 +21,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 SUMMER_LEAGUE_RAW_AUDIT_TABLES = [
-    SummerLeagueRawRun.__table__,  # type: ignore[attr-defined]
-    SummerLeagueRawFile.__table__,  # type: ignore[attr-defined]
+    SummerLeagueIngestionRun.__table__,  # type: ignore[attr-defined]
+    SummerLeagueSourceDocument.__table__,  # type: ignore[attr-defined]
 ]
 
 

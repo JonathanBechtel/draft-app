@@ -11,7 +11,7 @@ from app.schemas.player_affiliation import AffiliationStatus, PlayerAffiliation
 from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
 
 
@@ -52,8 +52,8 @@ async def canonical_player_ids(
     if not source_player_ids:
         return set()
     result = await db.execute(
-        select(SummerLeagueSourcePlayer.canonical_player_id).where(  # type: ignore[call-overload]
-            SummerLeagueSourcePlayer.id.in_(  # type: ignore[attr-defined, union-attr]
+        select(SummerLeagueSourceRecord.canonical_player_id).where(  # type: ignore[call-overload]
+            SummerLeagueSourceRecord.id.in_(  # type: ignore[attr-defined, union-attr]
                 source_player_ids
             ),
         )

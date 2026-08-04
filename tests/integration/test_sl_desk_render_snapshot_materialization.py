@@ -38,7 +38,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -203,7 +203,7 @@ async def _seed_roster_player(
     await db.flush()
     assert player.id is not None
 
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"snap-person-{idx}",
         raw_player_name=player.display_name or "Snap Rookie",
         normalized_name=(player.display_name or "snap rookie").lower(),
@@ -710,8 +710,8 @@ async def test_live_snapshot_refreshes_featured_duel_from_current_box_lines(
     sources = (
         (
             await db_session.execute(
-                select(SummerLeagueSourcePlayer).where(
-                    SummerLeagueSourcePlayer.canonical_player_id.in_(  # type: ignore[union-attr]
+                select(SummerLeagueSourceRecord).where(
+                    SummerLeagueSourceRecord.canonical_player_id.in_(  # type: ignore[union-attr]
                         [player_a.id, player_b.id]  # type: ignore[union-attr]
                     )
                 )

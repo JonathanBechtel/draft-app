@@ -17,8 +17,8 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
-    SummerLeagueRawFile,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceDocument,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamGameLog,
 )
 from app.schemas.summer_league_events import SummerLeagueShotEvent
@@ -134,11 +134,11 @@ async def calculate_metrics_input_watermark(db: AsyncSession) -> str:
     raw_files = (
         await db.execute(
             select(  # type: ignore[call-overload]
-                SummerLeagueRawFile.relative_path,
-                SummerLeagueRawFile.sha256,
-                SummerLeagueRawFile.parse_status,
-                SummerLeagueRawFile.row_count,
-            ).order_by(SummerLeagueRawFile.relative_path)
+                SummerLeagueSourceDocument.relative_path,
+                SummerLeagueSourceDocument.sha256,
+                SummerLeagueSourceDocument.parse_status,
+                SummerLeagueSourceDocument.row_count,
+            ).order_by(SummerLeagueSourceDocument.relative_path)
         )
     ).all()
     _add_rows(digest, label="raw_files", rows=raw_files)
@@ -146,10 +146,10 @@ async def calculate_metrics_input_watermark(db: AsyncSession) -> str:
     source_players = (
         await db.execute(
             select(  # type: ignore[call-overload]
-                SummerLeagueSourcePlayer.nba_stats_person_id,
-                SummerLeagueSourcePlayer.canonical_player_id,
-                SummerLeagueSourcePlayer.resolution_status,
-            ).order_by(SummerLeagueSourcePlayer.nba_stats_person_id)
+                SummerLeagueSourceRecord.nba_stats_person_id,
+                SummerLeagueSourceRecord.canonical_player_id,
+                SummerLeagueSourceRecord.resolution_status,
+            ).order_by(SummerLeagueSourceRecord.nba_stats_person_id)
         )
     ).all()
     _add_rows(digest, label="source_players", rows=source_players)

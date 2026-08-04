@@ -26,7 +26,7 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league.team_logos import franchise_logo_url
@@ -410,7 +410,7 @@ async def get_team_season(
     # any box score exists. CUT slots are excluded; the rest surface with their
     # current status so the page transitions announced -> confirmed as games tip.
     part = SummerLeagueParticipation
-    sp = SummerLeagueSourcePlayer
+    sp = SummerLeagueSourceRecord
     announced_rows = (
         await db.execute(
             select(

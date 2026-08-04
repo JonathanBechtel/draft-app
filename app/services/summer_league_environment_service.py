@@ -25,7 +25,7 @@ Aggregation honors the frozen implementation contract
   team-box rows with **every** metric-required field non-null
   (:func:`_box_row_usable` -- a null field silently becomes 0 in
   ``Box.add_row`` otherwise); a shot/PBP-complete game needs its
-  ``SummerLeagueRawFile.parse_status`` to be ``PARSED`` for that specific game
+  ``SummerLeagueSourceDocument.parse_status`` to be ``PARSED`` for that specific game
   (:func:`_load_game_parse_status`), and an unmapped/unknown non-backcourt shot
   zone additionally uncertifies that game's shot coverage.
 * Publication acquires the transaction-scoped Summer League writer lock
@@ -73,9 +73,9 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentSeasonMembership,
 )
 from app.schemas.summer_league import (
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
 )
 from app.services.stats.percentiles import percentile as _percentile
@@ -815,9 +815,9 @@ class _CompetitionInputs:
     # run/source references") -- the audited scrape manifest this
     # competition's normalized facts came from, if any.
     raw_run_id: Optional[int] = None
-    # Worst-case SummerLeagueRawRun.status for that manifest.
+    # Worst-case SummerLeagueIngestionRun.status for that manifest.
     raw_run_status: Optional[str] = None
-    # Worst-case SummerLeagueRawFile.parse_status per source kind ("box" /
+    # Worst-case SummerLeagueSourceDocument.parse_status per source kind ("box" /
     # "shot" / "pbp") across this competition's eligible final games.
     parse_status_by_source: dict[str, str] = field(default_factory=dict)
     # Per-game raw-file parse status: internal game id -> {"box"/"shot"/"pbp":
@@ -1294,7 +1294,7 @@ def _worse_status(current: Optional[str], candidate: str, rank: dict[str, int]) 
     return current
 
 
-# SummerLeagueRawFile.endpoint -> the Competition Context source kind it
+# SummerLeagueSourceDocument.endpoint -> the Competition Context source kind it
 # feeds (single source of truth mirroring app.services.summer_league.
 # raw_ingestion.GAME_ENDPOINTS' box/shot/pbp split).
 _BOX_RAW_ENDPOINTS = (
@@ -1328,8 +1328,8 @@ async def _load_raw_run_status(
         return
     rows = (
         await db.execute(
-            select(SummerLeagueRawRun.id, SummerLeagueRawRun.status).where(  # type: ignore[call-overload]
-                col(SummerLeagueRawRun.id).in_(raw_run_ids)
+            select(SummerLeagueIngestionRun.id, SummerLeagueIngestionRun.status).where(  # type: ignore[call-overload]
+                col(SummerLeagueIngestionRun.id).in_(raw_run_ids)
             )
         )
     ).all()
@@ -1346,7 +1346,7 @@ async def _load_game_parse_status(
 ) -> None:
     """Bulk-load per-game, then per-competition, raw-file parse status.
 
-    Joins ``SummerLeagueRawFile`` to eligible final games by
+    Joins ``SummerLeagueSourceDocument`` to eligible final games by
     ``nba_stats_game_id`` (unique) and reduces to the worst-case
     :class:`SummerLeagueRawFileStatus` per **(game, source kind)** --
     populating :attr:`_CompetitionInputs.game_parse_status`, the audited
@@ -1370,7 +1370,7 @@ async def _load_game_parse_status(
     with no pinned ``raw_run_id`` (pre-audit legacy data) fall back to the
     unscoped, game-id-only match.
     """
-    raw_file = SummerLeagueRawFile
+    raw_file = SummerLeagueSourceDocument
     game = SummerLeagueGame
     rows = (
         await db.execute(

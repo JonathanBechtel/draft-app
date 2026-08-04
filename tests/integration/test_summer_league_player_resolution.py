@@ -22,7 +22,7 @@ from app.schemas.summer_league import (
     SummerLeagueResolutionStatus,
     SummerLeagueReviewStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.player_mention_service import _normalized_name_key
@@ -101,8 +101,8 @@ async def _source_with_log(
     game: SummerLeagueGame,
     canonical_player_id: int | None = None,
     status: SummerLeagueResolutionStatus = SummerLeagueResolutionStatus.UNRESOLVED,
-) -> SummerLeagueSourcePlayer:
-    source_player = SummerLeagueSourcePlayer(
+) -> SummerLeagueSourceRecord:
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=raw_name,
         normalized_name=_normalized_name_key(raw_name),

@@ -27,7 +27,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
     SummerLeaguePlayerResolutionReview,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueShotEvent,
 )
@@ -106,7 +106,7 @@ async def _seed_summer_league(
     await db.flush()
     assert game.id is not None
 
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=_uid(),
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),

@@ -14,7 +14,7 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -114,7 +114,7 @@ async def _seed_event_day(
             away_score=80,
             status=SummerLeagueGameStatus.FINAL,
         )
-        source_player = SummerLeagueSourcePlayer(
+        source_player = SummerLeagueSourceRecord(
             nba_stats_person_id=f"person-{year}-{day_index}",
             raw_player_name=f"Backfill {year} {day_index}",
             normalized_name=f"backfill-{year}-{day_index}",
@@ -245,7 +245,7 @@ async def test_backfill_targets_only_metric_eligible_game_statuses(
         raw_team_name="Status Filter Team",
         team_slug="status-filter-team",
     )
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id="status-filter-player",
         raw_player_name="Status Filter",
         normalized_name="status-filter",

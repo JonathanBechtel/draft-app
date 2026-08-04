@@ -45,7 +45,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.utils.network_guard import transaction_depth
@@ -475,7 +475,7 @@ async def _seed_pending_source_player(
     league_id: str,
     person_id: str,
     raw_name: str,
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     """Seed one game-logged, still-unresolved source player for this venue/year."""
     competition = SummerLeagueEdition(
         year=year,
@@ -511,7 +511,7 @@ async def _seed_pending_source_player(
     await db.flush()
     assert game.id is not None
 
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=raw_name,
         normalized_name=_normalized_name_key(raw_name),

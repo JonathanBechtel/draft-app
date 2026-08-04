@@ -23,7 +23,7 @@ from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -108,7 +108,7 @@ async def _log(
         db.add(g)
         await db.flush()
         assert g.id is not None
-        sp = SummerLeagueSourcePlayer(
+        sp = SummerLeagueSourceRecord(
             nba_stats_person_id=f"ex-person-{_N['i']}",
             raw_player_name=player.display_name or "Player",
             normalized_name=(player.display_name or "player").lower(),
@@ -3764,7 +3764,7 @@ async def test_career_box_parity_after_source_switch(
         db_session.add(g)
         await db_session.flush()
         assert g.id is not None
-        sp = SummerLeagueSourcePlayer(
+        sp = SummerLeagueSourceRecord(
             nba_stats_person_id=f"parity-sp-{_N['i']}",
             raw_player_name=player.display_name or "Player",
             normalized_name=(player.display_name or "player").lower(),
@@ -5275,7 +5275,7 @@ async def _cc_player_log(
     player: PlayerMaster,
 ) -> None:
     _CC["n"] += 1
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"cc-person-{_CC['n']}",
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),
@@ -5302,7 +5302,7 @@ async def _cc_shots(
     db: AsyncSession, *, comp_id: int, game_id: int, team_id: int, player: PlayerMaster
 ) -> None:
     _CC["n"] += 1
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"cc-shot-person-{_CC['n']}",
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),

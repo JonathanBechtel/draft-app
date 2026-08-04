@@ -12,7 +12,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerResolutionReview,
     SummerLeagueResolutionStatus,
     SummerLeagueReviewStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
 from app.services.summer_league import player_resolution as service
 from app.services.summer_league.player_resolution import (
@@ -118,8 +118,8 @@ def _source(
     status: SummerLeagueResolutionStatus = SummerLeagueResolutionStatus.UNRESOLVED,
     resolved_at: datetime | None = None,
     resolved_by: str | None = None,
-) -> SummerLeagueSourcePlayer:
-    return SummerLeagueSourcePlayer(
+) -> SummerLeagueSourceRecord:
+    return SummerLeagueSourceRecord(
         id=5,
         nba_stats_person_id=person_id,
         raw_player_name=name,
@@ -253,7 +253,7 @@ async def test_prepare_batch_builds_one_identity_index(
 
     async def fake_load(
         db: Any, *, year: int | None, league_id: str | None
-    ) -> list[SummerLeagueSourcePlayer]:
+    ) -> list[SummerLeagueSourceRecord]:
         del db, year, league_id
         return source_players
 
@@ -263,7 +263,7 @@ async def test_prepare_batch_builds_one_identity_index(
 
     async def fake_prepare(
         db: Any,
-        source_player: SummerLeagueSourcePlayer,
+        source_player: SummerLeagueSourceRecord,
         *,
         before_candidate_search: Any = None,
         identity_index: service.IdentityVariantIndex | None = None,
@@ -590,7 +590,7 @@ async def test_stub_creation_rechecks_variant_matches_at_write_time(
             alias_names={},
         )
 
-    async def create_stub(db: Any, source_player: SummerLeagueSourcePlayer) -> int:
+    async def create_stub(db: Any, source_player: SummerLeagueSourceRecord) -> int:
         raise AssertionError("late variant match must block stub creation")
 
     monkeypatch.setattr(service, "find_variant_identity_matches", variant_match)
@@ -700,7 +700,7 @@ async def test_resolve_source_player_existing_exact_alias_candidate_and_stub(
     assert alias_result.player_id == 13
 
     async def candidates(
-        db: Any, source_player: SummerLeagueSourcePlayer
+        db: Any, source_player: SummerLeagueSourceRecord
     ) -> list[SummerLeagueResolutionCandidate]:
         return [
             SummerLeagueResolutionCandidate(
@@ -725,7 +725,7 @@ async def test_resolve_source_player_existing_exact_alias_candidate_and_stub(
     ]
 
     async def weak_candidates(
-        db: Any, source_player: SummerLeagueSourcePlayer
+        db: Any, source_player: SummerLeagueSourceRecord
     ) -> list[SummerLeagueResolutionCandidate]:
         return [
             SummerLeagueResolutionCandidate(
@@ -733,7 +733,7 @@ async def test_resolve_source_player_existing_exact_alias_candidate_and_stub(
             )
         ]
 
-    async def stub(db: Any, source_player: SummerLeagueSourcePlayer) -> int:
+    async def stub(db: Any, source_player: SummerLeagueSourceRecord) -> int:
         return 16
 
     monkeypatch.setattr(service, "_collect_candidates", weak_candidates)
@@ -761,7 +761,7 @@ async def test_resolve_source_player_unresolved_stores_weak_candidates(
         return service.IdentityVariantMatches(display_names={}, alias_names={})
 
     async def weak_candidates(
-        db: Any, source_player: SummerLeagueSourcePlayer
+        db: Any, source_player: SummerLeagueSourceRecord
     ) -> list[SummerLeagueResolutionCandidate]:
         return [
             SummerLeagueResolutionCandidate(
@@ -819,11 +819,11 @@ async def test_resolve_source_player_search_failure_does_not_create_stub(
         return None
 
     async def broken_candidates(
-        db: Any, source_player: SummerLeagueSourcePlayer
+        db: Any, source_player: SummerLeagueSourceRecord
     ) -> list[SummerLeagueResolutionCandidate]:
         raise SummerLeagueCandidateSearchError("offline")
 
-    async def create_stub(db: Any, source_player: SummerLeagueSourcePlayer) -> int:
+    async def create_stub(db: Any, source_player: SummerLeagueSourceRecord) -> int:
         raise AssertionError("stub creation should not run after search failure")
 
     monkeypatch.setattr(service, "_find_external_id_player", no_external)
@@ -864,11 +864,11 @@ async def test_load_source_players_and_batch_report(
 
     async def fake_load(
         db_arg: Any, year: int | None, league_id: str | None
-    ) -> list[SummerLeagueSourcePlayer]:
+    ) -> list[SummerLeagueSourceRecord]:
         return [source]
 
     async def fake_resolve(
-        db_arg: Any, source_player: SummerLeagueSourcePlayer, create_stub: bool = False
+        db_arg: Any, source_player: SummerLeagueSourceRecord, create_stub: bool = False
     ) -> SummerLeagueResolutionResult:
         return SummerLeagueResolutionResult(
             source_player_id=source_player.id,

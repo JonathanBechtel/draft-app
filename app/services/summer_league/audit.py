@@ -13,9 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
 )
 from app.services.summer_league.archive import (
@@ -363,17 +363,17 @@ def summarize_audit_report(report: SummerLeagueAuditReport) -> str:
 async def _upsert_raw_run(
     db: AsyncSession,
     run: AuditedRawRun,
-) -> SummerLeagueRawRun:
+) -> SummerLeagueIngestionRun:
     result = await db.execute(
-        select(SummerLeagueRawRun).where(
-            SummerLeagueRawRun.year == run.year,  # type: ignore[arg-type]
-            SummerLeagueRawRun.league_id == run.league_id,  # type: ignore[arg-type]
-            SummerLeagueRawRun.manifest_path == run.manifest_path,  # type: ignore[arg-type]
+        select(SummerLeagueIngestionRun).where(
+            SummerLeagueIngestionRun.year == run.year,  # type: ignore[arg-type]
+            SummerLeagueIngestionRun.league_id == run.league_id,  # type: ignore[arg-type]
+            SummerLeagueIngestionRun.manifest_path == run.manifest_path,  # type: ignore[arg-type]
         )
     )
     row = result.scalar_one_or_none()
     if row is None:
-        row = SummerLeagueRawRun(
+        row = SummerLeagueIngestionRun(
             year=run.year,
             league_id=run.league_id,
             venue_slug=run.venue_slug,
@@ -399,16 +399,16 @@ async def _upsert_raw_file(
     raw_run_id: int,
     run: AuditedRawRun,
     audited_file: AuditedRawFile,
-) -> SummerLeagueRawFile:
+) -> SummerLeagueSourceDocument:
     descriptor = audited_file.descriptor
     result = await db.execute(
-        select(SummerLeagueRawFile).where(
-            SummerLeagueRawFile.relative_path == descriptor.relative_path  # type: ignore[arg-type]
+        select(SummerLeagueSourceDocument).where(
+            SummerLeagueSourceDocument.relative_path == descriptor.relative_path  # type: ignore[arg-type]
         )
     )
     row = result.scalar_one_or_none()
     if row is None:
-        row = SummerLeagueRawFile(
+        row = SummerLeagueSourceDocument(
             raw_run_id=raw_run_id,
             year=run.year,
             league_id=run.league_id,

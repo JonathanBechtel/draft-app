@@ -36,7 +36,7 @@ from app.schemas.player_affiliation import (
 )
 from app.schemas.summer_league import (
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
 from app.services.summer_league.roster_ingest import (
     CompetitionKey,
@@ -105,9 +105,9 @@ async def _part_count(db: AsyncSession) -> int:
 
 
 async def _sp_count(db: AsyncSession) -> int:
-    """Return total SummerLeagueSourcePlayer row count."""
+    """Return total SummerLeagueSourceRecord row count."""
     result = await db.execute(
-        select(func.count()).select_from(SummerLeagueSourcePlayer)
+        select(func.count()).select_from(SummerLeagueSourceRecord)
     )
     return int(result.scalar() or 0)
 

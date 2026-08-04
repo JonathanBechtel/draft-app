@@ -29,13 +29,13 @@ from app.schemas.summer_league import (
     SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
     SummerLeagueParticipation,
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -224,7 +224,7 @@ class _SourcePlayerRef:
     """Lightweight identity + resolution snapshot for one bulk-upserted source player.
 
     Returned by :func:`_bulk_upsert_source_players` instead of a full
-    ``SummerLeagueSourcePlayer`` ORM instance -- the shot-event row builder
+    ``SummerLeagueSourceRecord`` ORM instance -- the shot-event row builder
     only ever needs the row's ``id`` (FK target) and ``canonical_player_id``
     (copied onto the shot's ``player_id``).
     """
@@ -603,7 +603,7 @@ async def normalize_player_game_logs(
     existing_keys = await db.execute(
         select(  # type: ignore[call-overload]
             SummerLeagueGame.nba_stats_game_id,
-            SummerLeagueSourcePlayer.nba_stats_person_id,
+            SummerLeagueSourceRecord.nba_stats_person_id,
             SummerLeagueTeamEntry.nba_stats_team_id,
         )
         .select_from(SummerLeaguePlayerGameLog)
@@ -612,8 +612,8 @@ async def normalize_player_game_logs(
             SummerLeagueGame.id == SummerLeaguePlayerGameLog.game_id,  # type: ignore[arg-type]
         )
         .join(
-            SummerLeagueSourcePlayer,
-            SummerLeagueSourcePlayer.id  # type: ignore[arg-type]
+            SummerLeagueSourceRecord,
+            SummerLeagueSourceRecord.id  # type: ignore[arg-type]
             == SummerLeaguePlayerGameLog.source_player_id,
         )
         .join(
@@ -742,7 +742,7 @@ async def normalize_shot_events(
     via the shared nba_stats_person_id resolver, and idempotently upserts into
     SummerLeagueShotEvent keyed on (nba_stats_game_id, nba_stats_game_event_id).
 
-    Also updates SummerLeagueRawFile.parse_status for the shotchartdetail
+    Also updates SummerLeagueSourceDocument.parse_status for the shotchartdetail
     endpoint and sets SummerLeagueEdition.shotchart_available only when
     at least one game has parsed shot rows.
 
@@ -898,12 +898,12 @@ async def normalize_shot_events(
     # Flush first so any still-pending ORM changes (e.g. the raw_file
     # parse_status/updated_at writes above) are persisted before expiring --
     # expire() discards *unflushed* in-memory state, it does not flush it.
-    # Then expire only SummerLeagueSourcePlayer/SummerLeagueShotEvent
+    # Then expire only SummerLeagueSourceRecord/SummerLeagueShotEvent
     # instances (see :func:`_expire_written_instances`) -- see that
     # function's docstring for why a blanket ``db.expire_all()`` is unsafe
     # here.
     await db.flush()
-    _expire_written_instances(db, (SummerLeagueSourcePlayer, SummerLeagueShotEvent))
+    _expire_written_instances(db, (SummerLeagueSourceRecord, SummerLeagueShotEvent))
 
     _raise_availability_flag(
         competition,
@@ -940,7 +940,7 @@ async def normalize_pbp_events(
     idempotently upserts into SummerLeaguePlayByPlayEvent keyed on
     (nba_stats_game_id, event_num).
 
-    Also updates SummerLeagueRawFile.parse_status for the playbyplayv2
+    Also updates SummerLeagueSourceDocument.parse_status for the playbyplayv2
     endpoint and sets SummerLeagueEdition.pbp_available only when at
     least one game has parsed PBP rows.  A game with no PBP file yields zero
     events and pbp_available stays False.
@@ -1071,12 +1071,12 @@ async def normalize_pbp_events(
 
     await _bulk_upsert_pbp_events(db, list(pbp_event_rows.values()))
     # Flush pending ORM changes before expiring, then expire only
-    # SummerLeagueSourcePlayer/SummerLeaguePlayByPlayEvent instances -- see
+    # SummerLeagueSourceRecord/SummerLeaguePlayByPlayEvent instances -- see
     # :func:`_expire_written_instances` and the matching comment in
     # :func:`normalize_shot_events`.
     await db.flush()
     _expire_written_instances(
-        db, (SummerLeagueSourcePlayer, SummerLeaguePlayByPlayEvent)
+        db, (SummerLeagueSourceRecord, SummerLeaguePlayByPlayEvent)
     )
 
     _raise_availability_flag(
@@ -1277,7 +1277,7 @@ def build_shot_player_crosswalk(
     Pre-2017 ``shotchartdetail`` returns a legacy 5-digit ``PLAYER_ID`` namespace
     for undrafted players (with ``PLAYER_NAME`` null) that does not match the
     canonical NBA person-ids carried by the box/season logs. Because a shot's
-    person-id drives which ``SummerLeagueSourcePlayer`` it upserts against, those
+    person-id drives which ``SummerLeagueSourceRecord`` it upserts against, those
     shots never inherit the box player's canonical id and per-player charts render
     empty (issue #467).
 
@@ -1497,11 +1497,11 @@ async def _get_raw_run(
     *,
     year: int,
     league_id: str,
-) -> SummerLeagueRawRun:
+) -> SummerLeagueIngestionRun:
     result = await db.execute(
-        select(SummerLeagueRawRun).where(
-            SummerLeagueRawRun.year == year,  # type: ignore[arg-type]
-            SummerLeagueRawRun.league_id == league_id,  # type: ignore[arg-type]
+        select(SummerLeagueIngestionRun).where(
+            SummerLeagueIngestionRun.year == year,  # type: ignore[arg-type]
+            SummerLeagueIngestionRun.league_id == league_id,  # type: ignore[arg-type]
         )
     )
     raw_run = result.scalar_one_or_none()
@@ -1532,18 +1532,18 @@ async def _get_competition(
 
 async def _get_raw_files(
     db: AsyncSession, *, raw_run_id: int
-) -> list[SummerLeagueRawFile]:
+) -> list[SummerLeagueSourceDocument]:
     result = await db.execute(
-        select(SummerLeagueRawFile).where(
-            SummerLeagueRawFile.raw_run_id == raw_run_id  # type: ignore[arg-type]
+        select(SummerLeagueSourceDocument).where(
+            SummerLeagueSourceDocument.raw_run_id == raw_run_id  # type: ignore[arg-type]
         )
     )
     return list(result.scalars().all())
 
 
 def _competition_quality(
-    raw_run: SummerLeagueRawRun,
-    raw_files: list[SummerLeagueRawFile],
+    raw_run: SummerLeagueIngestionRun,
+    raw_files: list[SummerLeagueSourceDocument],
 ) -> SummerLeagueDataQuality:
     statuses = {file.parse_status for file in raw_files}
     parsed_endpoints = {
@@ -1565,7 +1565,7 @@ def _competition_quality(
 
 async def _upsert_competition(
     db: AsyncSession,
-    raw_run: SummerLeagueRawRun,
+    raw_run: SummerLeagueIngestionRun,
     quality: SummerLeagueDataQuality,
 ) -> SummerLeagueEdition:
     result = await db.execute(
@@ -1662,7 +1662,7 @@ def resolve_game_status(
         current_status: The game's persisted status before this call (the
             existing row's ``status``, or ``UNKNOWN`` -- the schema default
             -- for a brand-new row).
-        raw_run_complete: Whether the audited ``SummerLeagueRawRun`` driving
+        raw_run_complete: Whether the audited ``SummerLeagueIngestionRun`` driving
             this normalize call is ``COMPLETE`` (every expected raw file for
             the whole year/league successfully captured).
 
@@ -1831,15 +1831,15 @@ async def _upsert_source_player(
     row_data: ParsedPlayerGamelogRow,
     *,
     year: int,
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     result = await db.execute(
-        select(SummerLeagueSourcePlayer).where(
-            SummerLeagueSourcePlayer.nba_stats_person_id == row_data.nba_stats_person_id  # type: ignore[arg-type]
+        select(SummerLeagueSourceRecord).where(
+            SummerLeagueSourceRecord.nba_stats_person_id == row_data.nba_stats_person_id  # type: ignore[arg-type]
         )
     )
     row = result.scalar_one_or_none()
     if row is None:
-        row = SummerLeagueSourcePlayer(
+        row = SummerLeagueSourceRecord(
             nba_stats_person_id=row_data.nba_stats_person_id,
             raw_player_name=row_data.raw_player_name,
             normalized_name=_normalized_name_key(row_data.raw_player_name),
@@ -1864,7 +1864,7 @@ async def _ensure_participation(
     db: AsyncSession,
     competition_id: int,
     team_entry_id: int,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     *,
     cache: dict[tuple[int, int], SummerLeagueParticipation],
     recorded_at: datetime,
@@ -1944,7 +1944,7 @@ async def _upsert_player_game_log(
     competition_id: int,
     game_id: int,
     team_entry_id: int,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     box_row: ParsedPlayerBoxRow,
     *,
     participations: dict[tuple[int, int], SummerLeagueParticipation],
@@ -2390,7 +2390,7 @@ def _expire_written_instances(db: AsyncSession, models: tuple[type, ...]) -> Non
     Args:
         db: Active database session.
         models: Mapped classes to expire matching identity-map entries for
-            (e.g. ``(SummerLeagueSourcePlayer, SummerLeagueShotEvent)``).
+            (e.g. ``(SummerLeagueSourceRecord, SummerLeagueShotEvent)``).
     """
     for obj in list(db.identity_map.values()):
         if isinstance(obj, models):
@@ -2403,7 +2403,7 @@ async def _bulk_upsert_source_players(
     *,
     year: int,
 ) -> dict[str, _SourcePlayerRef]:
-    """Bulk upsert ``SummerLeagueSourcePlayer`` rows for a batch's identities.
+    """Bulk upsert ``SummerLeagueSourceRecord`` rows for a batch's identities.
 
     Mirrors ``_upsert_source_player``'s semantics -- a new row is created
     UNRESOLVED with ``first_seen_year``/``last_seen_year`` seeded from
@@ -2428,7 +2428,7 @@ async def _bulk_upsert_source_players(
     if not identities:
         return {}
     now = _utc_now_naive()
-    table = getattr(SummerLeagueSourcePlayer, "__table__")
+    table = getattr(SummerLeagueSourceRecord, "__table__")
     refs: dict[str, _SourcePlayerRef] = {}
     for chunk in chunked(list(identities.values()), BULK_UPSERT_CHUNK_SIZE):
         values = [
@@ -2625,10 +2625,10 @@ async def _preload_actor_ids(
     for chunk in chunked(sorted(nba_person_ids), BULK_UPSERT_CHUNK_SIZE):
         result = await db.execute(
             select(  # type: ignore[call-overload]
-                SummerLeagueSourcePlayer.nba_stats_person_id,
-                SummerLeagueSourcePlayer.canonical_player_id,
+                SummerLeagueSourceRecord.nba_stats_person_id,
+                SummerLeagueSourceRecord.canonical_player_id,
             ).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id.in_(chunk)  # type: ignore[attr-defined]
+                SummerLeagueSourceRecord.nba_stats_person_id.in_(chunk)  # type: ignore[attr-defined]
             )
         )
         for person_id, canonical_id in result.all():
@@ -2682,14 +2682,14 @@ async def _pbp_raw_files_by_game(
     db: AsyncSession,
     *,
     raw_run_id: int | None,
-) -> dict[str, SummerLeagueRawFile]:
+) -> dict[str, SummerLeagueSourceDocument]:
     """Return playbyplayv2 raw file records keyed by nba_stats_game_id."""
     if raw_run_id is None:
         return {}
     result = await db.execute(
-        select(SummerLeagueRawFile).where(
-            SummerLeagueRawFile.raw_run_id == raw_run_id,  # type: ignore[arg-type]
-            SummerLeagueRawFile.endpoint == "playbyplayv2",  # type: ignore[arg-type]
+        select(SummerLeagueSourceDocument).where(
+            SummerLeagueSourceDocument.raw_run_id == raw_run_id,  # type: ignore[arg-type]
+            SummerLeagueSourceDocument.endpoint == "playbyplayv2",  # type: ignore[arg-type]
         )
     )
     return {
@@ -2703,14 +2703,14 @@ async def _shot_raw_files_by_game(
     db: AsyncSession,
     *,
     raw_run_id: int | None,
-) -> dict[str, SummerLeagueRawFile]:
+) -> dict[str, SummerLeagueSourceDocument]:
     """Return shotchartdetail raw file records keyed by nba_stats_game_id."""
     if raw_run_id is None:
         return {}
     result = await db.execute(
-        select(SummerLeagueRawFile).where(
-            SummerLeagueRawFile.raw_run_id == raw_run_id,  # type: ignore[arg-type]
-            SummerLeagueRawFile.endpoint == "shotchartdetail",  # type: ignore[arg-type]
+        select(SummerLeagueSourceDocument).where(
+            SummerLeagueSourceDocument.raw_run_id == raw_run_id,  # type: ignore[arg-type]
+            SummerLeagueSourceDocument.endpoint == "shotchartdetail",  # type: ignore[arg-type]
         )
     )
     return {

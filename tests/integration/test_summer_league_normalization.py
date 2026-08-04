@@ -19,7 +19,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayByPlayEvent,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -1478,7 +1478,7 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
     assert resolved_wing.id is not None
     db_session.add_all(
         [
-            SummerLeagueSourcePlayer(
+            SummerLeagueSourceRecord(
                 nba_stats_person_id="2001",
                 raw_player_name="Resolved Guard",
                 normalized_name=_normalized_name_key("Resolved Guard"),
@@ -1489,7 +1489,7 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
                 resolution_confidence=1.0,
                 resolved_by="test",
             ),
-            SummerLeagueSourcePlayer(
+            SummerLeagueSourceRecord(
                 nba_stats_person_id="2002",
                 raw_player_name="Resolved Wing",
                 normalized_name=_normalized_name_key("Resolved Wing"),
@@ -1555,8 +1555,8 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
     # upsert for the already-resolved id.
     source_2001 = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "2001"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "2001"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -1567,8 +1567,8 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
 
     source_2003 = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "2003"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "2003"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -1582,8 +1582,8 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
     # shot-side bulk upsert must never touch it.
     source_2002 = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "2002"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "2002"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -1620,8 +1620,8 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
     assert pbp_events[1].person1_id is None
     unknown_actor = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "2099"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "2099"  # type: ignore[arg-type]
             )
         )
     ).scalar_one_or_none()

@@ -13,7 +13,7 @@ from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league.metrics_input import (
@@ -87,7 +87,7 @@ async def test_out_of_band_game_log_edit_forces_the_next_rebuild(
     await db_session.flush()
     assert home.id is not None and away.id is not None
 
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id="watermark-person",
         raw_player_name="Watermark Repair",
         normalized_name="watermark repair",

@@ -25,7 +25,7 @@ from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -127,7 +127,7 @@ async def _seed_box_complete_competition(
     db.add(player)
     await db.flush()
     _N["i"] += 1
-    source = SummerLeagueSourcePlayer(
+    source = SummerLeagueSourceRecord(
         nba_stats_person_id=f"sp-{_N['i']}",
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),

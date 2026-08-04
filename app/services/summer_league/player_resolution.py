@@ -26,7 +26,7 @@ from app.schemas.summer_league import (
     SummerLeagueReviewStatus,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
 from app.services.player_identity_guard import (
     IdentityVariantIndex,
@@ -171,7 +171,7 @@ def _serialize_search_candidates(
 
 async def ensure_pending_resolution_review(
     db: AsyncSession,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     candidates: list[SummerLeagueResolutionCandidate],
 ) -> SummerLeaguePlayerResolutionReview:
     """Create or update the active pending review row for a source player."""
@@ -243,7 +243,7 @@ def _has_serious_candidate(
 
 
 def _result_from_confirmed_link(
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     *,
     player_id: int,
     status: SummerLeagueResolutionStatus,
@@ -337,7 +337,7 @@ async def backfill_nba_stats_external_ids(
 ) -> ExternalIdBackfillReport:
     """Seed ``player_external_ids(system='nba_stats')`` from resolved SL players.
 
-    Every resolved ``SummerLeagueSourcePlayer`` already carries both a canonical
+    Every resolved ``SummerLeagueSourceRecord`` already carries both a canonical
     ``player_id`` and an NBA Stats ``PERSON_ID``. This promotes that pair into the
     canonical external-id table so that (a) future resolution is deterministic — an
     O(1) PERSON_ID lookup instead of a fuzzy name match — and (b) C1 headshot URLs
@@ -356,10 +356,10 @@ async def backfill_nba_stats_external_ids(
     # result carries no duplicate PERSON_IDs — no in-loop dedup is needed.
     result = await db.execute(
         select(  # type: ignore[call-overload]
-            SummerLeagueSourcePlayer.canonical_player_id,
-            SummerLeagueSourcePlayer.nba_stats_person_id,
+            SummerLeagueSourceRecord.canonical_player_id,
+            SummerLeagueSourceRecord.nba_stats_person_id,
         ).where(
-            SummerLeagueSourcePlayer.canonical_player_id.isnot(None),  # type: ignore[union-attr]
+            SummerLeagueSourceRecord.canonical_player_id.isnot(None),  # type: ignore[union-attr]
         )
     )
     report = ExternalIdBackfillReport()
@@ -448,7 +448,7 @@ async def _backfill_participation_and_affiliation(
 
     Args:
         db: Async database session.
-        source_player_id: PK of the ``SummerLeagueSourcePlayer`` whose rows
+        source_player_id: PK of the ``SummerLeagueSourceRecord`` whose rows
             should be backfilled.  Returns 0 immediately when ``None``.
         player_id: Canonical ``players_master.id`` to write into each row.
 
@@ -515,7 +515,7 @@ async def _backfill_participation_and_affiliation(
 
 async def _confirm_resolution(
     db: AsyncSession,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     *,
     player_id: int,
     status: SummerLeagueResolutionStatus,
@@ -632,7 +632,7 @@ async def _find_prepared_variant_matches(
 
 async def _create_stub_player(
     db: AsyncSession,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
 ) -> int:
     """Create a minimal canonical player stub for an unmatched source player."""
     display_name = _collapse_whitespace(source_player.raw_player_name)
@@ -655,7 +655,7 @@ async def _create_stub_player(
 
 async def _collect_candidates(
     db: AsyncSession,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
 ) -> list[SummerLeagueResolutionCandidate]:
     """Collect hybrid lexical/vector candidates without auto-resolving them."""
     try:
@@ -714,7 +714,7 @@ class SummerLeagueResolutionPlan:
     lock-guarded transaction.
 
     Attributes:
-        source_player_id: The ``SummerLeagueSourcePlayer.id`` this plan is for.
+        source_player_id: The ``SummerLeagueSourceRecord.id`` this plan is for.
         kind: Which resolution branch was decided (see
             :data:`SummerLeagueResolutionPlanKind`).
         player_id: The canonical player to link, for the confirmed-match kinds.
@@ -733,7 +733,7 @@ class SummerLeagueResolutionPlan:
 
 async def prepare_source_player_resolution(
     db: AsyncSession,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     *,
     before_candidate_search: Callable[[], Awaitable[None]] | None = None,
     identity_index: IdentityVariantIndex | None = None,
@@ -832,7 +832,7 @@ async def prepare_source_player_resolution(
 
 async def apply_source_player_resolution_plan(
     db: AsyncSession,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     plan: SummerLeagueResolutionPlan,
     *,
     create_stub: bool = False,
@@ -978,7 +978,7 @@ async def apply_source_player_resolution_plan(
 
 async def revalidate_source_player_resolution_plan(
     db: AsyncSession,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     plan: SummerLeagueResolutionPlan,
 ) -> SummerLeagueResolutionPlan:
     """Recheck a prospective stub before entering a writer-lock transaction."""
@@ -999,7 +999,7 @@ async def revalidate_source_player_resolution_plan(
 
 async def resolve_source_player(
     db: AsyncSession,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     *,
     create_stub: bool = False,
     before_candidate_search: Callable[[], Awaitable[None]] | None = None,
@@ -1030,20 +1030,20 @@ async def _load_source_players(
     *,
     year: int | None,
     league_id: str | None,
-) -> list[SummerLeagueSourcePlayer]:
+) -> list[SummerLeagueSourceRecord]:
     """Load source players in the requested batch scope."""
     if year is None and league_id is None:
         result = await db.execute(
-            select(SummerLeagueSourcePlayer)
+            select(SummerLeagueSourceRecord)
             .where(
-                SummerLeagueSourcePlayer.resolution_status.in_(  # type: ignore[attr-defined]
+                SummerLeagueSourceRecord.resolution_status.in_(  # type: ignore[attr-defined]
                     [
                         SummerLeagueResolutionStatus.UNRESOLVED,
                         SummerLeagueResolutionStatus.VECTOR_CANDIDATE,
                     ]
                 )
             )
-            .order_by(SummerLeagueSourcePlayer.id)  # type: ignore[arg-type]
+            .order_by(SummerLeagueSourceRecord.id)  # type: ignore[arg-type]
         )
         return list(result.scalars().all())
 
@@ -1075,14 +1075,14 @@ async def _load_source_players(
     )
 
     stmt = (
-        select(SummerLeagueSourcePlayer)
+        select(SummerLeagueSourceRecord)
         .where(
             or_(
-                SummerLeagueSourcePlayer.id.in_(gamelog_subq),  # type: ignore[union-attr]
-                SummerLeagueSourcePlayer.id.in_(participation_subq),  # type: ignore[union-attr]
+                SummerLeagueSourceRecord.id.in_(gamelog_subq),  # type: ignore[union-attr]
+                SummerLeagueSourceRecord.id.in_(participation_subq),  # type: ignore[union-attr]
             )
         )
-        .order_by(SummerLeagueSourcePlayer.id)  # type: ignore[arg-type]
+        .order_by(SummerLeagueSourceRecord.id)  # type: ignore[arg-type]
         .distinct()
     )
 
@@ -1172,7 +1172,7 @@ async def prepare_summer_league_player_resolutions(
     year: int | None = None,
     league_id: str | None = None,
     before_candidate_search: Callable[[], Awaitable[None]] | None = None,
-) -> list[tuple[SummerLeagueSourcePlayer, SummerLeagueResolutionPlan]]:
+) -> list[tuple[SummerLeagueSourceRecord, SummerLeagueResolutionPlan]]:
     """Load the selected batch scope and prepare a plan for each source player.
 
     Performs no database writes -- safe to call with no writer-lock
@@ -1194,7 +1194,7 @@ async def prepare_summer_league_player_resolutions(
     """
     source_players = await _load_source_players(db, year=year, league_id=league_id)
     identity_index = await build_variant_identity_index(db)
-    pairs: list[tuple[SummerLeagueSourcePlayer, SummerLeagueResolutionPlan]] = []
+    pairs: list[tuple[SummerLeagueSourceRecord, SummerLeagueResolutionPlan]] = []
     for source_player in source_players:
         plan = await prepare_source_player_resolution(
             db,

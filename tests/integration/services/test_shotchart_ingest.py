@@ -26,7 +26,7 @@ from app.schemas.summer_league import (
     SummerLeagueRawFileStatus,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
 from app.services.player_mention_service import _normalized_name_key
 from app.services.summer_league.audit import audit_summer_league_raw
@@ -448,8 +448,8 @@ async def test_normalize_shot_events_unresolved_player_has_null_player_id(
     ).scalar_one()
     source = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "9990001"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "9990001"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -496,7 +496,7 @@ async def test_normalize_shot_events_resolved_player_sets_player_id(
     await db_session.flush()
     assert player.id is not None
     db_session.add(
-        SummerLeagueSourcePlayer(
+        SummerLeagueSourceRecord(
             nba_stats_person_id="1640002",
             raw_player_name="Resolved Prospect",
             normalized_name=_normalized_name_key("Resolved Prospect"),
@@ -596,7 +596,7 @@ async def test_normalize_shot_events_legacy_id_crosswalks_to_canonical(
     await db_session.flush()
     assert player.id is not None
     db_session.add(
-        SummerLeagueSourcePlayer(
+        SummerLeagueSourceRecord(
             nba_stats_person_id="203503",
             raw_player_name="Tony Snell",
             normalized_name=_normalized_name_key("Tony Snell"),
@@ -615,15 +615,15 @@ async def test_normalize_shot_events_legacy_id_crosswalks_to_canonical(
     shots = (await db_session.execute(select(SummerLeagueShotEvent))).scalars().all()
     canonical_source = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "203503"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "203503"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
     legacy_source = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "51845"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "51845"  # type: ignore[arg-type]
             )
         )
     ).scalar_one_or_none()
@@ -766,8 +766,8 @@ async def test_normalize_shot_events_updates_raw_file_parse_status(
     db_session: AsyncSession,
     tmp_path: Path,
 ) -> None:
-    """SummerLeagueRawFile.parse_status is set to PARSED for the shotchartdetail endpoint."""
-    from app.schemas.summer_league import SummerLeagueRawFile
+    """SummerLeagueSourceDocument.parse_status is set to PARSED for the shotchartdetail endpoint."""
+    from app.schemas.summer_league import SummerLeagueSourceDocument
 
     game_dir = _write_season_skeleton(tmp_path)
     game_dir.joinpath("shotchartdetail.json").write_text(
@@ -788,9 +788,9 @@ async def test_normalize_shot_events_updates_raw_file_parse_status(
 
     raw_file = (
         await db_session.execute(
-            select(SummerLeagueRawFile).where(
-                SummerLeagueRawFile.endpoint == "shotchartdetail",  # type: ignore[arg-type]
-                SummerLeagueRawFile.game_id == "1522400001",  # type: ignore[arg-type]
+            select(SummerLeagueSourceDocument).where(
+                SummerLeagueSourceDocument.endpoint == "shotchartdetail",  # type: ignore[arg-type]
+                SummerLeagueSourceDocument.game_id == "1522400001",  # type: ignore[arg-type]
             )
         )
     ).scalar_one_or_none()

@@ -31,7 +31,7 @@ from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueParticipation,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.player_mention_service import _normalized_name_key
@@ -210,8 +210,8 @@ async def _upsert_roster_source_player(
     db: AsyncSession,
     entry: RosterEntry,
     year: int,
-) -> SummerLeagueSourcePlayer:
-    """Get or create a ``SummerLeagueSourcePlayer`` keyed on nba_stats_person_id.
+) -> SummerLeagueSourceRecord:
+    """Get or create a ``SummerLeagueSourceRecord`` keyed on nba_stats_person_id.
 
     Mirrors the ``_upsert_source_player`` idiom in normalization.py.
 
@@ -221,17 +221,17 @@ async def _upsert_roster_source_player(
         year: Summer League season year; updates first/last-seen bounds.
 
     Returns:
-        The existing or newly-created ``SummerLeagueSourcePlayer`` row.
+        The existing or newly-created ``SummerLeagueSourceRecord`` row.
     """
     result = await db.execute(
-        select(SummerLeagueSourcePlayer).where(
-            SummerLeagueSourcePlayer.nba_stats_person_id  # type: ignore[arg-type]
+        select(SummerLeagueSourceRecord).where(
+            SummerLeagueSourceRecord.nba_stats_person_id  # type: ignore[arg-type]
             == entry.nba_stats_person_id
         )
     )
     row = result.scalar_one_or_none()
     if row is None:
-        row = SummerLeagueSourcePlayer(
+        row = SummerLeagueSourceRecord(
             nba_stats_person_id=entry.nba_stats_person_id,
             raw_player_name=entry.raw_player_name,
             normalized_name=_normalized_name_key(entry.raw_player_name),
@@ -323,7 +323,7 @@ async def _announce_player(
     db: AsyncSession,
     competition_id: int,
     team_entry_id: int,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     entry: RosterEntry,
     recorded_at: datetime,
 ) -> SummerLeagueParticipation:
@@ -615,8 +615,8 @@ async def load_roster_snapshot(
         if active_by_sp_id:
             sp_ids = list(active_by_sp_id.keys())
             sp_result = await db.execute(
-                select(SummerLeagueSourcePlayer).where(
-                    SummerLeagueSourcePlayer.id.in_(sp_ids)  # type: ignore[union-attr]
+                select(SummerLeagueSourceRecord).where(
+                    SummerLeagueSourceRecord.id.in_(sp_ids)  # type: ignore[union-attr]
                 )
             )
             for sp in sp_result.scalars().all():
@@ -687,8 +687,8 @@ async def load_roster_snapshot(
             continue
 
         sp_result = await db.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.id.in_(  # type: ignore[union-attr]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.id.in_(  # type: ignore[union-attr]
                     list(absent_active.keys())
                 )
             )

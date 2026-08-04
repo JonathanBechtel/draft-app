@@ -42,7 +42,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league.roster_reconcile import (
@@ -88,9 +88,9 @@ async def _make_team_entry(
 
 async def _make_source_player(
     db: AsyncSession, nba_stats_person_id: str, raw_player_name: str
-) -> SummerLeagueSourcePlayer:
-    """Create and flush a minimal ``SummerLeagueSourcePlayer`` row."""
-    source_player = SummerLeagueSourcePlayer(
+) -> SummerLeagueSourceRecord:
+    """Create and flush a minimal ``SummerLeagueSourceRecord`` row."""
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=nba_stats_person_id,
         raw_player_name=raw_player_name,
         normalized_name=raw_player_name.lower().replace(" ", ""),
@@ -118,7 +118,7 @@ async def _announce(
     db: AsyncSession,
     competition_id: int,
     team_entry_id: int,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     player_id: Optional[int] = None,
 ) -> SummerLeagueParticipation:
     """Create a roster-sourced ANNOUNCED affiliation + participation bridge row."""
@@ -151,7 +151,7 @@ async def _game_log(
     competition_id: int,
     game_id: int,
     team_entry_id: int,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     *,
     participation_id: Optional[int],
     player_id: Optional[int] = None,

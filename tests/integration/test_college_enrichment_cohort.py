@@ -18,7 +18,7 @@ from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services import college_stats_service
@@ -84,7 +84,7 @@ async def _participate(  # noqa: PLR0913
     canonical_player_id: int,
 ) -> SummerLeagueParticipation:
     """Seed one resolved participation row."""
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=name,
         normalized_name=name.lower(),

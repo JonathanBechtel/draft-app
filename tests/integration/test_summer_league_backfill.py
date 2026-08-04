@@ -15,7 +15,7 @@ from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -272,7 +272,7 @@ async def test_backfill_summer_league_backbone_is_idempotent(
     assert await _table_count(db_session, SummerLeagueTeamEntry) == 2
     assert await _table_count(db_session, SummerLeagueGame) == 1
     assert await _table_count(db_session, SummerLeagueTeamGameLog) == 2
-    assert await _table_count(db_session, SummerLeagueSourcePlayer) == 2
+    assert await _table_count(db_session, SummerLeagueSourceRecord) == 2
     assert await _table_count(db_session, SummerLeaguePlayerGameLog) == 2
     assert await _table_count(db_session, PlayerExternalId) == 1
     assert external_id.player_id == player.id
@@ -315,5 +315,5 @@ async def test_backfill_dry_run_rolls_back_database_changes(
     assert report.player_logs is not None
     assert report.player_logs.player_game_logs_upserted == 2
     assert await _table_count(db_session, SummerLeagueEdition) == 0
-    assert await _table_count(db_session, SummerLeagueSourcePlayer) == 0
+    assert await _table_count(db_session, SummerLeagueSourceRecord) == 0
     assert await _table_count(db_session, SummerLeaguePlayerGameLog) == 0

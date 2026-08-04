@@ -24,7 +24,7 @@ from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueShotEvent,
 )
@@ -86,8 +86,8 @@ async def _make_team(db: AsyncSession, *, comp_id: int) -> SummerLeagueTeamEntry
 
 async def _make_source_player(
     db: AsyncSession, *, player: PlayerMaster
-) -> SummerLeagueSourcePlayer:
-    sp = SummerLeagueSourcePlayer(
+) -> SummerLeagueSourceRecord:
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=_uid(),
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),
@@ -102,7 +102,7 @@ async def _make_game_and_log(
     db: AsyncSession,
     *,
     player: PlayerMaster,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     comp: SummerLeagueEdition,
     game_date: date,
 ) -> SummerLeagueGame:
@@ -152,7 +152,7 @@ async def _make_game_and_log(
 def _make_shot_event(  # noqa: PLR0913
     *,
     player: PlayerMaster,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     game: SummerLeagueGame,
     comp_id: int,
     team_entry_id: int,

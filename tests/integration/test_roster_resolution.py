@@ -31,7 +31,7 @@ from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
     SummerLeagueParticipation,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
 from app.services.summer_league.player_resolution import resolve_source_player
 from app.services.summer_league.roster_ingest import (
@@ -61,9 +61,9 @@ def _make_player(display_name: str = "Test Player") -> PlayerMaster:
     )
 
 
-def _make_source_player(person_id: str, name: str = "Test Player") -> SummerLeagueSourcePlayer:
-    """Build an unsaved SummerLeagueSourcePlayer for testing."""
-    return SummerLeagueSourcePlayer(
+def _make_source_player(person_id: str, name: str = "Test Player") -> SummerLeagueSourceRecord:
+    """Build an unsaved SummerLeagueSourceRecord for testing."""
+    return SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=name,
         normalized_name=name.lower(),
@@ -229,8 +229,8 @@ async def test_backfill_canonical_ids(db_session: AsyncSession) -> None:
 
     # Load the source player created by the roster loader.
     sp_result = await db_session.execute(
-        select(SummerLeagueSourcePlayer).where(
-            SummerLeagueSourcePlayer.nba_stats_person_id == "PERSON_BACKFILL_01"  # type: ignore[arg-type]
+        select(SummerLeagueSourceRecord).where(
+            SummerLeagueSourceRecord.nba_stats_person_id == "PERSON_BACKFILL_01"  # type: ignore[arg-type]
         )
     )
     source_player = sp_result.scalar_one()
@@ -321,8 +321,8 @@ async def test_backfill_walks_supersedes_chain_for_cut_player(
 
     source_player = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "PERSON_CUT_01"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "PERSON_CUT_01"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()

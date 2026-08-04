@@ -19,7 +19,7 @@ from app.schemas.summer_league import (
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
 from app.services.player_mention_service import _normalized_name_key
 from app.services.summer_league.audit import audit_summer_league_raw
@@ -350,7 +350,7 @@ async def test_normalize_player_game_logs_is_idempotent_and_allows_unresolved(
     await db_session.flush()
     assert player.id is not None
     db_session.add(
-        SummerLeagueSourcePlayer(
+        SummerLeagueSourceRecord(
             nba_stats_person_id="1640002",
             raw_player_name="Resolved Prospect",
             normalized_name=_normalized_name_key("Resolved Prospect"),
@@ -372,22 +372,22 @@ async def test_normalize_player_game_logs_is_idempotent_and_allows_unresolved(
     )
 
     source_player_count = await db_session.scalar(
-        select(func.count()).select_from(SummerLeagueSourcePlayer)
+        select(func.count()).select_from(SummerLeagueSourceRecord)
     )
     player_log_count = await db_session.scalar(
         select(func.count()).select_from(SummerLeaguePlayerGameLog)
     )
     unresolved_source = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "1640001"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "1640001"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
     resolved_source = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "1640002"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "1640002"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -468,7 +468,7 @@ async def test_normalize_player_game_logs_wires_participation_bridge(
     await db_session.flush()
     assert player.id is not None
     db_session.add(
-        SummerLeagueSourcePlayer(
+        SummerLeagueSourceRecord(
             nba_stats_person_id="1640002",
             raw_player_name="Resolved Prospect",
             normalized_name=_normalized_name_key("Resolved Prospect"),
@@ -556,8 +556,8 @@ async def test_normalize_player_game_logs_wires_participation_bridge(
     # the previously-unresolved bridge on the next normalize pass.
     unresolved_source = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "1640001"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "1640001"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()

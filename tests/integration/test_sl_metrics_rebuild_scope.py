@@ -38,7 +38,7 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -118,7 +118,7 @@ async def _players(db: AsyncSession, n: int) -> list[tuple[PlayerMaster, Any]]:
         p = make_player(f"ScopeFirst{i}", f"ScopeLast{i}")
         db.add(p)
         await db.flush()
-        sp = SummerLeagueSourcePlayer(
+        sp = SummerLeagueSourceRecord(
             nba_stats_person_id=f"scope-sp-{i}",
             raw_player_name=p.display_name or "P",
             normalized_name=(p.display_name or "p").lower(),
@@ -1101,7 +1101,7 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
     await db_session.flush()
     assert player.id is not None
     db_session.add(
-        SummerLeagueSourcePlayer(
+        SummerLeagueSourceRecord(
             nba_stats_person_id="1640001",
             raw_player_name="Rookie Guy",
             normalized_name="rookie guy",

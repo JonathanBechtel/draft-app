@@ -11,9 +11,9 @@ from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
@@ -353,7 +353,7 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
     tmp_path: Path,
 ) -> None:
     """Missing boxscore team rows fall back to season gamelog rows."""
-    raw_run = SummerLeagueRawRun(
+    raw_run = SummerLeagueIngestionRun(
         id=1,
         year=2007,
         league_id="15",
@@ -363,7 +363,7 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
         game_count=2,
     )
     raw_files = [
-        SummerLeagueRawFile(
+        SummerLeagueSourceDocument(
             raw_run_id=1,
             year=2007,
             league_id="15",
@@ -433,12 +433,12 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
 
             return _Result()
 
-    async def fake_get_raw_run(*_args: object, **_kwargs: object) -> SummerLeagueRawRun:
+    async def fake_get_raw_run(*_args: object, **_kwargs: object) -> SummerLeagueIngestionRun:
         return raw_run
 
     async def fake_get_raw_files(
         *_args: object, **_kwargs: object
-    ) -> list[SummerLeagueRawFile]:
+    ) -> list[SummerLeagueSourceDocument]:
         return raw_files
 
     async def fake_upsert_competition(

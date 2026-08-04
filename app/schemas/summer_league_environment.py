@@ -38,7 +38,7 @@ Tables
 * :class:`SummerLeagueEnvironmentProvenance` — per-source watermark, row count,
   and parse-status/source-status summary feeding the profile's freshness
   disclosure. ``SummerLeagueEnvironmentProfile.raw_run_ids`` carries the exact
-  contributing ``SummerLeagueRawRun`` ids so a published profile can be traced
+  contributing ``SummerLeagueIngestionRun`` ids so a published profile can be traced
   to the raw scrape snapshot(s) it was built from.
 
 Three distinct version stamps travel with a profile -- never conflate them:
@@ -306,7 +306,7 @@ class SummerLeagueEnvironmentProfile(DatedVersionMixin, SQLModel, table=True):  
         default=None,
         sa_column=Column(JSONB, nullable=True),
         description=(
-            "Distinct SummerLeagueRawRun.id values for every contributing "
+            "Distinct SummerLeagueIngestionRun.id values for every contributing "
             "competition (SummerLeagueEdition.raw_run_id) -- the exact "
             "raw scrape manifests this profile can be traced back to and "
             "reproduced/audited from. Sorted ascending; null when no "
@@ -499,7 +499,7 @@ class SummerLeagueEnvironmentProvenance(SQLModel, table=True):  # type: ignore[c
     parse_status: Optional[str] = Field(
         default=None,
         description=(
-            "Worst-case SummerLeagueRawFile.parse_status across the raw "
+            "Worst-case SummerLeagueSourceDocument.parse_status across the raw "
             "files backing this source (box/shot/pbp endpoints) for the "
             "scope's eligible final games; null for sources with no "
             "directly-modeled per-file parse status (score/ot_state/"
@@ -509,7 +509,7 @@ class SummerLeagueEnvironmentProvenance(SQLModel, table=True):  # type: ignore[c
     source_status: Optional[str] = Field(
         default=None,
         description=(
-            "Worst-case SummerLeagueRawRun.status across the raw scrape "
+            "Worst-case SummerLeagueIngestionRun.status across the raw scrape "
             "manifests (see raw_run_ids on the profile) that produced this "
             "scope's contributing competitions."
         ),

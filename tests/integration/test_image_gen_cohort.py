@@ -24,7 +24,7 @@ from app.schemas.image_snapshots import (
 from app.schemas.summer_league import (
     SummerLeagueEdition,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.image_generation import image_generation_service
@@ -70,7 +70,7 @@ async def _participate(
     canonical_player_id: int,
 ) -> SummerLeagueParticipation:
     """Seed one resolved participation row tying a source player to a canonical player."""
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=name,
         normalized_name=name.lower(),
