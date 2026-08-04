@@ -1,7 +1,7 @@
 """Bio-enrichment target selection for the Summer League rostered cohort.
 
 Restricts ``scripts/bbref_bio_scraper.py`` and ``scripts/ingest_player_bios.py``
-to the SL rostered cohort (see :mod:`app.services.sources.summer_league.cohort`) that
+to the SL rostered cohort (see :mod:`app.services.backbone.cohort`) that
 already has a resolved ``bbref`` external id. Scheduled roster runs can force
 changed players while retrying cohort players that have never completed a BBR
 enrichment. Cohort players without a bbref id cannot be safely scraped/matched
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.player_bio_snapshots import PlayerBioSnapshot
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.player_status import PlayerStatus
-from app.services.sources.summer_league.cohort import summer_league_cohort
+from app.services.backbone.cohort import summer_league_cohort
 
 SYSTEM_BBR = "bbr"
 

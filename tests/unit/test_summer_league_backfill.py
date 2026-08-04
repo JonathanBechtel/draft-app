@@ -23,7 +23,7 @@ from app.services.sources.summer_league.normalization import (
     SummerLeagueNormalizationReport,
     SummerLeaguePlayerLogReport,
 )
-from app.services.sources.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     SummerLeagueResolutionReport,
 )
 

@@ -33,7 +33,7 @@ from app.schemas.summer_league import (
     SummerLeagueResolutionStatus,
     SummerLeagueSourceRecord,
 )
-from app.services.sources.summer_league.player_resolution import resolve_source_player
+from app.services.backbone.player_resolution import resolve_source_player
 from app.services.sources.summer_league.roster_ingest import (
     CompetitionKey,
     load_roster_snapshot,

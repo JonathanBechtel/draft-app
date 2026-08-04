@@ -19,7 +19,7 @@ from app.services.sources.summer_league.normalization import (
     normalize_competition_games,
     normalize_player_game_logs,
 )
-from app.services.sources.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     SummerLeagueResolutionReport,
     SummerLeagueResolutionResult,
     resolve_summer_league_players,
@@ -32,14 +32,14 @@ class SummerLeagueBackfillOptions:
 
     Attributes:
         include_resolution: Whether to run
-            :func:`~app.services.sources.summer_league.player_resolution.resolve_summer_league_players`
+            :func:`~app.services.backbone.player_resolution.resolve_summer_league_players`
             as part of this call. Callers that must not hold a database
             transaction/writer lock across candidate search's Gemini call
             (e.g. the scheduled ingest cron) should pass ``False`` here and
             run resolution separately via
-            :func:`~app.services.sources.summer_league.player_resolution.prepare_summer_league_player_resolutions`
+            :func:`~app.services.backbone.player_resolution.prepare_summer_league_player_resolutions`
             and
-            :func:`~app.services.sources.summer_league.player_resolution.apply_source_player_resolution_plan`
+            :func:`~app.services.backbone.player_resolution.apply_source_player_resolution_plan`
             in their own bounded batches.
     """
 

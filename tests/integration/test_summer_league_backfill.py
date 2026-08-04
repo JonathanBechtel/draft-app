@@ -23,7 +23,7 @@ from app.services.sources.summer_league.backfill import (
     SummerLeagueBackfillOptions,
     backfill_summer_league_backbone,
 )
-from app.services.sources.summer_league.player_resolution import NBA_STATS_SYSTEM
+from app.services.backbone.player_resolution import NBA_STATS_SYSTEM
 
 
 def _result_set(
@@ -230,7 +230,7 @@ async def test_backfill_summer_league_backbone_is_idempotent(
         return []
 
     monkeypatch.setattr(
-        "app.services.sources.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_candidates,
     )
 
@@ -296,7 +296,7 @@ async def test_backfill_dry_run_rolls_back_database_changes(
         return []
 
     monkeypatch.setattr(
-        "app.services.sources.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_candidates,
     )
 

@@ -10,7 +10,7 @@ version per cohort. Never rebuilt on the tick; T1 is the expensive-but-stable
 artifact.
 
 **Naming:** this module is the *slot-cohort baseline* (draft-slot comparison
-group). ``app.services.sources.summer_league.cohort`` is a different thing — the
+group). ``app.services.backbone.cohort`` is a different thing — the
 *roster* cohort (which players are actively rostered for a competition). Keep
 the two apart.
 

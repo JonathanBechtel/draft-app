@@ -38,7 +38,7 @@ from app.schemas.summer_league import (
 )
 from app.services.player_merge_service import merge_players, preview_merge
 from app.services.sources.summer_league.metrics import rebuild
-from app.services.sources.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     _backfill_participation_and_affiliation,
     _backfill_player_game_logs,
     _backfill_shot_events,

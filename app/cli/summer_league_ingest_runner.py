@@ -103,7 +103,7 @@ from app.services.sources.summer_league.metrics_rebuild_gate import (
     MetricsStageContext,
     run_metrics_stage,
 )
-from app.services.sources.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     SummerLeagueResolutionReport,
     SummerLeagueResolutionResult,
     apply_source_player_resolution_plan,

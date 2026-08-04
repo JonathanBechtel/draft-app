@@ -61,7 +61,7 @@ from app.services.sources.summer_league.normalization import (
     normalize_competition_games,
     normalize_shot_events,
 )
-from app.services.sources.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     apply_source_player_resolution_plan as _real_apply_source_player_resolution_plan,
 )
 from app.services.sources.summer_league.raw_ingestion import (
@@ -606,7 +606,7 @@ async def test_run_venue_resolution_search_runs_without_lock_writes_hold_it(
     monkeypatch.setattr(runner, "normalize_shot_events", _fake_shot)
     monkeypatch.setattr(runner, "normalize_pbp_events", _fake_pbp)
     monkeypatch.setattr(
-        "app.services.sources.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         _fake_candidate_search,
     )
     monkeypatch.setattr(

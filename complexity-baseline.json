@@ -90,6 +90,9 @@
       "PLR0913": 1,
       "PLR0915": 1
     },
+    "app/services/backbone/player_resolution.py": {
+      "PLR0913": 3
+    },
     "app/services/board_auto_ingest_service.py": {
       "C901": 1,
       "PLR0915": 1
@@ -224,9 +227,6 @@
       "C901": 5,
       "PLR0913": 6,
       "PLR0915": 1
-    },
-    "app/services/sources/summer_league/player_resolution.py": {
-      "PLR0913": 3
     },
     "app/services/sources/summer_league/roster_fetch.py": {
       "C901": 1,

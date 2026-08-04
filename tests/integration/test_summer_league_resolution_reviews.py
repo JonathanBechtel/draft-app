@@ -17,7 +17,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
 )
 from app.services.player_mention_service import _normalized_name_key
-from app.services.sources.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     SummerLeagueResolutionCandidate,
     ensure_pending_resolution_review,
     record_resolution_review_decision,
@@ -109,7 +109,7 @@ async def test_ambiguous_resolution_creates_one_pending_review(
         return search_results.pop(0)
 
     monkeypatch.setattr(
-        "app.services.sources.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_search,
     )
 

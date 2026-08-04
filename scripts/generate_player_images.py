@@ -73,7 +73,7 @@ from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.seasons import Season
 from app.services.image_generation import image_generation_service
-from app.services.sources.summer_league.cohort import summer_league_cohort
+from app.services.backbone.cohort import summer_league_cohort
 from app.utils.db_async import SessionLocal
 
 logging.basicConfig(

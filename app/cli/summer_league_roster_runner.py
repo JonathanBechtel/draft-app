@@ -81,7 +81,7 @@ from app.services.player_bio.bbref_parse import PlayerBio
 from app.services.player_bio.bbref_scrape import scrape_letters
 from app.services.player_bio.ingest import ingest as ingest_player_bios_csv
 from app.services.sources.summer_league.headshots import backfill_nba_headshots
-from app.services.sources.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     backfill_nba_stats_external_ids,
     resolve_summer_league_players,
 )
