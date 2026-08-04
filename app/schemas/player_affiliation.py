@@ -50,6 +50,7 @@ class PlayerAffiliation(SQLModel, table=True):  # type: ignore[call-arg]
     __table_args__ = (
         Index("ix_player_affiliations_player_id", "player_id"),
         Index("ix_player_affiliations_nba_team_id", "nba_team_id"),
+        Index("ix_player_affiliations_team_program_id", "team_program_id"),
         Index("ix_player_affiliations_status", "status"),
         Index("ix_player_affiliations_supersedes_id", "supersedes_id"),
         # Fast "current assertions" lookup — not yet superseded/retracted.
@@ -57,6 +58,14 @@ class PlayerAffiliation(SQLModel, table=True):  # type: ignore[call-arg]
             "ix_player_affiliations_active",
             "player_id",
             "nba_team_id",
+            postgresql_where=text("superseded_at IS NULL AND retracted_at IS NULL"),
+        ),
+        # Mirrors the index above for the generic-org-model target (journey-graph
+        # §7a, §13). Additive: the nba_team_id-keyed index above is untouched.
+        Index(
+            "ix_player_affiliations_active_team_program",
+            "player_id",
+            "team_program_id",
             postgresql_where=text("superseded_at IS NULL AND retracted_at IS NULL"),
         ),
     )
@@ -67,10 +76,16 @@ class PlayerAffiliation(SQLModel, table=True):  # type: ignore[call-arg]
     player_id: Optional[int] = Field(default=None, foreign_key="players_master.id")
 
     # Affiliation target. For SL the program is the NBA franchise; the generic
-    # team/program FK is deferred (journey-graph §7a, §13) and lands additively
-    # as a nullable column — SL rows are never repointed.
+    # team/program FK lands additively as a nullable column — SL rows are never
+    # repointed (journey-graph §7a, §13; phase-4 spec §5.1 decision D3).
     nba_team_id: Optional[int] = Field(default=None, foreign_key="nba_teams.id")
-    # team_program_id: reserved — added when the generic org model ships.
+    # Generic org-model target (`Organization` -> `TeamProgram`, journey-graph
+    # §7a). Nullable and additive: both columns are populated where known, and
+    # reads resolve through `app.services.player_affiliation.resolve_affiliation_target`,
+    # which prefers this column and falls back to `nba_team_id`. Dropping
+    # `nba_team_id` is a Wave C decision requiring a second consumer, not part
+    # of this phase.
+    team_program_id: Optional[int] = Field(default=None, foreign_key="team_programs.id")
 
     affiliation_type: AffiliationType = Field(
         sa_column=Column(
