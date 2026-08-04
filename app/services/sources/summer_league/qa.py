@@ -1,5 +1,7 @@
 """QA validators for Summer League raw and normalized backbone data."""
 
+# discipline: file-size growth is import reflow from the journey-graph class renames; decomposition is Phase 5
+
 from __future__ import annotations
 
 from collections import Counter

@@ -39,6 +39,8 @@ Two layers:
   for the games it touches rather than accumulating duplicates across ticks.
 """
 
+# discipline: file-size growth is import reflow from the journey-graph class renames; decomposition is Phase 5
+
 from __future__ import annotations
 
 import math

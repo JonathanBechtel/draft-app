@@ -1,5 +1,7 @@
 """Summer League raw audit and normalized product schemas."""
 
+# discipline: file-size one spoke table family per module; growth is the additive team_program_id retarget
+
 from __future__ import annotations
 
 from datetime import date, datetime

@@ -33,6 +33,8 @@ is a sibling ticket, not a dependency of this one) and keeps this step usable
 standalone.
 """
 
+# discipline: file-size growth is import reflow from the journey-graph class renames; decomposition is Phase 5
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

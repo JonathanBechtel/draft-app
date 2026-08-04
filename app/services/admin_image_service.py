@@ -4,6 +4,8 @@ Provides query functions for listing, filtering, and managing PlayerImageAsset r
 with their associated PlayerImageSnapshot and PlayerMaster data.
 """
 
+# discipline: file-size publisher stamps P2 version columns only; no new service logic
+
 from __future__ import annotations
 
 import base64

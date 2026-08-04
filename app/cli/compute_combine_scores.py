@@ -13,6 +13,8 @@ Usage::
         [--replace-run] [--dry-run]
 """
 
+# discipline: file-size publisher stamps P2 version columns only; scoring-pipeline decomposition is Phase 5
+
 from __future__ import annotations
 
 import argparse

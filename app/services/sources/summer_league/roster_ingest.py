@@ -13,6 +13,8 @@ gains a ``superseded_at`` timestamp but is otherwise untouched. This lets caller
 answer point-in-time questions from the assertion stream alone.
 """
 
+# discipline: file-size supersede chain now carries team_program_id; ingest decomposition is Phase 5
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

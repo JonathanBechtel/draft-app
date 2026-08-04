@@ -1,5 +1,7 @@
 """Compute derived metric snapshots for a player cohort."""
 
+# discipline: file-size publisher stamps P2 version columns only; metrics-pipeline decomposition is Phase 5
+
 from __future__ import annotations
 
 import argparse
