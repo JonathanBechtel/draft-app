@@ -127,7 +127,7 @@ class Settings(BaseSettings):
 
     # Summer League Desk home-page takeover -- the operator override lever the
     # Event Desk framework doc calls out ("Window source = schedule-driven with
-    # a config force-on/off & date override"). `app.services.summer_league.
+    # a config force-on/off & date override"). `app.services.sources.summer_league.
     # desk_read` is the sole reader; see that module's docstring for the exact
     # gating semantics.
     #   - "auto" (default): the calendar decides. The Desk takes over the home
@@ -172,7 +172,7 @@ class Settings(BaseSettings):
     # as the last good version but displays a stale badge; it is never
     # silently replaced by request-time aggregation."). Compared against
     # ``SummerLeagueEnvironmentProfile.calculated_at`` by
-    # ``app.services.summer_league.environment_refresh.is_environment_profile_stale``,
+    # ``app.services.sources.summer_league.environment_refresh.is_environment_profile_stale``,
     # the single shared source of truth other surfaces (#607/#608 reads)
     # should call rather than re-deriving the threshold. Default (48h)
     # tolerates a quiet weekend/off-cycle gap during an active event without

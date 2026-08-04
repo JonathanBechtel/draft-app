@@ -78,15 +78,15 @@ from app.cli._desk_class_runner import (  # noqa: E402
     parse_now,
     run_class_entrypoint,
 )
-from app.services.summer_league.desk_tick.composite import (  # noqa: E402
+from app.services.sources.summer_league.desk_tick.composite import (  # noqa: E402
     DeskTickResult,
     run_desk_tick,
 )
-from app.services.summer_league.desk_tick.shared import (  # noqa: E402
+from app.services.sources.summer_league.desk_tick.shared import (  # noqa: E402
     DEFAULT_RAW_ROOT,
     DeskLatencyClass,
 )
-from app.services.summer_league.pipeline_telemetry import (  # noqa: E402
+from app.services.ingest.pipeline_telemetry import (  # noqa: E402
     PipelineTelemetry,
 )
 

@@ -2,7 +2,7 @@
 
 Covers the ticket's Definition of Done: six cohort toggles (with the
 within-round `draft_pick` boundary translated correctly -- see
-`app.services.summer_league.cohort_baselines`'s module docstring for the
+`app.services.sources.summer_league.cohort_baselines`'s module docstring for the
 "draft_pick is WITHIN-ROUND" gotcha this repo hinges on), the Box/Per-36/
 Per-100/Advanced stat-view rescale (counting stats scale, shooting
 percentages stay invariant, PER/BPM/WS82 em-dash when a pool isn't
@@ -29,11 +29,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -43,14 +43,14 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskGrain,
     SummerLeagueDeskPlayerGrade,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.event_desk.registry import sync_summer_league_event
 from app.services.event_desk.render_snapshots import (
     RenderSnapshotWrite,
     upsert_render_snapshots,
 )
 from app.services.event_desk.timeutils import to_eastern_date
-from app.services.summer_league.desk_read import (
+from app.services.sources.summer_league.desk_read import (
     TRACKER_CAP,
     build_desk_render_variants,
     get_desk_payload,
@@ -109,9 +109,9 @@ async def _materialize_desk_snapshots(db: AsyncSession, *, now: datetime) -> Non
     await db.commit()
 
 
-async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueCompetition:
+async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueEdition:
     idx = _idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug=f"vegas-tracker-{idx}",
@@ -126,7 +126,7 @@ async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueCompe
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition, *, franchise_id: str = ""
+    db: AsyncSession, competition: SummerLeagueEdition, *, franchise_id: str = ""
 ) -> SummerLeagueTeamEntry:
     idx = _idx()
     assert competition.id is not None
@@ -145,7 +145,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -199,13 +199,13 @@ async def _seed_player(
 
 async def _roster_player(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     idx = _idx()
     assert competition.id is not None and team.id is not None and player.id is not None
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"tracker-src-{idx}",
         raw_player_name=player.display_name or "Test Player",
         normalized_name=(player.display_name or "test player").lower(),
@@ -229,7 +229,7 @@ async def _roster_player(
 
 
 async def _seed_active_window_game(
-    db: AsyncSession, competition: SummerLeagueCompetition, *, now: datetime
+    db: AsyncSession, competition: SummerLeagueEdition, *, now: datetime
 ) -> None:
     """Seed one game so `sync_summer_league_event` finds an ACTIVE outer window.
 
@@ -253,7 +253,7 @@ async def _seed_active_window_game(
 async def _seed_season(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     player: PlayerMaster,
     year: int,
     gp: int = 3,
@@ -280,9 +280,9 @@ async def _seed_season(
     ws82: float | None = None,
     bpm: float | None = None,
     adv_eligible: bool = False,
-) -> SummerLeaguePlayerSeason:
+) -> SummerLeagueDerivedAgg:
     assert competition.id is not None and player.id is not None
-    season = SummerLeaguePlayerSeason(
+    season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=year,
@@ -548,7 +548,7 @@ async def test_advanced_view_bpm_null_when_not_adv_eligible(
     await _roster_player(db_session, competition, team, eligible)
 
     # Ineligible pool: per/bpm/ws82/usg_pct etc. are None, matching how
-    # `app.services.summer_league.metrics` writes a non-adv_eligible pool.
+    # `app.services.sources.summer_league.metrics` writes a non-adv_eligible pool.
     await _seed_season(
         db_session,
         competition=competition,
@@ -655,9 +655,7 @@ async def test_cohort_over_30_caps_at_30_by_gmsc_and_flags_truncated(
 # time-independent state -- Live/Recap resolve from game *status*, not the
 # wall clock) via an all-FINAL slate.
 # --------------------------------------------------------------------------- #
-async def _seed_recap_window(
-    db: AsyncSession, *, now: datetime
-) -> SummerLeagueCompetition:
+async def _seed_recap_window(db: AsyncSession, *, now: datetime) -> SummerLeagueEdition:
     """An active SL event with an all-FINAL slate -- forces Recap deterministically."""
     today = to_eastern_date(now)
     competition = await _seed_competition(db, year=today.year)
@@ -689,7 +687,7 @@ async def test_gp_zero_row_renders_em_dashes(
         db_session, name="Debuting", draft_year=year, draft_round=1, draft_pick=1
     )
     await _roster_player(db_session, competition, team, debut)
-    # No SummerLeaguePlayerSeason row seeded for `debut` -- GP=0 case.
+    # No SummerLeagueDerivedAgg row seeded for `debut` -- GP=0 case.
     await db_session.commit()
     await sync_summer_league_event(db_session, today)
     await db_session.commit()
@@ -768,7 +766,7 @@ async def test_cohort_and_statview_toggles_round_trip_via_query_params(
     # so match by inner text rather than the exact old bare `<th>` tag);
     # box-family headers are not.
     assert 'data-sort-key="per"' in html
-    assert '>PER</th>' in html
+    assert ">PER</th>" in html
     assert 'data-sort-key="bpm">BPM</th>' in html
     assert 'data-sort-key="ws82">WS/82</th>' in html
     assert ">PTS</th>" not in html
@@ -821,7 +819,7 @@ async def test_tracker_fragment_route_matches_full_page_for_same_variant(
 
     # Same variant's column set and row present.
     assert 'data-sort-key="per"' in html
-    assert '>PER</th>' in html
+    assert ">PER</th>" in html
     assert 'data-sort-key="bpm">BPM</th>' in html
     assert 'data-sort-key="ws82">WS/82</th>' in html
     assert ">PTS</th>" not in html

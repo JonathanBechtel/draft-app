@@ -14,7 +14,7 @@ coupling it exists to prevent walks straight through.
 
 As shipped, the list named 11 of 11 service modules but only 2 of 5 schema modules. The
 omissions included ``app.schemas.summer_league_metrics``, which holds
-``SummerLeaguePlayerSeason``, ``SummerLeagueMetricContext`` and ``SummerLeagueMetricModel`` —
+``SummerLeagueDerivedAgg``, ``SummerLeagueMetricContext`` and ``SummerLeagueMetricModel`` —
 the tables a lifted stat engine is most likely to reach for. The contract would have stayed
 green through exactly the coupling it exists to prevent.
 
@@ -42,9 +42,13 @@ ENUMERATED_CONTRACTS = (
 )
 
 # Directories whose ``summer_league*`` modules the engine must not import, and the dotted
-# prefix each maps to.
+# prefix each maps to. ``app/services/sources`` is scanned separately from ``app/services``
+# because Phase 4 (#789) moved the Summer League adapter package to
+# ``app/services/sources/summer_league/`` — one directory level deeper than the read-side
+# ``app/services/summer_league_*.py`` siblings, which stayed put.
 _SCANNED_PACKAGES = (
     ("app/services", "app.services"),
+    ("app/services/sources", "app.services.sources"),
     ("app/schemas", "app.schemas"),
 )
 
@@ -97,7 +101,9 @@ def test_contract_names_every_summer_league_module(contract_name: str) -> None:
 
 
 @pytest.mark.parametrize("contract_name", ENUMERATED_CONTRACTS)
-def test_contract_does_not_name_modules_that_no_longer_exist(contract_name: str) -> None:
+def test_contract_does_not_name_modules_that_no_longer_exist(
+    contract_name: str,
+) -> None:
     """A stale entry is dead weight that makes the list look more complete than it is."""
     stale = sorted(_forbidden_modules(contract_name) - _summer_league_modules())
 
@@ -118,7 +124,15 @@ def test_every_summer_league_enumerating_contract_is_guarded() -> None:
         contract["name"]
         for contract in _contracts()
         if any(
-            module.startswith(("app.services.summer_league", "app.schemas.summer_league"))
+            module.startswith(
+                (
+                    "app.services.summer_league",
+                    # Phase 4 moved the SL adapter here (#789); a contract that
+                    # enumerates only the new path must still be guarded.
+                    "app.services.sources.summer_league",
+                    "app.schemas.summer_league",
+                )
+            )
             for module in contract.get("forbidden_modules", [])
         )
     }

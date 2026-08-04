@@ -18,10 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.nba_teams import NbaTeam
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league_franchise_service import get_franchise_history
@@ -73,7 +73,7 @@ async def _game(
     db.add(g)
     await db.flush()
     assert g.id is not None
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"fr-person-{_N['i']}",
         raw_player_name=log_player.display_name or "Player",
         normalized_name=(log_player.display_name or "player").lower(),
@@ -103,7 +103,7 @@ async def _game(
 
 async def _comp(db: AsyncSession, *, year: int, venue_slug: str, league_id: str) -> int:
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -219,7 +219,7 @@ async def test_resolved_player_name_variants_collapse_to_one_row(
         )
         db_session.add(g)
         await db_session.flush()
-        sp = SummerLeagueSourcePlayer(
+        sp = SummerLeagueSourceRecord(
             nba_stats_person_id=f"var-person-{i}",
             raw_player_name=raw_name,
             normalized_name=raw_name.lower(),

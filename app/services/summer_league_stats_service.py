@@ -23,19 +23,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamGameLog,
     SummerLeagueTeamEntry,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.stats.capabilities import is_computable
 from app.services.stats.formulas import astd_pct_ratio, ts_pct_ratio
-from app.services.summer_league.capabilities import row_provides
-from app.services.summer_league.constants import MINUTES_PER_GAME
-from app.services.summer_league.metrics import game_score_from_row
-from app.services.summer_league.pace import (
+from app.services.sources.summer_league.capabilities import row_provides
+from app.services.sources.summer_league.constants import MINUTES_PER_GAME
+from app.services.sources.summer_league.metrics import game_score_from_row
+from app.services.sources.summer_league.pace import (
     player_possessions_from_rows,
     team_box_columns,
 )
@@ -355,8 +355,8 @@ async def get_summer_league_profile_by_player_id(
     stmt = (
         select(
             game.id.label("sl_game_id"),  # type: ignore[union-attr]
-            SummerLeagueCompetition.year,
-            SummerLeagueCompetition.venue_slug,
+            SummerLeagueEdition.year,
+            SummerLeagueEdition.venue_slug,
             game.game_date,
             opponent.raw_team_abbreviation,
             opponent.raw_team_name,
@@ -382,7 +382,7 @@ async def get_summer_league_profile_by_player_id(
             *team_box_columns(opponent_log, "opp"),
         )  # type: ignore[call-overload, misc]
         .select_from(pgl)
-        .join(SummerLeagueCompetition, SummerLeagueCompetition.id == pgl.competition_id)
+        .join(SummerLeagueEdition, SummerLeagueEdition.id == pgl.competition_id)
         .join(game, game.id == pgl.game_id)
         .outerjoin(
             team_log,
@@ -501,7 +501,7 @@ async def get_competition_id_for_player_year(
     marquee one). Otherwise the most-marquee competition is chosen using the
     ordering in ``_VENUE_ORDER`` (Las Vegas > Salt Lake City > California
     Classic > Orlando).  Returns ``None`` when the player has no
-    :class:`~app.schemas.summer_league_metrics.SummerLeaguePlayerSeason` row
+    :class:`~app.schemas.summer_league_metrics.SummerLeagueDerivedAgg` row
     for that year — i.e. the season table has not been materialised yet or the
     player had no resolved logs.
 
@@ -516,16 +516,16 @@ async def get_competition_id_for_player_year(
         The resolved competition id, or ``None``.
     """
     stmt = select(  # type: ignore[call-overload]
-        SummerLeaguePlayerSeason.competition_id,
-        SummerLeaguePlayerSeason.venue_slug,
+        SummerLeagueDerivedAgg.competition_id,
+        SummerLeagueDerivedAgg.venue_slug,
     ).where(
-        SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
-        SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
-        SummerLeaguePlayerSeason.year == year,  # type: ignore[arg-type]
+        SummerLeagueDerivedAgg.player_id == player_id,  # type: ignore[arg-type]
+        SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
+        SummerLeagueDerivedAgg.year == year,  # type: ignore[arg-type]
     )
     if venue_slug is not None:
         stmt = stmt.where(
-            SummerLeaguePlayerSeason.venue_slug == venue_slug  # type: ignore[arg-type]
+            SummerLeagueDerivedAgg.venue_slug == venue_slug  # type: ignore[arg-type]
         )
     rows = (await db.execute(stmt)).all()
     if not rows:
@@ -550,11 +550,11 @@ async def get_player_shotchart_context(
     a sequential FG% scale).  ``dots`` still spans the player's whole career —
     shot locations share one court system, so the heat map renders correctly.
     The shot-diet row comes from the most recent
-    :class:`SummerLeaguePlayerSeason` row for the player.
+    :class:`SummerLeagueDerivedAgg` row for the player.
 
     When ``competition_id`` is provided the zones are scoped to that pool
     (``pool_fg_pct`` is populated), dots are fetched, and shot-diet comes from
-    the matching ``SummerLeaguePlayerSeason`` row.
+    the matching ``SummerLeagueDerivedAgg`` row.
 
     Args:
         db: Async database session.
@@ -570,28 +570,28 @@ async def get_player_shotchart_context(
     if zones_dto.total_fga == 0:
         return None
 
-    # ── 2. Shot-diet from SummerLeaguePlayerSeason ────────────────────────────
+    # ── 2. Shot-diet from SummerLeagueDerivedAgg ────────────────────────────
     if competition_id is not None:
-        diet_stmt = select(SummerLeaguePlayerSeason).where(  # type: ignore[call-overload]
-            SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.competition_id == competition_id,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+        diet_stmt = select(SummerLeagueDerivedAgg).where(  # type: ignore[call-overload]
+            SummerLeagueDerivedAgg.player_id == player_id,  # type: ignore[arg-type]
+            SummerLeagueDerivedAgg.competition_id == competition_id,  # type: ignore[arg-type]
+            SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
         )
     else:
         # Career view: use the most recent competition's rates as the "latest" diet.
         diet_stmt = (
-            select(SummerLeaguePlayerSeason)  # type: ignore[call-overload]
+            select(SummerLeagueDerivedAgg)  # type: ignore[call-overload]
             .where(
-                SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                SummerLeagueDerivedAgg.player_id == player_id,  # type: ignore[arg-type]
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
             .order_by(
-                desc(SummerLeaguePlayerSeason.year),  # type: ignore[arg-type]
-                SummerLeaguePlayerSeason.venue_slug,
+                desc(SummerLeagueDerivedAgg.year),  # type: ignore[arg-type]
+                SummerLeagueDerivedAgg.venue_slug,
             )
             .limit(1)
         )
-    diet_row: Optional[SummerLeaguePlayerSeason] = (
+    diet_row: Optional[SummerLeagueDerivedAgg] = (
         await db.execute(diet_stmt)
     ).scalar_one_or_none()
 

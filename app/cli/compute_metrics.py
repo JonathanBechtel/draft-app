@@ -1,5 +1,7 @@
 """Compute derived metric snapshots for a player cohort."""
 
+# discipline: file-size publisher stamps P2 version columns only; metrics-pipeline decomposition is Phase 5
+
 from __future__ import annotations
 
 import argparse
@@ -29,7 +31,12 @@ from app.models.position_taxonomy import (
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_anthro import CombineAnthro
 from app.schemas.combine_shooting import CombineShooting, SHOOTING_DRILL_COLUMNS
-from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
+from app.schemas.metrics import (
+    METRIC_SNAPSHOT_VERSION_TAG,
+    MetricDefinition,
+    MetricSnapshot,
+    PlayerMetricValue,
+)
 from app.schemas.player_status import PlayerStatus
 from app.schemas.positions import Position
 from app.schemas.seasons import Season
@@ -661,6 +668,8 @@ class MetricRunner:
                     notes=self.notes,
                     version=version,
                     is_current=False,
+                    registry_version=METRIC_SNAPSHOT_VERSION_TAG,
+                    calculation_version=METRIC_SNAPSHOT_VERSION_TAG,
                     **self._position_scope_kwargs(),
                 )
                 self.session.add(snapshot)

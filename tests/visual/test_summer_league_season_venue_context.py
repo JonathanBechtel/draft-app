@@ -3,7 +3,7 @@
 Runs against a live server seeded with the same deterministic Competition
 Context demo dataset used by the Explorer visual suite
 (``scripts/seed_competition_context_demo.py`` /
-``app.services.summer_league.environment_fixtures.seed_competition_context_demo``)
+``app.services.sources.summer_league.environment_fixtures.seed_competition_context_demo``)
 so captures are reproducible. States covered:
 
 * season hub (``/stats/summer-league/2024``) — complete all-competitions

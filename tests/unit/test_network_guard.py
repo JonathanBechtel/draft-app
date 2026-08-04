@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.services.embedding_service import embed_text
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from app.utils.network_guard import (
     NetworkIOGuardViolation,
     guard_network_io,
@@ -246,7 +246,7 @@ def test_nba_stats_client_checks_guard_before_owned_session_call(
     engine = create_engine("sqlite://")
     session_client = MagicMock()
     monkeypatch.setattr(
-        "app.services.summer_league.nba_stats_client.cffi_requests.Session",
+        "app.services.sources.summer_league.nba_stats_client.cffi_requests.Session",
         lambda **_kwargs: session_client,
     )
     client = NBAStatsClient()

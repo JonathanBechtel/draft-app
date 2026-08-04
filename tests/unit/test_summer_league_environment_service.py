@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from app.services.summer_league.metrics import Box
+from app.services.sources.summer_league.metrics import Box
 from app.services.summer_league_environment_registry import (
     CALCULATION_VERSION,
     REGISTRY_VERSION,
@@ -498,7 +498,9 @@ def test_field_composition_draft_class_distribution() -> None:
     pool.resolved_player_ids = {1, 2, 3}
     attrs = {
         1: _PlayerAttributes(draft_year=2023, draft_round=1, draft_pick=5),
-        2: _PlayerAttributes(draft_year=2026, draft_round=1, draft_pick=2),  # not yet drafted
+        2: _PlayerAttributes(
+            draft_year=2026, draft_round=1, draft_pick=2
+        ),  # not yet drafted
         3: _PlayerAttributes(),  # no draft record at all
     }
     comp = _field_composition(pool, attrs)
@@ -820,9 +822,7 @@ def test_build_candidate_provenance_status_none_when_unmodeled() -> None:
 def test_worse_status_prefers_ranked_worse_value() -> None:
     """The worst-case status wins; ties/better candidates never regress it."""
     assert _worse_status(None, "COMPLETE", _RAW_RUN_STATUS_VALUE_RANK) == "COMPLETE"
-    assert (
-        _worse_status("COMPLETE", "PARTIAL", _RAW_RUN_STATUS_VALUE_RANK) == "PARTIAL"
-    )
+    assert _worse_status("COMPLETE", "PARTIAL", _RAW_RUN_STATUS_VALUE_RANK) == "PARTIAL"
     assert _worse_status("FAILED", "COMPLETE", _RAW_RUN_STATUS_VALUE_RANK) == "FAILED"
 
 

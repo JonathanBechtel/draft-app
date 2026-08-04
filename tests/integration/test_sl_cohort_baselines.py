@@ -1,6 +1,6 @@
 """Integration tests for the Summer League Desk cohort-baseline builder (#502).
 
-Seeds `SummerLeagueCompetition` + `SummerLeaguePlayerSeason` history plus draft
+Seeds `SummerLeagueEdition` + `SummerLeagueDerivedAgg` history plus draft
 slots on `PlayerMaster`, runs `build_baselines`, and asserts the persisted T1
 distributions and version-flip behavior end to end.
 """
@@ -15,10 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -26,16 +26,16 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
-from app.services.summer_league.cohort_baselines import build_baselines
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
+from app.services.sources.summer_league.cohort_baselines import build_baselines
 
 pytestmark = pytest.mark.asyncio
 
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, venue_slug: str, league_id: str
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -74,16 +74,16 @@ async def _seed_player(
 async def _seed_season(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     player: PlayerMaster,
     year: int,
     gmsc: float,
     minutes: float,
     gp: int,
-) -> SummerLeaguePlayerSeason:
+) -> SummerLeagueDerivedAgg:
     assert competition.id is not None
     assert player.id is not None
-    season = SummerLeaguePlayerSeason(
+    season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=year,
@@ -107,7 +107,7 @@ def _next_game_idx() -> int:
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     idx = _next_game_idx()
     assert competition.id is not None
@@ -125,7 +125,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
 ) -> SummerLeagueGame:
@@ -148,10 +148,10 @@ async def _seed_game(
 
 async def _seed_source_player(
     db: AsyncSession, *, player: PlayerMaster
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     idx = _next_game_idx()
     assert player.id is not None
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"src-{idx}",
         raw_player_name=player.display_name or "Test Player",
         normalized_name=(player.display_name or "test player").lower(),
@@ -166,10 +166,10 @@ async def _seed_source_player(
 async def _seed_game_log(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     player: PlayerMaster,
     minutes_seconds: int,
     pts: float,
@@ -553,12 +553,22 @@ async def test_build_baselines_game_grain_pools_individual_games(
 
     # Event grain still needs at least one qualifying blended-season row.
     await _seed_season(
-        db_session, competition=comp, player=player_a, year=2024, gmsc=20.0,
-        minutes=100.0, gp=5,
+        db_session,
+        competition=comp,
+        player=player_a,
+        year=2024,
+        gmsc=20.0,
+        minutes=100.0,
+        gp=5,
     )
     await _seed_season(
-        db_session, competition=comp, player=player_b, year=2024, gmsc=8.0,
-        minutes=100.0, gp=5,
+        db_session,
+        competition=comp,
+        player=player_b,
+        year=2024,
+        gmsc=8.0,
+        minutes=100.0,
+        gp=5,
     )
 
     source_a = await _seed_source_player(db_session, player=player_a)
@@ -567,22 +577,37 @@ async def test_build_baselines_game_grain_pools_individual_games(
     for pts in (10.0, 20.0, 30.0):
         game = await _seed_game(db_session, comp, home, away)
         await _seed_game_log(
-            db_session, competition=comp, game=game, team=home,
-            source_player=source_a, player=player_a,
-            minutes_seconds=25 * 60, pts=pts,
+            db_session,
+            competition=comp,
+            game=game,
+            team=home,
+            source_player=source_a,
+            player=player_a,
+            minutes_seconds=25 * 60,
+            pts=pts,
         )
 
     thin_game = await _seed_game(db_session, comp, home, away)
     await _seed_game_log(
-        db_session, competition=comp, game=thin_game, team=home,
-        source_player=source_b, player=player_b,
-        minutes_seconds=3 * 60, pts=99.0,  # under the per-game floor -- dropped
+        db_session,
+        competition=comp,
+        game=thin_game,
+        team=home,
+        source_player=source_b,
+        player=player_b,
+        minutes_seconds=3 * 60,
+        pts=99.0,  # under the per-game floor -- dropped
     )
     ok_game = await _seed_game(db_session, comp, home, away)
     await _seed_game_log(
-        db_session, competition=comp, game=ok_game, team=home,
-        source_player=source_b, player=player_b,
-        minutes_seconds=15 * 60, pts=8.0,
+        db_session,
+        competition=comp,
+        game=ok_game,
+        team=home,
+        source_player=source_b,
+        player=player_b,
+        minutes_seconds=15 * 60,
+        pts=8.0,
     )
 
     version = await build_baselines(

@@ -36,17 +36,17 @@ from app.schemas.player_affiliation import (
 )
 from app.schemas.summer_league import (
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
-from app.services.summer_league.roster_ingest import (
+from app.services.sources.summer_league.roster_ingest import (
     CompetitionKey,
     _upsert_roster_competition,
     _upsert_roster_source_player,
     _upsert_roster_team_entry,
     load_roster_snapshot,
 )
-from app.services.summer_league.roster_changes import changed_source_player_ids
-from app.services.summer_league.roster_parse import RosterEntry
+from app.services.sources.summer_league.roster_changes import changed_source_player_ids
+from app.services.sources.summer_league.roster_parse import RosterEntry
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -105,9 +105,9 @@ async def _part_count(db: AsyncSession) -> int:
 
 
 async def _sp_count(db: AsyncSession) -> int:
-    """Return total SummerLeagueSourcePlayer row count."""
+    """Return total SummerLeagueSourceRecord row count."""
     result = await db.execute(
-        select(func.count()).select_from(SummerLeagueSourcePlayer)
+        select(func.count()).select_from(SummerLeagueSourceRecord)
     )
     return int(result.scalar() or 0)
 
@@ -350,6 +350,61 @@ async def test_drop_supersedes_not_deletes(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_cut_carries_team_program_target_forward(
+    db_session: AsyncSession,
+) -> None:
+    """A superseding CUT assertion preserves the backfilled ``team_program_id``.
+
+    Regression guard for the phase-4 dual-read contract (spec §5.1 D3). The
+    supersede chain already carried ``nba_team_id`` forward; if it does not also
+    carry ``team_program_id``, the very next roster pull after an operator
+    backfill silently re-nulls the generic target row by row, and
+    ``resolve_team_target`` falls back to ``NbaTeamRef`` forever.
+
+    Asserts the CUT row resolves to the *same* target as the row it supersedes.
+    """
+    from app.schemas.organization import Organization, OrgKind, TeamProgram
+    from app.services.player_affiliation import TeamProgramRef, resolve_team_target
+
+    org = Organization(
+        org_kind=OrgKind.CLUB, name="Cut Carry Club", slug="cut-carry-club"
+    )
+    db_session.add(org)
+    await db_session.flush()
+    program = TeamProgram(
+        organization_id=org.id, name="Cut Carry Program", slug="cut-carry-program"
+    )
+    db_session.add(program)
+    await db_session.flush()
+
+    await load_roster_snapshot(
+        db_session, COMPETITION, [_entry("P1"), _entry("P2")], recorded_at=T0
+    )
+    await db_session.commit()
+
+    # Stand in for the operator backfill: resolve every current assertion to the
+    # generic org-model target.
+    for aff in (await db_session.execute(select(PlayerAffiliation))).scalars().all():
+        aff.team_program_id = program.id
+    await db_session.commit()
+
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T1)
+    await db_session.commit()
+
+    db_session.expunge_all()
+    all_affs = (await db_session.execute(select(PlayerAffiliation))).scalars().all()
+    cut = next(a for a in all_affs if a.status == AffiliationStatus.CUT)
+    prior = next(a for a in all_affs if a.id == cut.supersedes_id)
+
+    assert cut.team_program_id == program.id, (
+        "CUT assertion dropped team_program_id — the supersede chain must carry "
+        "both dual-read targets forward"
+    )
+    assert resolve_team_target(cut) == resolve_team_target(prior)
+    assert resolve_team_target(cut) == TeamProgramRef(team_program_id=program.id)
+
+
+@pytest.mark.asyncio
 async def test_history_reconstruction(db_session: AsyncSession) -> None:
     """Point-in-time roster membership is reconstructable from the assertion stream.
 
@@ -582,7 +637,7 @@ async def test_unchanged_refreshes_metadata(db_session: AsyncSession) -> None:
     - No new affiliation or participation rows after the second load.
     - participation.jersey_number == "10" after the reload.
     """
-    from app.services.summer_league.roster_parse import RosterEntry
+    from app.services.sources.summer_league.roster_parse import RosterEntry
 
     def _entry_jersey(jersey: str) -> RosterEntry:
         return RosterEntry(

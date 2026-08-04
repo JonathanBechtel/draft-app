@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from app.services.summer_league.roster_fetch import RosterFetcher
-from app.services.summer_league.roster_parse import (
+from app.services.sources.summer_league.roster_fetch import RosterFetcher
+from app.services.sources.summer_league.roster_parse import (
     RosterEntry,
     parse_roster,
     parse_team_links,
@@ -26,9 +26,7 @@ from scripts import fetch_summer_league_rosters
 # Fixture helpers
 # ---------------------------------------------------------------------------
 
-_FIXTURE_DIR = (
-    Path(__file__).parent.parent / "fixtures" / "summer_league" / "roster"
-)
+_FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "summer_league" / "roster"
 
 
 def _load_fixture(name: str) -> str:
@@ -134,10 +132,10 @@ def test_empty_roster_no_crash() -> None:
 def test_empty_roster_in_inline_html() -> None:
     """Inline __NEXT_DATA__ with empty roster array returns empty list."""
     html = (
-        '<html><body>'
+        "<html><body>"
         '<script id="__NEXT_DATA__" type="application/json">'
         '{"props":{"pageProps":{"roster":[]}}}'
-        '</script></body></html>'
+        "</script></body></html>"
     )
     entries = parse_roster(html)
     assert entries == []
@@ -146,10 +144,10 @@ def test_empty_roster_in_inline_html() -> None:
 def test_missing_roster_key_returns_empty() -> None:
     """pageProps without a roster key returns empty list (no crash)."""
     html = (
-        '<html><body>'
+        "<html><body>"
         '<script id="__NEXT_DATA__" type="application/json">'
         '{"props":{"pageProps":{}}}'
-        '</script></body></html>'
+        "</script></body></html>"
     )
     entries = parse_roster(html)
     assert entries == []
@@ -166,7 +164,7 @@ def test_snapshot_idempotent_write(tmp_path: Path) -> None:
     A second write without --force is a no-op (reuses the first snapshot).
     A second write with --force produces an identical deterministic file.
     """
-    from app.services.summer_league.raw_store import SummerLeagueRawStore
+    from app.services.sources.summer_league.raw_store import SummerLeagueRawStore
 
     store = SummerLeagueRawStore(tmp_path)
     payload = {"year": 2026, "league_id": "15", "teams": []}
@@ -182,17 +180,25 @@ def test_snapshot_idempotent_write(tmp_path: Path) -> None:
     assert r2.skipped is True
 
     # Content is unchanged
-    assert json.loads(path.read_text()) == {"league_id": "15", "teams": [], "year": 2026}
+    assert json.loads(path.read_text()) == {
+        "league_id": "15",
+        "teams": [],
+        "year": 2026,
+    }
 
     # Force write produces identical content
     r3 = store.write_json(path, payload, force=True)
     assert r3.written is True
-    assert json.loads(path.read_text()) == {"league_id": "15", "teams": [], "year": 2026}
+    assert json.loads(path.read_text()) == {
+        "league_id": "15",
+        "teams": [],
+        "year": 2026,
+    }
 
 
 def test_snapshot_write_is_stable_json(tmp_path: Path) -> None:
     """Snapshot JSON is sorted and terminated with a newline (stable diffs)."""
-    from app.services.summer_league.raw_store import SummerLeagueRawStore
+    from app.services.sources.summer_league.raw_store import SummerLeagueRawStore
 
     store = SummerLeagueRawStore(tmp_path)
     path = store.season_file(year=2026, league_id="15", name="rosters")
@@ -355,10 +361,14 @@ def test_partial_failure_error_count(tmp_path: Path) -> None:
     def fake_fetch(url: str) -> str:
         if "/team/1610612738/" in url:  # Celtics → fail
             raise RuntimeError("boom")
-        return landing_html if "/team/" not in url else (
-            "<html><script id=\"__NEXT_DATA__\">"
-            "{\"props\":{\"pageProps\":{\"roster\":[]}}}"
-            "</script></html>"
+        return (
+            landing_html
+            if "/team/" not in url
+            else (
+                '<html><script id="__NEXT_DATA__">'
+                '{"props":{"pageProps":{"roster":[]}}}'
+                "</script></html>"
+            )
         )
 
     fetcher = RosterFetcher(

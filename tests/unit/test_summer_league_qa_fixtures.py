@@ -9,7 +9,10 @@ from app.schemas.summer_league import (
     SummerLeagueRawFileStatus,
     SummerLeagueRawRunStatus,
 )
-from app.services.summer_league.audit import audit_raw_run, discover_manifest_paths
+from app.services.sources.summer_league.audit import (
+    audit_raw_run,
+    discover_manifest_paths,
+)
 
 FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "summer_league"
 

@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueShotEvent,
@@ -41,8 +41,8 @@ from app.services.summer_league_shotchart_service import (
 
 async def _make_competition(
     db: AsyncSession, *, year: int = 2024, league_id: str = "15"
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug="las_vegas",
@@ -133,20 +133,20 @@ def _shot(
     )
 
 
-# We need a SummerLeagueSourcePlayer for FK; import here to avoid confusion at top.
+# We need a SummerLeagueSourceRecord for FK; import here to avoid confusion at top.
 async def _make_source_player(
     db: AsyncSession,
     *,
     nba_stats_person_id: str,
     competition_id: int,
     canonical_player_id: int | None = None,
-) -> "SummerLeagueSourcePlayer":  # type: ignore[name-defined]
+) -> "SummerLeagueSourceRecord":  # type: ignore[name-defined]
     from app.schemas.summer_league import (
         SummerLeagueResolutionStatus,
-        SummerLeagueSourcePlayer,
+        SummerLeagueSourceRecord,
     )
 
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=nba_stats_person_id,
         raw_player_name=f"Player {nba_stats_person_id}",
         normalized_name=f"player{nba_stats_person_id}",

@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueTeamEntry,
 )
@@ -21,7 +21,7 @@ from app.services.summer_league_team_service import get_venue
 @pytest.mark.asyncio
 async def test_standings_show_franchise_logo(db_session: AsyncSession) -> None:
     """A franchise team's standings row carries its NBA CDN logo; exhibition none."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",

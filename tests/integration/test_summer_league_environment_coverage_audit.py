@@ -14,12 +14,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -42,9 +42,9 @@ def _next() -> int:
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, league_id: str, venue_slug: str
-) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry, SummerLeagueTeamEntry]:
+) -> tuple[SummerLeagueEdition, SummerLeagueTeamEntry, SummerLeagueTeamEntry]:
     """Seed one competition with two team entries."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -74,7 +74,7 @@ async def _seed_competition(
 async def _seed_final_game(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     box_complete: bool = True,
@@ -129,7 +129,7 @@ async def _seed_final_game(
 async def _seed_scheduled_game(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
 ) -> None:
@@ -151,10 +151,10 @@ async def _seed_scheduled_game(
 
 async def _seed_source_player(
     db: AsyncSession, *, name: str, canonical_player_id: int | None
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     """Seed one NBA-source player identity, resolved or not."""
     n = _next()
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"person-{n}",
         raw_player_name=name,
         normalized_name=name.lower(),
@@ -169,10 +169,10 @@ async def _seed_source_player(
 async def _seed_player_log(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
-    source: SummerLeagueSourcePlayer,
+    source: SummerLeagueSourceRecord,
     canonical_player_id: int | None,
     minutes_seconds: int | None,
 ) -> None:
@@ -198,10 +198,10 @@ async def _seed_player_log(
 async def _seed_shot(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
-    source: SummerLeagueSourcePlayer,
+    source: SummerLeagueSourceRecord,
 ) -> None:
     """Seed one shot event so a game counts as shot-covered."""
     n = _next()

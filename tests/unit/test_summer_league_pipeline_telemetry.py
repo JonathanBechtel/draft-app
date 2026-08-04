@@ -6,7 +6,7 @@ import logging
 
 import pytest
 
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
 
 
 def test_pipeline_telemetry_logs_step_and_run_fields(

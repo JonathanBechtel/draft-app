@@ -17,14 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league_leaders_service import get_leaders
 from tests.integration.conftest import make_player
 
@@ -34,7 +34,7 @@ _N = {"i": 0}
 async def _seed_player(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
     n_games: int,
@@ -50,7 +50,7 @@ async def _seed_player(
     pre-2017 game with no same-game engine box coverage.
     """
     _N["i"] += 1
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"p-{_N['i']}",
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),
@@ -127,7 +127,7 @@ async def _seed_player(
 
 
 async def _seed(db: AsyncSession) -> None:
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2025, league_id="15", venue_slug="las_vegas", display_name="2025 LV"
     )
     db.add(comp)
@@ -226,10 +226,10 @@ async def test_per_100_extrapolates_over_pace_gap(
     all minutes so the rate stays realistic; a wholly pre-2017 player carries no
     possessions and shows a blank per-100 rather than a garbage number.
     """
-    modern = SummerLeagueCompetition(
+    modern = SummerLeagueEdition(
         year=2025, league_id="15", venue_slug="las_vegas", display_name="2025 LV"
     )
-    legacy = SummerLeagueCompetition(
+    legacy = SummerLeagueEdition(
         year=2015, league_id="15", venue_slug="las_vegas", display_name="2015 LV"
     )
     db_session.add_all([modern, legacy])
@@ -296,10 +296,10 @@ async def test_per_100_extrapolates_over_pace_gap(
 
 async def _seed_two_venues(db: AsyncSession) -> None:
     """Seed one player at Las Vegas and another at Salt Lake City, same year."""
-    lv = SummerLeagueCompetition(
+    lv = SummerLeagueEdition(
         year=2025, league_id="15", venue_slug="las_vegas", display_name="2025 LV"
     )
-    slc = SummerLeagueCompetition(
+    slc = SummerLeagueEdition(
         year=2025, league_id="16", venue_slug="salt_lake_city", display_name="2025 SLC"
     )
     db.add_all([lv, slc])
@@ -397,8 +397,8 @@ async def test_leaders_route_renders_each_mode(
 
 async def _comp(
     db: AsyncSession, *, year: int, venue: str, league_id: str
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year, league_id=league_id, venue_slug=venue, display_name=f"{year} {venue}"
     )
     db.add(comp)
@@ -409,7 +409,7 @@ async def _comp(
 async def _season(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     first: str,
     last: str,
     adv_eligible: bool = True,
@@ -421,7 +421,7 @@ async def _season(
     db.add(player)
     await db.flush()
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=comp.id,
             player_id=player.id,
             year=comp.year,
@@ -507,7 +507,7 @@ async def test_advanced_all_blend_math(
     )
     for comp, minutes, per, ws, pts, fga, fgm, fg3m, fg3a, fta in pools:
         db_session.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=comp.id,
                 player_id=star.id,
                 year=comp.year,
@@ -557,7 +557,7 @@ async def _seed_young_competition(db: AsyncSession) -> None:
     Nobody meets the standard 2+ GP / 60+ MIN gate; one player clears 20
     minutes, one doesn't.
     """
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2026, league_id="16", venue_slug="salt_lake_city", display_name="2026 SLC"
     )
     db.add(comp)
@@ -661,7 +661,7 @@ async def test_leaders_route_no_data_empty_state(
     db_session: AsyncSession,
 ) -> None:
     """A venue with a competition but no played games gets the pre-tipoff copy."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2026, league_id="15", venue_slug="las_vegas", display_name="2026 LV"
     )
     db_session.add(comp)
@@ -769,7 +769,7 @@ async def test_auto_gates_relax_thin_board_to_target_rows(
     """A board with a handful of standard qualifiers still relaxes to a rung
     that reaches the target row count; explicit gates keep the thin board.
     """
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2026, league_id="13", venue_slug="california_classic", display_name="CC"
     )
     db_session.add(comp)

@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from datetime import datetime, timedelta
 
 from app.schemas.summer_league_environment import SummerLeagueEnvironmentProfile
-from app.services.summer_league.metrics import Box, game_score
+from app.services.sources.summer_league.metrics import Box, game_score
 from app.services.summer_league_environment_registry import get_metric
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
@@ -642,7 +642,9 @@ def test_parse_metric_filters_uses_registry_keys_for_competitions() -> None:
     filters = parse_metric_filters(params, _COMPETITION_FILTERABLE_KEYS)
     assert filters == [MetricFilter(col="pace_per_48", op=">=", value=90.0)]
 
-    filters_player_key = parse_metric_filters(params.copy() | {"fcol0": "pts"}, _COMPETITION_FILTERABLE_KEYS)
+    filters_player_key = parse_metric_filters(
+        params.copy() | {"fcol0": "pts"}, _COMPETITION_FILTERABLE_KEYS
+    )
     assert filters_player_key == []
 
 
@@ -707,7 +709,9 @@ def test_parse_metric_filters_valid_and_invalid_rows_compose() -> None:
     assert len(errors) == 1
 
 
-def test_parse_query_competitions_malformed_year_min_visible_year_max_preserved() -> None:
+def test_parse_query_competitions_malformed_year_min_visible_year_max_preserved() -> (
+    None
+):
     """A malformed year_min never erases a valid year_max (ticket #636)."""
     q = parse_query(
         {
@@ -843,10 +847,12 @@ def test_passes_coverage_filter_box_complete() -> None:
     from app.services.summer_league_environment_registry import metrics_for_scope
 
     complete = _build_profile_view(
-        _profile(final_games=20, box_complete_games=20), metrics_for_scope("season_all_competitions")
+        _profile(final_games=20, box_complete_games=20),
+        metrics_for_scope("season_all_competitions"),
     )
     partial = _build_profile_view(
-        _profile(final_games=20, box_complete_games=5), metrics_for_scope("season_all_competitions")
+        _profile(final_games=20, box_complete_games=5),
+        metrics_for_scope("season_all_competitions"),
     )
     assert _passes_coverage_filter(complete, ("box_complete",)) is True
     assert _passes_coverage_filter(partial, ("box_complete",)) is False
@@ -872,7 +878,9 @@ def test_passes_metric_filter_rejects_null_and_partial_values() -> None:
     assert _passes_metric_filter(complete_view, definition, f) is True
     assert (
         _passes_metric_filter(
-            complete_view, definition, MetricFilter(col="pace_per_48", op="<=", value=50.0)
+            complete_view,
+            definition,
+            MetricFilter(col="pace_per_48", op="<=", value=50.0),
         )
         is False
     )
@@ -916,7 +924,9 @@ def test_passes_metric_filter_team_count_rejects_partial_box_coverage() -> None:
     assert _passes_metric_filter(complete_view, definition, f) is True
     assert (
         _passes_metric_filter(
-            complete_view, definition, MetricFilter(col="distinct_teams", op=">=", value=9.0)
+            complete_view,
+            definition,
+            MetricFilter(col="distinct_teams", op=">=", value=9.0),
         )
         is False
     )
@@ -941,15 +951,33 @@ def test_sort_competition_views_nulls_last_both_directions() -> None:
     defs = metrics_for_scope("season_all_competitions")
     metric_by_key = {d.key: d for d in defs}
     high = _build_profile_view(
-        _profile(scope_key="season:2024", year=2024, final_games=20, box_complete_games=20, pace_per_48=100.0),
+        _profile(
+            scope_key="season:2024",
+            year=2024,
+            final_games=20,
+            box_complete_games=20,
+            pace_per_48=100.0,
+        ),
         defs,
     )
     low = _build_profile_view(
-        _profile(scope_key="season:2023", year=2023, final_games=20, box_complete_games=20, pace_per_48=80.0),
+        _profile(
+            scope_key="season:2023",
+            year=2023,
+            final_games=20,
+            box_complete_games=20,
+            pace_per_48=80.0,
+        ),
         defs,
     )
     null_cov = _build_profile_view(
-        _profile(scope_key="season:2022", year=2022, final_games=20, box_complete_games=0, pace_per_48=None),
+        _profile(
+            scope_key="season:2022",
+            year=2022,
+            final_games=20,
+            box_complete_games=0,
+            pace_per_48=None,
+        ),
         defs,
     )
     views = [null_cov, low, high]

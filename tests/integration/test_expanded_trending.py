@@ -19,8 +19,17 @@ from app.models.fields import (
     MetricSource,
     MetricStatistic,
 )
-from app.schemas.image_snapshots import PlayerImageAsset, PlayerImageSnapshot
-from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
+from app.schemas.image_snapshots import (
+    IMAGE_PIPELINE_CALCULATION_VERSION,
+    PlayerImageAsset,
+    PlayerImageSnapshot,
+)
+from app.schemas.metrics import (
+    METRIC_SNAPSHOT_VERSION_TAG,
+    MetricDefinition,
+    MetricSnapshot,
+    PlayerMetricValue,
+)
 from app.schemas.news_items import NewsItemTag
 from app.schemas.news_sources import NewsSource
 from app.schemas.player_college_stats import PlayerCollegeStats
@@ -77,6 +86,8 @@ async def _ensure_image_snapshot(db: AsyncSession) -> PlayerImageSnapshot:
         cohort=CohortType.current_draft,
         image_size="1K",
         system_prompt="test prompt",
+        registry_version="test",
+        calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
     )
     db.add(snap)
     await db.flush()
@@ -204,6 +215,8 @@ async def _seed_season_and_snapshot(
         population_size=10,
         version=1,
         is_current=True,
+        registry_version=METRIC_SNAPSHOT_VERSION_TAG,
+        calculation_version=METRIC_SNAPSHOT_VERSION_TAG,
     )
     db.add(snapshot)
     await db.flush()
@@ -238,9 +251,7 @@ async def _seed_pmv(
 class TestGetExpandedTrendingPlayers:
     """Eligibility gates and tier-split logic."""
 
-    async def test_empty_when_no_trending_data(
-        self, db_session: AsyncSession
-    ) -> None:
+    async def test_empty_when_no_trending_data(self, db_session: AsyncSession) -> None:
         """No mentions in the window -> empty featured + compact lists."""
         result = await get_expanded_trending_players(db_session)
         assert result.featured == []
@@ -347,9 +358,7 @@ class TestGetExpandedTrendingPlayers:
         self, db_session: AsyncSession, news_source: NewsSource
     ) -> None:
         """Empty school field on PlayerMaster -> demoted."""
-        await _seed_player(
-            db_session, news_source, first_name="NoSchool", school=None
-        )
+        await _seed_player(db_session, news_source, first_name="NoSchool", school=None)
         await _seed_player(
             db_session, news_source, first_name="Eligible", last_name="One"
         )
@@ -369,7 +378,11 @@ class TestGetExpandedTrendingPlayers:
         # is_stub players also need a real last_name to pass the base
         # high-quality filter inside get_trending_players.
         await _seed_player(
-            db_session, news_source, first_name="Stubbed", last_name="Stub", is_stub=True
+            db_session,
+            news_source,
+            first_name="Stubbed",
+            last_name="Stub",
+            is_stub=True,
         )
         await _seed_player(
             db_session, news_source, first_name="Eligible", last_name="One"
@@ -452,7 +465,7 @@ class TestGetExpandedTrendingPlayers:
         assert [p.rank for p in result.featured] == list(range(1, FEATURED_TARGET + 1))
         # Overflow lands in compact at their actual ranks.
         compact_ranks = sorted(p.rank for p in result.compact)
-        assert compact_ranks[: 2] == [FEATURED_TARGET + 1, FEATURED_TARGET + 2]
+        assert compact_ranks[:2] == [FEATURED_TARGET + 1, FEATURED_TARGET + 2]
 
     async def test_featured_skips_demoted_player_to_keep_target_count(
         self, db_session: AsyncSession, news_source: NewsSource

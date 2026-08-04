@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType, MetricSource
 from app.schemas.metrics import (
+    LEGACY_VERSION_SENTINEL,
     MetricDefinition,
     MetricSnapshot,
     PlayerMetricValue,
@@ -30,6 +31,8 @@ class WorkItem:
     pos_fine: Optional[str]
     notes: Optional[str]
     calculated_at: Optional[object]
+    registry_version: Optional[str]
+    calculation_version: Optional[str]
 
 
 async def find_advanced_snapshots(
@@ -44,6 +47,8 @@ async def find_advanced_snapshots(
         MetricSnapshot.position_scope_fine,
         MetricSnapshot.notes,
         MetricSnapshot.calculated_at,
+        MetricSnapshot.registry_version,
+        MetricSnapshot.calculation_version,
     ).where(MetricSnapshot.source == MetricSource.advanced_stats)  # type: ignore[arg-type]
     if cohorts:
         stmt = stmt.where(cast(Any, MetricSnapshot.cohort).in_(list(cohorts)))
@@ -60,6 +65,8 @@ async def find_advanced_snapshots(
                 pos_fine=row[5],
                 notes=row[6],
                 calculated_at=row[7],
+                registry_version=row[8],
+                calculation_version=row[9],
             )
         )
     return items
@@ -167,6 +174,13 @@ async def split_snapshot(
             population_size=len(players),
             notes=item.notes,
             calculated_at=item.calculated_at,
+            # A split re-files existing values under a new snapshot row without
+            # recomputing them, so the true registry/calculation version is
+            # whatever the original snapshot carried (sentinel or real) -- never
+            # a fresh stamp, which would misrepresent when these values were
+            # actually computed.
+            registry_version=item.registry_version or LEGACY_VERSION_SENTINEL,
+            calculation_version=item.calculation_version or LEGACY_VERSION_SENTINEL,
         )
         session.add(snap)
         await session.flush()

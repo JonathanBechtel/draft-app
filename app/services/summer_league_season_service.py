@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamEntry,
@@ -90,9 +90,9 @@ def _iso(d: Optional[date]) -> Optional[str]:
 async def get_season_years(db: AsyncSession) -> list[int]:
     """Return all Summer League competition years, newest first."""
     rows = await db.execute(
-        select(SummerLeagueCompetition.year)  # type: ignore[call-overload]
+        select(SummerLeagueEdition.year)  # type: ignore[call-overload]
         .distinct()
-        .order_by(SummerLeagueCompetition.year.desc())  # type: ignore[attr-defined]
+        .order_by(SummerLeagueEdition.year.desc())  # type: ignore[attr-defined]
     )
     return [int(y) for (y,) in rows.all()]
 
@@ -102,7 +102,7 @@ async def get_season_overview(db: AsyncSession, year: int) -> Optional[SeasonOve
 
     Returns ``None`` when no competition exists for ``year``.
     """
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     comp_rows = (
         await db.execute(
             select(
@@ -180,7 +180,7 @@ async def _fetch_leader_aggregates(
     Returns one row per qualifying player with ``gp`` and summed pts/reb/ast.
     """
     pgl = SummerLeaguePlayerGameLog
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
 
     conds: list[Any] = [
         pgl.player_id.isnot(None),  # type: ignore[union-attr]

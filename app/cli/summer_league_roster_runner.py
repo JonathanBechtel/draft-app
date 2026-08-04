@@ -66,35 +66,38 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.college_stats_service import run_college_stats_sweep
-from app.services.summer_league.bio_enrichment_targets import (
+from app.services.sources.summer_league.bio_enrichment_targets import (
     select_bio_enrichment_targets,
 )
-from app.services.summer_league.endpoints import (
+from app.services.sources.summer_league.endpoints import (
     SUPPORTED_SUMMER_LEAGUES,
     normalize_league_id,
 )
-from app.services.summer_league.event_window import (
+from app.services.sources.summer_league.event_window import (
     is_summer_league_window_open,
     resolve_roster_year,
 )
 from app.services.player_bio.bbref_parse import PlayerBio
 from app.services.player_bio.bbref_scrape import scrape_letters
 from app.services.player_bio.ingest import ingest as ingest_player_bios_csv
-from app.services.summer_league.headshots import backfill_nba_headshots
-from app.services.summer_league.player_resolution import (
+from app.services.sources.summer_league.headshots import backfill_nba_headshots
+from app.services.backbone.player_resolution import (
     backfill_nba_stats_external_ids,
     resolve_summer_league_players,
 )
-from app.services.summer_league.roster_fetch import RosterFetcher, RosterRunResult
-from app.services.summer_league.roster_ingest import (
+from app.services.sources.summer_league.roster_fetch import (
+    RosterFetcher,
+    RosterRunResult,
+)
+from app.services.sources.summer_league.roster_ingest import (
     CompetitionKey,
     load_roster_snapshot,
 )
-from app.services.summer_league.roster_changes import (
+from app.services.sources.summer_league.roster_changes import (
     canonical_player_ids,
     changed_source_player_ids,
 )
-from app.services.summer_league.roster_parse import RosterEntry
+from app.services.sources.summer_league.roster_parse import RosterEntry
 from app.utils.db_async import SessionLocal, dispose_engine, load_schema_modules
 
 # Configure logging for cron context

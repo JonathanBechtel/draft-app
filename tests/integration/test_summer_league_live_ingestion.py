@@ -1,7 +1,7 @@
 """Integration tests for targeted live raw refresh selection (ticket #531).
 
 Launch-readiness plan step 2 ("Targeted live box-score refresh"):
-``app.services.summer_league.live_ingestion`` selects active/recently-final
+``app.services.sources.summer_league.live_ingestion`` selects active/recently-final
 ``summer_league_games`` rows within an active time window and force-refreshes
 only those games' raw NBA Stats endpoints.
 
@@ -30,20 +30,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.live_ingestion import (
+from app.services.sources.summer_league.live_ingestion import (
     run_live_ingestion,
     select_active_window_games,
 )
-from app.services.summer_league.raw_ingestion import GAME_ENDPOINTS
-from app.services.summer_league.raw_store import SummerLeagueRawStore
-from app.services.summer_league.scoreboard_ingest import (
+from app.services.sources.summer_league.raw_ingestion import GAME_ENDPOINTS
+from app.services.sources.summer_league.raw_store import SummerLeagueRawStore
+from app.services.sources.summer_league.scoreboard_ingest import (
     ScoreboardGame,
     parse_scoreboard_games,
     upsert_scoreboard_games,
@@ -74,9 +74,9 @@ def _load_fixture(path: Path) -> dict[str, object]:
 
 async def _competition(
     db: AsyncSession, *, year: int, league_id: str, venue: str
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"{venue}-{_N['i']}",
@@ -89,9 +89,7 @@ async def _competition(
     return comp
 
 
-async def _seed_real_games(
-    db: AsyncSession, competition: SummerLeagueCompetition
-) -> None:
+async def _seed_real_games(db: AsyncSession, competition: SummerLeagueEdition) -> None:
     """Seed summer_league_games from the real captured 2026 live-capture fixture."""
     payload = _load_fixture(_REAL_LIVE_FIXTURE)
     games = parse_scoreboard_games(payload, target_dates=None)
@@ -177,7 +175,7 @@ async def test_select_active_window_games_selects_only_finals_missing_player_lin
         raw_team_name="Healthy Final Team",
         team_slug="healthy-final-team",
     )
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id="healthy-final-player",
         raw_player_name="Healthy Final Player",
         normalized_name="healthy final player",

@@ -8,7 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.services.summer_league.write_lock import (
+from app.services.ingest.write_lock import (
     SummerLeagueWriterLockTimeout,
     acquire_summer_league_writer_lock,
     acquire_summer_league_writer_lock_bounded,
@@ -30,7 +30,7 @@ async def _pin_schema(session: AsyncSession, test_schema: str) -> None:
     """Pin ``search_path`` on the current transaction's connection.
 
     The writer lock keys off ``hashtext(current_schema())`` (see
-    :mod:`app.services.summer_league.write_lock`), so a cross-session
+    :mod:`app.services.ingest.write_lock`), so a cross-session
     contention test only actually contends when both sessions resolve the
     *same* ``current_schema()`` on the exact connections that acquire the
     lock. A plain ``SET search_path`` + commit before ``begin()`` (see

@@ -58,7 +58,7 @@ from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.positions import Position
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamEntry,
@@ -74,7 +74,7 @@ from app.schemas.summer_league_environment import (
 )
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services.stats.capabilities import is_computable
 from app.services.stats.formulas import (
@@ -108,8 +108,8 @@ from app.services.stats.registry import (
     tov_pct_sql_text,
 )
 from app.services.stats.scaling import scale_python, scale_sql
-from app.services.summer_league.capabilities import row_provides, rows_provide
-from app.services.summer_league.metrics import game_score_from_row
+from app.services.sources.summer_league.capabilities import row_provides, rows_provide
+from app.services.sources.summer_league.metrics import game_score_from_row
 from app.services.summer_league_environment_registry import (
     PROFILE_STALE_AFTER_HOURS,
     CoverageSource,
@@ -239,7 +239,7 @@ def _appearance_rank_subq() -> Any:
     filters — so "2nd appearance" always resolves to the same season no matter what
     year/venue scope is layered on top.
     """
-    ps = SummerLeaguePlayerSeason
+    ps = SummerLeagueDerivedAgg
     distinct_years = (
         select(ps.player_id, ps.year)  # type: ignore[call-overload]
         .where(ps.is_current.is_(True))  # type: ignore[attr-defined]
@@ -1295,7 +1295,7 @@ _ADV_COMPOSITE_SORT_KEYS: frozenset[str] = frozenset(
 # Roll-up primitives
 #
 # Each function accepts a sequence of per-competition rows (objects with
-# numeric attributes — typically SummerLeaguePlayerSeason instances) and folds
+# numeric attributes — typically SummerLeagueDerivedAgg instances) and folds
 # them into one pooled value for the requested column key.  Rows whose value is
 # None are always skipped (they contribute no weight or sum).
 #
@@ -1866,7 +1866,7 @@ class ExplorerQuery:
     # Any combination of box/shot/PBP completeness requirements. Multiple
     # values compose with AND semantics; an empty tuple applies no requirement.
     coverage: tuple[str, ...] = ()
-    # Stable SummerLeagueCompetition.id — authoritative for competition detail
+    # Stable SummerLeagueEdition.id — authoritative for competition detail
     # (never a projection row id). Set together with profile_scope="competition".
     competition_id: Optional[int] = None
     # Selects which season row the detail panel shows (profile_scope="season").
@@ -2428,9 +2428,9 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
         int(y)
         for (y,) in (
             await db.execute(
-                select(SummerLeagueCompetition.year)  # type: ignore[call-overload]
+                select(SummerLeagueEdition.year)  # type: ignore[call-overload]
                 .distinct()
-                .order_by(SummerLeagueCompetition.year.desc())  # type: ignore[attr-defined]
+                .order_by(SummerLeagueEdition.year.desc())  # type: ignore[attr-defined]
             )
         ).all()
     ]
@@ -2438,9 +2438,9 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
         v
         for (v,) in (
             await db.execute(
-                select(SummerLeagueCompetition.venue_slug)  # type: ignore[call-overload]
+                select(SummerLeagueEdition.venue_slug)  # type: ignore[call-overload]
                 .distinct()
-                .order_by(SummerLeagueCompetition.venue_slug)  # type: ignore[attr-defined]
+                .order_by(SummerLeagueEdition.venue_slug)  # type: ignore[attr-defined]
             )
         ).all()
     ]
@@ -2472,8 +2472,8 @@ async def get_facets(db: AsyncSession) -> ExplorerFacets:
                     Position.id.in_(  # type: ignore[union-attr]
                         select(PlayerStatus.position_id).where(  # type: ignore[call-overload]
                             PlayerStatus.player_id.in_(  # type: ignore[attr-defined]
-                                select(SummerLeaguePlayerSeason.player_id).where(  # type: ignore[call-overload]
-                                    SummerLeaguePlayerSeason.is_current.is_(True)  # type: ignore[attr-defined]
+                                select(SummerLeagueDerivedAgg.player_id).where(  # type: ignore[call-overload]
+                                    SummerLeagueDerivedAgg.is_current.is_(True)  # type: ignore[attr-defined]
                                 )
                             )
                         )
@@ -2615,7 +2615,7 @@ def _astd_pct(r: Any) -> Optional[float]:
 
     Availability is derived from the T8 capability model (#728) -- the registry's
     ``astd_pct.requires`` (``ast_fgm``/``unast_fgm``) tested against this row's
-    provides (:func:`app.services.summer_league.capabilities.row_provides`) --
+    provides (:func:`app.services.sources.summer_league.capabilities.row_provides`) --
     rather than this function's own hand-rolled "is PBP data present" check, so a
     row from a competition that never had PBP normalized is structurally absent
     instead of merely dividing by zero.
@@ -2834,7 +2834,7 @@ def _build_player_career_stmt(q: ExplorerQuery) -> Any:
       filter param is silently ignored here; use ``grain=per_game`` to filter by
       round type.
     """
-    ps = SummerLeaguePlayerSeason
+    ps = SummerLeagueDerivedAgg
     pm = PlayerMaster
 
     conds: list[Any] = [ps.is_current.is_(True)]  # type: ignore[attr-defined]
@@ -3221,7 +3221,7 @@ async def _fetch_adv_counts(db: AsyncSession, q: ExplorerQuery) -> tuple[int, in
 async def _query_players_per_competition(
     db: AsyncSession, q: ExplorerQuery
 ) -> ExplorerResult:
-    """One row per (player, competition): season box totals from SummerLeaguePlayerSeason.
+    """One row per (player, competition): season box totals from SummerLeagueDerivedAgg.
 
     Sort and pagination happen in SQL (ORDER BY + LIMIT + OFFSET).  Count uses
     a wrapping COUNT(*) subquery on the unsliced statement.
@@ -3232,8 +3232,8 @@ async def _query_players_per_competition(
     whether those composites are valid for this pool; when False a warning banner
     is shown and the composite columns are omitted from the column list.
     """
-    ps = SummerLeaguePlayerSeason
-    comp = SummerLeagueCompetition
+    ps = SummerLeagueDerivedAgg
+    comp = SummerLeagueEdition
     pm = PlayerMaster
 
     # Detect single-competition scope: composites are only valid within one pool.
@@ -3518,7 +3518,7 @@ async def _query_players_per_game(db: AsyncSession, q: ExplorerQuery) -> Explore
     Count uses a wrapping COUNT(*) subquery.
     """
     pgl = SummerLeaguePlayerGameLog
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     pm = PlayerMaster
     game = SummerLeagueGame
     player_team = aliased(SummerLeagueTeamEntry)
@@ -3769,7 +3769,7 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     but `_paginate()` is gone — we inline the sort + slice here.
     """
     te = SummerLeagueTeamEntry
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
 
     conds: list[Any] = []
     if q.year_min is not None:
@@ -3913,7 +3913,7 @@ async def _query_teams(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
 async def _query_games(db: AsyncSession, q: ExplorerQuery) -> ExplorerResult:
     """One row per game: matchup/score in the label, total + margin sortable in SQL."""
     game = SummerLeagueGame
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     home = aliased(SummerLeagueTeamEntry)
     away = aliased(SummerLeagueTeamEntry)
 

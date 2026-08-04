@@ -8,9 +8,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.schemas.event_desk import EventDailyState
-from app.schemas.summer_league import SummerLeagueCompetition
-from app.services.summer_league.desk_tick import backbone
-from app.services.summer_league.desk_tick.shared import NO_WRITER_LOCK, TickContext
+from app.schemas.summer_league import SummerLeagueEdition
+from app.services.sources.summer_league.desk_tick import backbone
+from app.services.sources.summer_league.desk_tick.shared import (
+    NO_WRITER_LOCK,
+    TickContext,
+)
 
 
 @pytest.mark.asyncio
@@ -19,7 +22,7 @@ async def test_backbone_releases_normalization_rows_before_metrics_rebuild(
 ) -> None:
     """Normalization commits before the long rebuild, then the caller's lock returns."""
     calls: list[str] = []
-    competition = SummerLeagueCompetition(year=2026, league_id="15")
+    competition = SummerLeagueEdition(year=2026, league_id="15")
     competition.id = 7
 
     async def fake_normalize(*args: object, **kwargs: object) -> bool:

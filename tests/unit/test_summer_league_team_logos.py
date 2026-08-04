@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.services.summer_league.team_logos import franchise_logo_url
+from app.services.sources.summer_league.team_logos import franchise_logo_url
 
 
 def test_franchise_logo_url_for_franchise() -> None:

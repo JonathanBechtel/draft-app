@@ -1,4 +1,4 @@
-"""Integration tests for shot-diet columns on SummerLeaguePlayerSeason.
+"""Integration tests for shot-diet columns on SummerLeagueDerivedAgg.
 
 Exercises the metrics.rebuild() pipeline end-to-end against a real Postgres
 test schema and asserts that:
@@ -23,18 +23,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
-from app.services.summer_league.metrics import rebuild
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
+from app.services.sources.summer_league.metrics import rebuild
 
 
 # ---------------------------------------------------------------------------
@@ -52,8 +52,8 @@ async def _make_player(db: AsyncSession, *, slug: str) -> PlayerMaster:
 
 async def _make_competition(
     db: AsyncSession, *, year: int = 2024, league_id: str = "15"
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"las_vegas_{year}_{league_id}",
@@ -104,8 +104,8 @@ async def _make_source_player(
     *,
     nba_stats_person_id: str,
     canonical_player_id: int | None = None,
-) -> SummerLeagueSourcePlayer:
-    sp = SummerLeagueSourcePlayer(
+) -> SummerLeagueSourceRecord:
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=nba_stats_person_id,
         raw_player_name=f"Player {nba_stats_person_id}",
         normalized_name=f"player{nba_stats_person_id}",
@@ -242,7 +242,9 @@ def _shot_event(
 
 
 @pytest.mark.asyncio
-async def test_shot_diet_columns_populate_after_rebuild(db_session: AsyncSession) -> None:
+async def test_shot_diet_columns_populate_after_rebuild(
+    db_session: AsyncSession,
+) -> None:
     """rebuild() populates rim/mid/three/corner3 rates when shot data exists.
 
     Seeds:
@@ -285,9 +287,7 @@ async def test_shot_diet_columns_populate_after_rebuild(db_session: AsyncSession
         )
     )
     db_session.add(
-        _team_game_log(
-            competition_id=comp.id, team_entry_id=team.id, game_id=game.id
-        )
+        _team_game_log(competition_id=comp.id, team_entry_id=team.id, game_id=game.id)
     )
     db_session.add(
         _team_game_log(
@@ -323,8 +323,8 @@ async def test_shot_diet_columns_populate_after_rebuild(db_session: AsyncSession
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -375,9 +375,7 @@ async def test_shot_diet_null_when_no_shot_data(db_session: AsyncSession) -> Non
         )
     )
     db_session.add(
-        _team_game_log(
-            competition_id=comp.id, team_entry_id=team.id, game_id=game.id
-        )
+        _team_game_log(competition_id=comp.id, team_entry_id=team.id, game_id=game.id)
     )
     db_session.add(
         _team_game_log(
@@ -392,8 +390,8 @@ async def test_shot_diet_null_when_no_shot_data(db_session: AsyncSession) -> Non
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -412,7 +410,7 @@ async def test_shot_diet_per_competition_not_merged(db_session: AsyncSession) ->
 
     Comp A: 8 RA + 2 Above-Break-3 = 10 shots → rim_rate=0.8, three_rate=0.2
     Comp B: 3 RA + 7 Mid-Range = 10 shots     → rim_rate=0.3, mid_rate=0.7
-    The rebuild must NOT merge the two; each SummerLeaguePlayerSeason row gets
+    The rebuild must NOT merge the two; each SummerLeagueDerivedAgg row gets
     its own competition's shot diet.
     """
     comp_a = await _make_competition(db_session, year=2024, league_id="15")
@@ -536,12 +534,16 @@ async def test_shot_diet_per_competition_not_merged(db_session: AsyncSession) ->
     await db_session.flush()
 
     seasons = (
-        await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+        (
+            await db_session.execute(
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     assert len(seasons) == 2
     by_comp = {s.competition_id: s for s in seasons}
@@ -596,9 +598,7 @@ async def test_backcourt_shots_excluded_from_diet(db_session: AsyncSession) -> N
         )
     )
     db_session.add(
-        _team_game_log(
-            competition_id=comp.id, team_entry_id=team.id, game_id=game.id
-        )
+        _team_game_log(competition_id=comp.id, team_entry_id=team.id, game_id=game.id)
     )
     db_session.add(
         _team_game_log(
@@ -629,8 +629,8 @@ async def test_backcourt_shots_excluded_from_diet(db_session: AsyncSession) -> N
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()

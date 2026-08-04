@@ -10,23 +10,23 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeagueMetricModel,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
-from app.services.summer_league.metric_publish import (
+from app.services.sources.summer_league.metric_publish import (
     publish_archival_metric_version,
 )
-from app.services.summer_league.write_lock import _SUMMER_LEAGUE_WRITER_LOCK_KEY
+from app.services.ingest.write_lock import _SUMMER_LEAGUE_WRITER_LOCK_KEY
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from scripts.backfill_sl_daily_trend_versions import (
     _has_complete_archival_close,
@@ -68,7 +68,7 @@ async def _seed_event_day(
     Returns:
         The seeded ``(competition_id, first_player_id)`` pair.
     """
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=year,
         league_id=f"archive-seeded-{year}",
         venue_slug="las_vegas",
@@ -114,7 +114,7 @@ async def _seed_event_day(
             away_score=80,
             status=SummerLeagueGameStatus.FINAL,
         )
-        source_player = SummerLeagueSourcePlayer(
+        source_player = SummerLeagueSourceRecord(
             nba_stats_person_id=f"person-{year}-{day_index}",
             raw_player_name=f"Backfill {year} {day_index}",
             normalized_name=f"backfill-{year}-{day_index}",
@@ -172,13 +172,12 @@ async def _seed_event_day(
     return competition_id, first_player_id
 
 
-
 @pytest.mark.asyncio
 async def test_backfill_guard_rejects_ordinary_demoted_publications(
     db_session: AsyncSession,
 ) -> None:
     """Only an explicit cutoff-bound archive can make a target complete."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2021,
         league_id="ordinary-close-not-archive",
         venue_slug="las_vegas",
@@ -198,7 +197,7 @@ async def test_backfill_guard_rejects_ordinary_demoted_publications(
         published_at=datetime(2026, 8, 1, 12),
         effective_day=day,
     )
-    season = SummerLeaguePlayerSeason(
+    season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=2021,
@@ -229,7 +228,7 @@ async def test_backfill_targets_only_metric_eligible_game_statuses(
     db_session: AsyncSession,
 ) -> None:
     """Stale logs on unresolved game statuses cannot create archival closes."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2022,
         league_id="archive-status-filter",
         venue_slug="las_vegas",
@@ -245,7 +244,7 @@ async def test_backfill_targets_only_metric_eligible_game_statuses(
         raw_team_name="Status Filter Team",
         team_slug="status-filter-team",
     )
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id="status-filter-player",
         raw_player_name="Status Filter",
         normalized_name="status-filter",
@@ -301,7 +300,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
     db_session: AsyncSession,
 ) -> None:
     """Archival stamping leaves the current pointer and its values byte-for-byte intact."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2017,
         league_id="archive-cannot-demote",
         venue_slug="las_vegas",
@@ -325,7 +324,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
         published_at=datetime(2026, 8, 1, 13),
         as_of=source_watermark,
     )
-    current_season = SummerLeaguePlayerSeason(
+    current_season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=2017,
@@ -348,7 +347,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
         is_current=False,
         effective_day=date(2017, 7, 9),
     )
-    archival_season = SummerLeaguePlayerSeason(
+    archival_season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=2017,
@@ -402,7 +401,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
         SummerLeagueMetricContext, current_context_id
     )
     current_season_after = await db_session.get(
-        SummerLeaguePlayerSeason, current_season_id
+        SummerLeagueDerivedAgg, current_season_id
     )
     assert current_context_after is not None and current_season_after is not None
     after = (
@@ -433,8 +432,8 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
     archival_rows = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.version == 99
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.version == 99
                 )
             )
         )
@@ -458,7 +457,7 @@ async def test_archival_publish_cannot_demote_current_rows_or_change_reader_stat
     assert second.contexts == 0
     assert second.seasons == 0
     db_session.expire_all()
-    archival_after = await db_session.get(SummerLeaguePlayerSeason, archival_season_id)
+    archival_after = await db_session.get(SummerLeagueDerivedAgg, archival_season_id)
     assert archival_after is not None
     assert archival_after.published_at == published_at
     assert archival_after.is_current is False
@@ -470,7 +469,7 @@ async def test_archival_rows_feed_the_public_trend_endpoint(
     db_session: AsyncSession, app_client: AsyncClient
 ) -> None:
     """A published archival season is returned by the existing trend API."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2018,
         league_id="archive-trend-endpoint",
         venue_slug="las_vegas",
@@ -484,7 +483,7 @@ async def test_archival_rows_feed_the_public_trend_endpoint(
     player_id = player.id
     day = date(2018, 7, 9)
     db_session.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition_id,
             player_id=player_id,
             year=2018,

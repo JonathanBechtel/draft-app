@@ -5,7 +5,7 @@ by (year, LeagueID), and :func:`refresh_selected_games`'s call-shape against
 a recording fake NBA Stats client/store, mirroring the fake-client
 convention in ``tests/unit/test_summer_league_raw_ingestion.py``. The
 DB-selection half
-(:func:`~app.services.summer_league.live_ingestion.select_active_window_games`)
+(:func:`~app.services.sources.summer_league.live_ingestion.select_active_window_games`)
 is covered by an integration test seeded from a real captured schedule
 payload -- see ``tests/integration/test_summer_league_live_ingestion.py``.
 """
@@ -19,18 +19,18 @@ from typing import Mapping
 
 import pytest
 
-from app.services.summer_league.live_ingestion import (
+from app.services.sources.summer_league.live_ingestion import (
     LiveGameSelection,
     _default_clock,
     _naive_utc,
     group_by_year_league,
     refresh_selected_games,
 )
-from app.services.summer_league.raw_ingestion import (
+from app.services.sources.summer_league.raw_ingestion import (
     GAME_ENDPOINTS,
     REQUIRED_GAME_ENDPOINTS,
 )
-from app.services.summer_league.raw_store import SummerLeagueRawStore
+from app.services.sources.summer_league.raw_store import SummerLeagueRawStore
 
 
 def test_default_clock_returns_naive_utc_now() -> None:
@@ -178,7 +178,10 @@ def test_refresh_selected_games_splits_calls_by_year_league_group(
     ]
 
     report = refresh_selected_games(
-        selections, client=client, store=SummerLeagueRawStore(tmp_path), sleep=lambda _: None
+        selections,
+        client=client,
+        store=SummerLeagueRawStore(tmp_path),
+        sleep=lambda _: None,
     )
 
     leaguegamelog_calls = [
@@ -205,7 +208,10 @@ def test_refresh_selected_games_group_gamelog_failure_is_an_error_not_a_success(
     ]
 
     report = refresh_selected_games(
-        selections, client=client, store=SummerLeagueRawStore(tmp_path), sleep=lambda _: None
+        selections,
+        client=client,
+        store=SummerLeagueRawStore(tmp_path),
+        sleep=lambda _: None,
     )
 
     assert report.errors == 1
@@ -221,10 +227,15 @@ def test_refresh_selected_games_per_endpoint_failure_counts_as_error_not_written
 ) -> None:
     """A per-game endpoint failure is counted as an error, never as a written file."""
     client = FakeNBAStatsClient(failures={("playbyplayv2", "live-1")})
-    selections = [LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")]
+    selections = [
+        LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")
+    ]
 
     report = refresh_selected_games(
-        selections, client=client, store=SummerLeagueRawStore(tmp_path), sleep=lambda _: None
+        selections,
+        client=client,
+        store=SummerLeagueRawStore(tmp_path),
+        sleep=lambda _: None,
     )
 
     assert report.errors == 1
@@ -237,9 +248,7 @@ def test_refresh_selected_games_per_endpoint_failure_counts_as_error_not_written
     assert report.required_errors == 0
 
 
-@pytest.mark.parametrize(
-    "endpoint", sorted(REQUIRED_GAME_ENDPOINTS)
-)
+@pytest.mark.parametrize("endpoint", sorted(REQUIRED_GAME_ENDPOINTS))
 def test_refresh_selected_games_critical_box_score_failure_increments_required_errors(
     tmp_path: Path, endpoint: str
 ) -> None:
@@ -252,10 +261,15 @@ def test_refresh_selected_games_critical_box_score_failure_increments_required_e
     stamping fresh state on a stale line.
     """
     client = FakeNBAStatsClient(failures={(endpoint, "live-1")})
-    selections = [LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")]
+    selections = [
+        LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")
+    ]
 
     report = refresh_selected_games(
-        selections, client=client, store=SummerLeagueRawStore(tmp_path), sleep=lambda _: None
+        selections,
+        client=client,
+        store=SummerLeagueRawStore(tmp_path),
+        sleep=lambda _: None,
     )
 
     assert report.errors == 1
@@ -275,10 +289,15 @@ def test_refresh_selected_games_non_critical_endpoint_failure_stays_optional(
     """
     assert endpoint not in REQUIRED_GAME_ENDPOINTS
     client = FakeNBAStatsClient(failures={(endpoint, "live-1")})
-    selections = [LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")]
+    selections = [
+        LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")
+    ]
 
     report = refresh_selected_games(
-        selections, client=client, store=SummerLeagueRawStore(tmp_path), sleep=lambda _: None
+        selections,
+        client=client,
+        store=SummerLeagueRawStore(tmp_path),
+        sleep=lambda _: None,
     )
 
     assert report.errors == 1
@@ -295,10 +314,15 @@ def test_refresh_selected_games_mixed_critical_and_optional_failures_counts_only
             ("shotchartdetail", "live-1"),
         }
     )
-    selections = [LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")]
+    selections = [
+        LiveGameSelection(nba_stats_game_id="live-1", year=2026, league_id="15")
+    ]
 
     report = refresh_selected_games(
-        selections, client=client, store=SummerLeagueRawStore(tmp_path), sleep=lambda _: None
+        selections,
+        client=client,
+        store=SummerLeagueRawStore(tmp_path),
+        sleep=lambda _: None,
     )
 
     assert report.errors == 2

@@ -4,7 +4,7 @@ Summer League Desk launch-readiness plan (`docs/plans/summer-league-desk-launch-
 work-breakdown item 9 "Render snapshot persistence") calls out that the homepage must not
 rebuild an hourly read model on every visitor request: a cold Fly worker should load a
 complete, already-typed Desk view without re-running the full read-model assembly
-(`app.services.summer_league.desk_read._assemble_desk_payload`) query-by-query.
+(`app.services.sources.summer_league.desk_read._assemble_desk_payload`) query-by-query.
 
 This table is that persisted projection. One row is one fully-materialized render
 **variant** -- keyed by the registered :class:`~app.schemas.event_desk.Event`, the daily
@@ -16,7 +16,7 @@ single exact lookup by those four keys instead of reassembling anything.
 Like `summer_league_desk` (T1-T4) and `event_desk_state`, this is a **rebuildable read-model
 projection**, never a source of truth -- safe to truncate and rematerialize from canonical
 assertions plus the T1-T4 Desk projections at any time. It holds a schema-versioned,
-JSON-encoded copy of :class:`~app.services.summer_league.desk_read.DeskView` (the payload
+JSON-encoded copy of :class:`~app.services.sources.summer_league.desk_read.DeskView` (the payload
 plus its player/matchup/team view-context enrichment) so a reader never has to know the
 Python dataclass shape changed underneath an old row -- `schema_version` lets the codec
 (`app.services.event_desk.render_snapshots`) refuse to silently misinterpret a stale
@@ -91,7 +91,7 @@ class EventDeskRenderSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
         sa_column=_enum_column(EventDailyState, "event_daily_state_enum")
     )
     # Class Tracker toggle state this variant was built with -- one of
-    # `app.services.summer_league.desk_read.TRACKER_COHORTS` /
+    # `app.services.sources.summer_league.desk_read.TRACKER_COHORTS` /
     # `TRACKER_STAT_VIEWS`. Kept as plain str (not an enum FK) here: the render
     # snapshot table is framework-level and must not hard-code SL's specific
     # cohort/stat-view vocabulary the way `summer_league_desk` may.

@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from app.services.summer_league.archive import (
+from app.services.sources.summer_league.archive import (
     archive_summer_league_raw,
     build_archive_plan,
     parse_s3_archive_prefix,

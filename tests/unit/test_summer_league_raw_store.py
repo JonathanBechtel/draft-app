@@ -6,29 +6,33 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.services.summer_league.manifest import SummerLeagueRawManifest
-from app.services.summer_league.raw_store import SummerLeagueRawStore
+from app.services.sources.summer_league.manifest import SummerLeagueRawManifest
+from app.services.sources.summer_league.raw_store import SummerLeagueRawStore
 
 
 def test_raw_store_builds_deterministic_season_paths(tmp_path: Path) -> None:
     """Season-level snapshots live under year and LeagueID directories."""
     store = SummerLeagueRawStore(tmp_path)
 
-    assert store.season_file(
-        year=2024, league_id="15", name="leaguegamelog_team"
-    ) == tmp_path / "2024" / "15" / "leaguegamelog_team.json"
+    assert (
+        store.season_file(year=2024, league_id="15", name="leaguegamelog_team")
+        == tmp_path / "2024" / "15" / "leaguegamelog_team.json"
+    )
 
 
 def test_raw_store_builds_deterministic_game_paths(tmp_path: Path) -> None:
     """Game-level snapshots live under games/{game_id}/{endpoint}.json."""
     store = SummerLeagueRawStore(tmp_path)
 
-    assert store.game_file(
-        year="2024",
-        league_id="13",
-        game_id="1322400001",
-        endpoint="playbyplayv2",
-    ) == tmp_path / "2024" / "13" / "games" / "1322400001" / "playbyplayv2.json"
+    assert (
+        store.game_file(
+            year="2024",
+            league_id="13",
+            game_id="1322400001",
+            endpoint="playbyplayv2",
+        )
+        == tmp_path / "2024" / "13" / "games" / "1322400001" / "playbyplayv2.json"
+    )
 
 
 def test_write_json_writes_payload_and_parent_directories(tmp_path: Path) -> None:

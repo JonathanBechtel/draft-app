@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.summer_league.roster_ingest import classify_roster_diff
+from app.services.sources.summer_league.roster_ingest import classify_roster_diff
 
 
 class TestDiffClassification:

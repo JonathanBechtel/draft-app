@@ -7,7 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-from app.services.summer_league.metrics import set_repeatable_read_snapshot
+from app.services.sources.summer_league.metrics import set_repeatable_read_snapshot
 
 
 @pytest.mark.asyncio

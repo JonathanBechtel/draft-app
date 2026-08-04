@@ -12,7 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from app.services.summer_league.normalization import ParsedShotEvent, parse_shot_rows
+from app.services.sources.summer_league.normalization import (
+    ParsedShotEvent,
+    parse_shot_rows,
+)
 
 FIXTURE_PATH = (
     Path(__file__).parent.parent.parent.parent
@@ -209,7 +212,9 @@ def test_parse_shot_rows_skips_row_missing_game_id(tmp_path: Path) -> None:
                     {
                         "name": "Shot_Chart_Detail",
                         "headers": bad_headers,
-                        "rowSet": [_make_row()[1:]],  # drop first col (GRID_TYPE was prepended)
+                        "rowSet": [
+                            _make_row()[1:]
+                        ],  # drop first col (GRID_TYPE was prepended)
                     }
                 ]
             }

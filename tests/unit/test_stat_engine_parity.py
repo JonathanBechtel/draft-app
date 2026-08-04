@@ -24,7 +24,7 @@ from __future__ import annotations
 import pytest
 
 from app.services.stats.formulas import ts_pct_ratio, tov_pct_ratio
-from app.services.summer_league.metrics import (
+from app.services.sources.summer_league.metrics import (
     Box,
     LeagueContext,
     PlayerSeason,
@@ -166,14 +166,42 @@ def test_uper_matches_hand_computed_literal_for_a_real_pool_context() -> None:
     at the Phase 2 QA gate and reviewed once; it is the pin, not a derivation.
     """
     team = Box(
-        mp=960.0, gp=4, pts=320.0, fgm=120.0, fga=260.0, fg3m=30.0, fg3a=90.0,
-        ftm=50.0, fta=70.0, oreb=40.0, dreb=110.0, reb=150.0, ast=70.0,
-        stl=30.0, blk=20.0, tov=60.0, pf=80.0,
+        mp=960.0,
+        gp=4,
+        pts=320.0,
+        fgm=120.0,
+        fga=260.0,
+        fg3m=30.0,
+        fg3a=90.0,
+        ftm=50.0,
+        fta=70.0,
+        oreb=40.0,
+        dreb=110.0,
+        reb=150.0,
+        ast=70.0,
+        stl=30.0,
+        blk=20.0,
+        tov=60.0,
+        pf=80.0,
     )
     league = Box(
-        mp=7680.0, gp=32, pts=2560.0, fgm=960.0, fga=2080.0, fg3m=240.0,
-        fg3a=720.0, ftm=400.0, fta=560.0, oreb=320.0, dreb=880.0, reb=1200.0,
-        ast=560.0, stl=240.0, blk=160.0, tov=480.0, pf=640.0,
+        mp=7680.0,
+        gp=32,
+        pts=2560.0,
+        fgm=960.0,
+        fga=2080.0,
+        fg3m=240.0,
+        fg3a=720.0,
+        ftm=400.0,
+        fta=560.0,
+        oreb=320.0,
+        dreb=880.0,
+        reb=1200.0,
+        ast=560.0,
+        stl=240.0,
+        blk=160.0,
+        tov=480.0,
+        pf=640.0,
     )
     ctx = LeagueContext(
         competition_id=1,

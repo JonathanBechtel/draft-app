@@ -21,10 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -56,9 +56,9 @@ async def _team(
 
 async def _source_player(
     db: AsyncSession, *, player: PlayerMaster
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     _SEQ["n"] += 1
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"person-{_SEQ['n']}",
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),
@@ -82,7 +82,7 @@ async def _seed_game(
 ) -> SummerLeagueGame:
     """Seed one competition/game with a home + away team and one home log."""
     _SEQ["n"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,

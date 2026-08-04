@@ -14,10 +14,10 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerResolutionReview,
     SummerLeagueReviewStatus,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
 )
 from app.services.player_mention_service import _normalized_name_key
-from app.services.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     SummerLeagueResolutionCandidate,
     ensure_pending_resolution_review,
     record_resolution_review_decision,
@@ -39,9 +39,9 @@ async def _source_player(
     *,
     raw_name: str = "Ambiguous Source",
     person_id: str = "1642001",
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     """Create an unresolved Summer League source player for review tests."""
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=raw_name,
         normalized_name=_normalized_name_key(raw_name),
@@ -109,7 +109,7 @@ async def test_ambiguous_resolution_creates_one_pending_review(
         return search_results.pop(0)
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_search,
     )
 

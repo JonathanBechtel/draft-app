@@ -11,6 +11,20 @@ from sqlalchemy import Enum as SAEnum
 from sqlmodel import Field, SQLModel
 
 from app.models.fields import CohortType
+from app.schemas.base import DatedVersionMixin
+
+# Documented sentinel (#785): pre-migration PlayerImageSnapshot rows were built
+# before registry_version/calculation_version existed, so backfilling them with
+# any real identifier would fabricate a prompt/pipeline version they were never
+# actually built under. Never assigned by a publisher going forward. See
+# app.schemas.base.DatedVersionMixin's docstring.
+LEGACY_VERSION_SENTINEL = "unknown"
+
+# The image generation pipeline's own mechanics (S3 key layout, Gemini batch vs.
+# sync flow, PlayerImageAsset shape) -- distinct from system_prompt_version, which
+# tracks the prompt/style definition. Bump when the pipeline mechanics change even
+# if the prompt does not.
+IMAGE_PIPELINE_CALCULATION_VERSION = "v1"
 
 
 class BatchJobState(str, enum.Enum):
@@ -24,11 +38,23 @@ class BatchJobState(str, enum.Enum):
     expired = "JOB_STATE_EXPIRED"
 
 
-class PlayerImageSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
+class PlayerImageSnapshot(DatedVersionMixin, SQLModel, table=True):  # type: ignore[call-arg]
     """Audit trail for player image generation runs.
 
     Each snapshot represents a batch generation run with specific settings.
     Multiple snapshots can exist for the same cohort/style, with version tracking.
+
+    Inherits ``version`` / ``is_current`` / ``registry_version`` /
+    ``calculation_version`` / ``as_of`` from
+    :class:`app.schemas.base.DatedVersionMixin` (#785). ``registry_version`` and
+    ``calculation_version`` are additive columns on this pre-existing table;
+    pre-migration rows carry :data:`LEGACY_VERSION_SENTINEL` rather than a
+    fabricated version. Publishers (``app/services/admin_image_service.py``,
+    ``app/services/player_enrichment_service.py``,
+    ``scripts/generate_player_images.py``) stamp real values going forward:
+    ``registry_version`` mirrors ``system_prompt_version`` (the prompt/style
+    definition actually used), and ``calculation_version`` marks the generation
+    pipeline's own mechanics (S3 layout, batch flow), independent of the prompt.
     """
 
     __tablename__ = "player_image_snapshots"
@@ -57,13 +83,8 @@ class PlayerImageSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
         index=True,
         description="Identifier for the batch run, e.g., 'draft_2025_v1'",
     )
-    version: int = Field(
-        description="Monotonic version within (style, cohort, run_key)"
-    )
-    is_current: bool = Field(
-        default=False,
-        description="Marks the active snapshot for this style/cohort context",
-    )
+    # version / is_current / registry_version / calculation_version / as_of come
+    # from DatedVersionMixin (see class docstring).
 
     # Categorization
     style: str = Field(

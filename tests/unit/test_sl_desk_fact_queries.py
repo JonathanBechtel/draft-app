@@ -1,7 +1,7 @@
 """Unit tests for the Summer League Desk fact-query read layer's pure helpers (#524).
 
 Pure-logic coverage only -- no DB. The async `fetch_*` functions in
-`app.services.summer_league.desk_fact_queries` are exercised end to end via
+`app.services.sources.summer_league.desk_fact_queries` are exercised end to end via
 `tests/integration/test_sl_desk_fact_wiring.py`; this file covers the pure
 slicing helpers built on top of a caller-supplied :class:`CohortMember` list
 (:func:`cohort_peers`, :func:`club_members_clearing`,
@@ -16,7 +16,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
-from app.services.summer_league.desk_fact_queries import (
+from app.services.sources.summer_league.desk_fact_queries import (
     CohortMember,
     FieldEntry,
     club_members_clearing,

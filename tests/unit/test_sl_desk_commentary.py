@@ -4,7 +4,7 @@ Pure-logic coverage only -- no DB (persistence is covered end to end in
 ``tests/integration/test_sl_desk_commentary.py``). Covers:
 
 * Golden-string tests per template family (both curated variants, located via
-  the module's own :func:`~app.services.summer_league.desk_commentary._stable_variant_index`
+  the module's own :func:`~app.services.sources.summer_league.desk_commentary._stable_variant_index`
   rather than guessed player ids).
 * Cohort-key -> human-copy translation (:func:`humanize_cohort_key`), never
   leaking a raw ``cohort_key``.
@@ -21,7 +21,7 @@ from typing import Any, Optional
 
 import pytest
 
-from app.services.summer_league.desk_commentary import (
+from app.services.sources.summer_league.desk_commentary import (
     GRADE_PROSE_SURFACES,
     SLATE_HERO_PROSE_SURFACES,
     SLATE_PROSE_SURFACES,
@@ -32,13 +32,14 @@ from app.services.summer_league.desk_commentary import (
     render_fact,
     render_prose_for_surface,
 )
-from app.services.summer_league.desk_facts import (
+from app.services.sources.summer_league.desk_facts import (
     Fact,
     FactKind,
     FactProvenance,
     FactSubject,
 )
-from app.services.summer_league.desk_selection import Surface
+from app.services.sources.summer_league.desk_selection import Surface
+
 
 # --------------------------------------------------------------------------- #
 # Fact-building helpers
@@ -219,8 +220,12 @@ def test_streak_golden_strings() -> None:
     values = {"length": 3, "avg_pctl": 78.4, "avg_value": 19.4, "min_value": 15.0}
     pid0 = _pid_for_variant(FactKind.STREAK, 0)
     pid1 = _pid_for_variant(FactKind.STREAK, 1)
-    fact0 = _fact(kind=FactKind.STREAK, pid=pid0, cohort="status:undrafted", values=values)
-    fact1 = _fact(kind=FactKind.STREAK, pid=pid1, cohort="status:undrafted", values=values)
+    fact0 = _fact(
+        kind=FactKind.STREAK, pid=pid0, cohort="status:undrafted", values=values
+    )
+    fact1 = _fact(
+        kind=FactKind.STREAK, pid=pid1, cohort="status:undrafted", values=values
+    )
 
     assert render_fact(fact0) == (
         "3-game streak at 15+ Game Score, averaging the 78th percentile of "
@@ -237,7 +242,13 @@ def test_streak_golden_strings() -> None:
 # Golden strings -- self_delta (positive + negative)
 # --------------------------------------------------------------------------- #
 def test_self_delta_positive_golden_strings() -> None:
-    values = {"value": 20.0, "gp": 4, "delta": 5.3, "since_year": 2023, "prior_value": 14.7}
+    values = {
+        "value": 20.0,
+        "gp": 4,
+        "delta": 5.3,
+        "since_year": 2023,
+        "prior_value": 14.7,
+    }
     pid0 = _pid_for_variant(FactKind.SELF_DELTA, 0)
     pid1 = _pid_for_variant(FactKind.SELF_DELTA, 1)
     fact0 = _fact(kind=FactKind.SELF_DELTA, pid=pid0, values=values)
@@ -253,7 +264,13 @@ def test_self_delta_positive_golden_strings() -> None:
 
 
 def test_self_delta_negative_golden_strings() -> None:
-    values = {"value": 9.4, "gp": 4, "delta": -6.1, "since_year": 2023, "prior_value": 15.5}
+    values = {
+        "value": 9.4,
+        "gp": 4,
+        "delta": -6.1,
+        "since_year": 2023,
+        "prior_value": 15.5,
+    }
     pid0 = _pid_for_variant(FactKind.SELF_DELTA, 0)
     pid1 = _pid_for_variant(FactKind.SELF_DELTA, 1)
     fact0 = _fact(kind=FactKind.SELF_DELTA, pid=pid0, values=values)
@@ -280,8 +297,12 @@ def test_leads_field_golden_strings() -> None:
     }
     pid0 = _pid_for_variant(FactKind.LEADS_FIELD, 0)
     pid1 = _pid_for_variant(FactKind.LEADS_FIELD, 1)
-    fact0 = _fact(kind=FactKind.LEADS_FIELD, pid=pid0, cohort="field:rookies", values=values)
-    fact1 = _fact(kind=FactKind.LEADS_FIELD, pid=pid1, cohort="field:rookies", values=values)
+    fact0 = _fact(
+        kind=FactKind.LEADS_FIELD, pid=pid0, cohort="field:rookies", values=values
+    )
+    fact1 = _fact(
+        kind=FactKind.LEADS_FIELD, pid=pid1, cohort="field:rookies", values=values
+    )
 
     assert render_fact(fact0) == (
         "Leads all rookies tonight at 25 Game Score — Other Rookie (20) is next closest."
@@ -301,8 +322,12 @@ def test_debut_vs_bar_above_bar_golden_strings() -> None:
     values = {"value": 22.0, "bar": 11.2, "delta": 10.8}
     pid0 = _pid_for_variant(FactKind.DEBUT_VS_BAR, 0)
     pid1 = _pid_for_variant(FactKind.DEBUT_VS_BAR, 1)
-    fact0 = _fact(kind=FactKind.DEBUT_VS_BAR, pid=pid0, cohort="debut:1-4", values=values)
-    fact1 = _fact(kind=FactKind.DEBUT_VS_BAR, pid=pid1, cohort="debut:1-4", values=values)
+    fact0 = _fact(
+        kind=FactKind.DEBUT_VS_BAR, pid=pid0, cohort="debut:1-4", values=values
+    )
+    fact1 = _fact(
+        kind=FactKind.DEBUT_VS_BAR, pid=pid1, cohort="debut:1-4", values=values
+    )
 
     assert render_fact(fact0) == (
         "His 22 Game Score debut clears the top-4 cohort bar of 11.2 by 10.8."
@@ -318,8 +343,12 @@ def test_debut_vs_bar_below_bar_golden_strings() -> None:
     values = {"value": 8.0, "bar": 11.2, "delta": -3.2}
     pid0 = _pid_for_variant(FactKind.DEBUT_VS_BAR, 0)
     pid1 = _pid_for_variant(FactKind.DEBUT_VS_BAR, 1)
-    fact0 = _fact(kind=FactKind.DEBUT_VS_BAR, pid=pid0, cohort="debut:1-4", values=values)
-    fact1 = _fact(kind=FactKind.DEBUT_VS_BAR, pid=pid1, cohort="debut:1-4", values=values)
+    fact0 = _fact(
+        kind=FactKind.DEBUT_VS_BAR, pid=pid0, cohort="debut:1-4", values=values
+    )
+    fact1 = _fact(
+        kind=FactKind.DEBUT_VS_BAR, pid=pid1, cohort="debut:1-4", values=values
+    )
 
     assert render_fact(fact0) == (
         "His 8 Game Score debut sits 3.2 below the top-4 cohort bar of 11.2."
@@ -379,7 +408,9 @@ def test_first_since_without_runner_up_golden_strings() -> None:
     fact0 = _fact(kind=FactKind.FIRST_SINCE, pid=pid0, values=values)
     fact1 = _fact(kind=FactKind.FIRST_SINCE, pid=pid1, values=values)
 
-    assert render_fact(fact0) == "His 12 Game Score is the best mark since at least 2017."
+    assert (
+        render_fact(fact0) == "His 12 Game Score is the best mark since at least 2017."
+    )
     assert render_fact(fact1) == "Nothing since 2017 has matched his 12 Game Score."
 
 
@@ -412,12 +443,8 @@ def test_build_facts_payload_marks_hero_selection_only_when_included() -> None:
         cohort="debut:1-4",
         values={"value": 22.0, "bar": 11.2, "delta": 10.8},
     )
-    slate_payload = build_facts_payload(
-        [fact], prose_surfaces=SLATE_PROSE_SURFACES
-    )
-    hero_payload = build_facts_payload(
-        [fact], prose_surfaces=SLATE_HERO_PROSE_SURFACES
-    )
+    slate_payload = build_facts_payload([fact], prose_surfaces=SLATE_PROSE_SURFACES)
+    hero_payload = build_facts_payload([fact], prose_surfaces=SLATE_HERO_PROSE_SURFACES)
     assert "hero_tagline" not in slate_payload[0]["selected_for"]
     assert "tick_note" in slate_payload[0]["selected_for"]
     assert "hero_tagline" in hero_payload[0]["selected_for"]
@@ -484,7 +511,12 @@ def _matrix_facts() -> list[Fact]:
                             },
                         )
                     )
-                for pctl, gated in ((96.0, False), (4.0, False), (55.0, False), (70.0, True)):
+                for pctl, gated in (
+                    (96.0, False),
+                    (4.0, False),
+                    (55.0, False),
+                    (70.0, True),
+                ):
                     facts.append(
                         _fact(
                             kind=FactKind.PERCENTILE,
@@ -536,7 +568,9 @@ def _matrix_facts() -> list[Fact]:
                         pid=pid,
                         metric=metric,
                         cohort=(
-                            cohort if cohort and cohort.startswith("field:") else "field:rookies"
+                            cohort
+                            if cohort and cohort.startswith("field:")
+                            else "field:rookies"
                         ),
                         values={
                             "value": 25.0,

@@ -9,7 +9,7 @@ Run all venues:
     conda run -n draftguru python scripts/fetch_summer_league_rosters.py --year 2026 --league-id 15,13,16
 
 The fetch/parse/snapshot logic lives in
-``app.services.summer_league.roster_fetch`` so the shipped roster cron
+``app.services.sources.summer_league.roster_fetch`` so the shipped roster cron
 (``app/cli/summer_league_roster_runner.py``) and this CLI share one
 implementation; this module only handles argument parsing and reporting.
 
@@ -24,8 +24,14 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from app.services.summer_league.endpoints import normalize_league_id, normalize_season
-from app.services.summer_league.roster_fetch import RosterFetcher, RosterRunResult
+from app.services.sources.summer_league.endpoints import (
+    normalize_league_id,
+    normalize_season,
+)
+from app.services.sources.summer_league.roster_fetch import (
+    RosterFetcher,
+    RosterRunResult,
+)
 
 
 def parse_year(value: str) -> int:

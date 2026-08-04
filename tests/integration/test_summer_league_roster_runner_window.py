@@ -20,7 +20,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.cli import summer_league_roster_runner as runner
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 
 pytestmark = pytest.mark.asyncio
 
@@ -103,7 +103,7 @@ async def test_finished_year_roster_year_stays_dormant_with_zero_http(
     starts_on = today - timedelta(days=60)
     ends_on = today - timedelta(days=50)
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug="las-vegas-717-window",
@@ -156,7 +156,7 @@ async def test_open_window_does_reach_the_roster_fetch(
     starts_on = today - timedelta(days=2)
     ends_on = today + timedelta(days=5)
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug="las-vegas-717-open",

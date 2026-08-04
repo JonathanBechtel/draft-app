@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from app.services.summer_league.qa import (
+from app.services.sources.summer_league.qa import (
     SummerLeagueQAFinding,
     SummerLeagueQAReport,
     SummerLeagueQASnapshot,
@@ -15,19 +15,19 @@ from app.services.summer_league.qa import (
     compare_idempotency_snapshots,
 )
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league import qa as service
+from app.services.sources.summer_league import qa as service
 
 
 class _FakeScalarResult:
@@ -194,7 +194,7 @@ def test_raw_file_duplicate_validator_reports_duplicate_endpoint_scope() -> None
     }
 
 
-def _raw_run(**overrides: object) -> SummerLeagueRawRun:
+def _raw_run(**overrides: object) -> SummerLeagueIngestionRun:
     data: dict[str, object] = {
         "id": 10,
         "year": 2024,
@@ -209,13 +209,13 @@ def _raw_run(**overrides: object) -> SummerLeagueRawRun:
         "manifest_sha256": "sha",
     }
     data.update(overrides)
-    return SummerLeagueRawRun(**data)
+    return SummerLeagueIngestionRun(**data)
 
 
 def _raw_file(
     parse_status: SummerLeagueRawFileStatus,
     **overrides: object,
-) -> SummerLeagueRawFile:
+) -> SummerLeagueSourceDocument:
     data: dict[str, object] = {
         "id": 20,
         "raw_run_id": 10,
@@ -230,10 +230,10 @@ def _raw_file(
         "row_count": 1,
     }
     data.update(overrides)
-    return SummerLeagueRawFile(**data)
+    return SummerLeagueSourceDocument(**data)
 
 
-def _competition(**overrides: object) -> SummerLeagueCompetition:
+def _competition(**overrides: object) -> SummerLeagueEdition:
     data: dict[str, object] = {
         "id": 30,
         "year": 2024,
@@ -246,10 +246,10 @@ def _competition(**overrides: object) -> SummerLeagueCompetition:
         "raw_run_id": 10,
     }
     data.update(overrides)
-    return SummerLeagueCompetition(**data)
+    return SummerLeagueEdition(**data)
 
 
-def _source_player(**overrides: object) -> SummerLeagueSourcePlayer:
+def _source_player(**overrides: object) -> SummerLeagueSourceRecord:
     data: dict[str, object] = {
         "id": 40,
         "nba_stats_person_id": "1640001",
@@ -258,7 +258,7 @@ def _source_player(**overrides: object) -> SummerLeagueSourcePlayer:
         "resolution_status": SummerLeagueResolutionStatus.UNRESOLVED,
     }
     data.update(overrides)
-    return SummerLeagueSourcePlayer(**data)
+    return SummerLeagueSourceRecord(**data)
 
 
 def _player_log(**overrides: object) -> SummerLeaguePlayerGameLog:
@@ -306,10 +306,12 @@ async def test_raw_audit_integrity_reports_run_and_file_findings(
 
     async def fake_raw_run(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueRawRun:
+    ) -> SummerLeagueIngestionRun:
         return raw_run
 
-    async def fake_raw_files(_db: object, raw_run_id: int) -> list[SummerLeagueRawFile]:
+    async def fake_raw_files(
+        _db: object, raw_run_id: int
+    ) -> list[SummerLeagueSourceDocument]:
         return raw_files
 
     monkeypatch.setattr(service, "_load_raw_run", fake_raw_run)
@@ -354,10 +356,12 @@ async def test_raw_audit_integrity_treats_optional_detail_gaps_as_warnings(
 
     async def fake_raw_run(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueRawRun:
+    ) -> SummerLeagueIngestionRun:
         return raw_run
 
-    async def fake_raw_files(_db: object, raw_run_id: int) -> list[SummerLeagueRawFile]:
+    async def fake_raw_files(
+        _db: object, raw_run_id: int
+    ) -> list[SummerLeagueSourceDocument]:
         return raw_files
 
     monkeypatch.setattr(service, "_load_raw_run", fake_raw_run)
@@ -379,12 +383,12 @@ async def test_normalization_parity_reports_count_and_link_mismatches(
 
     async def fake_raw_run(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueRawRun:
+    ) -> SummerLeagueIngestionRun:
         return _raw_run(id=10, game_count=2, team_gamelog_rows=4, player_gamelog_rows=5)
 
     async def fake_competition(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueCompetition:
+    ) -> SummerLeagueEdition:
         return _competition(raw_run_id=99)
 
     async def fake_games(_db: object, competition_id: int) -> int:
@@ -444,12 +448,12 @@ async def test_player_resolution_reports_inconsistent_source_and_log_links(
 
     async def fake_competition(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueCompetition:
+    ) -> SummerLeagueEdition:
         return _competition()
 
     async def fake_rows(
         _db: object, competition_id: int
-    ) -> list[tuple[SummerLeagueSourcePlayer, SummerLeaguePlayerGameLog]]:
+    ) -> list[tuple[SummerLeagueSourceRecord, SummerLeaguePlayerGameLog]]:
         return rows
 
     monkeypatch.setattr(service, "_load_competition", fake_competition)
@@ -475,12 +479,12 @@ async def test_historical_data_quality_reports_flag_and_year_findings(
 
     async def fake_competition(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueCompetition:
+    ) -> SummerLeagueEdition:
         return _competition(pbp_available=False, shotchart_available=False)
 
     async def fake_sources(
         _db: object, competition_id: int
-    ) -> list[SummerLeagueSourcePlayer]:
+    ) -> list[SummerLeagueSourceRecord]:
         return [
             _source_player(first_seen_year=2025, last_seen_year=2024),
             _source_player(id=41, first_seen_year=2020, last_seen_year=2023),
@@ -517,7 +521,7 @@ async def test_referential_integrity_reports_game_and_log_mismatches(
 
     async def fake_competition(
         _db: object, slice_: SummerLeagueSlice
-    ) -> SummerLeagueCompetition:
+    ) -> SummerLeagueEdition:
         return _competition(raw_run_id=None)
 
     async def fake_games(_db: object, competition_id: int) -> list[SummerLeagueGame]:

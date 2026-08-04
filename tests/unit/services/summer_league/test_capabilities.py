@@ -1,6 +1,6 @@
 """Unit tests for the Summer League capability adapter (T8, #728).
 
-``app.services.summer_league.capabilities`` maps Summer League's own availability flags
+``app.services.sources.summer_league.capabilities`` maps Summer League's own availability flags
 (``pbp_available``, ``shotchart_available``, ``adv_eligible``) and fetched-row field presence
 onto the canonical ``provides`` vocabulary the shared capability model
 (``app.services.stats.capabilities``) resolves ``requires`` against. These tests pin the
@@ -12,7 +12,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from app.services.stats.capabilities import is_computable
-from app.services.summer_league.capabilities import (
+from app.services.sources.summer_league.capabilities import (
     BOX_PROVIDES,
     PBP_PROVIDES,
     TEAM_OPPONENT_BOX_PROVIDES,
@@ -50,7 +50,9 @@ def test_pool_provides_adds_adv_context_when_eligible() -> None:
     assert is_computable("bpm", provides)
 
 
-def test_pool_provides_ineligible_pool_cannot_compute_pool_recalibrated_composites() -> None:
+def test_pool_provides_ineligible_pool_cannot_compute_pool_recalibrated_composites() -> (
+    None
+):
     provides = pool_provides(
         pbp_available=True, shotchart_available=True, adv_eligible=False
     )

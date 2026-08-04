@@ -21,12 +21,12 @@ from app.schemas.event_desk import Event, EventDailyState, EventDeskState
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -39,11 +39,14 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskStoryline,
     SummerLeagueDeskTriggerType,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.event_desk.registry import sync_summer_league_event
-from app.services.summer_league.desk_read import _build_game_hero, get_desk_payload
-from app.services.summer_league.metrics import game_score_line
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.desk_read import (
+    _build_game_hero,
+    get_desk_payload,
+)
+from app.services.sources.summer_league.metrics import game_score_line
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.perf._capture import count_queries
 from tests.integration.perf.budgets import DESK_HOME_QUERY_BUDGETS
@@ -90,9 +93,9 @@ def _fake_client() -> NBAStatsClient:
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, venue_slug: str = "las_vegas"
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     idx = _next_idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug=f"{venue_slug}-{idx}",
@@ -107,7 +110,7 @@ async def _seed_competition(
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     idx = _next_idx()
     assert competition.id is not None
@@ -126,7 +129,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -185,15 +188,15 @@ async def _seed_player(
 
 async def _roster_player(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     idx = _next_idx()
     assert competition.id is not None
     assert team.id is not None
     assert player.id is not None
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"src-{idx}",
         raw_player_name=player.display_name or "Test Player",
         normalized_name=(player.display_name or "test player").lower(),
@@ -218,7 +221,7 @@ async def _roster_player(
 async def _seed_season(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     player: PlayerMaster,
     year: int,
     gmsc: float,
@@ -228,7 +231,7 @@ async def _seed_season(
     assert competition.id is not None
     assert player.id is not None
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=year,
@@ -272,10 +275,10 @@ async def _seed_baseline(
 async def _seed_game_log(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     player: PlayerMaster,
     pts: int = 20,
     reb: int = 8,
@@ -1394,7 +1397,7 @@ async def test_auto_mode_does_not_take_over_when_not_home_owner(
     await db_session.commit()
 
     monkeypatch.setattr(
-        "app.services.summer_league.desk_read.resolve_home_owner",
+        "app.services.sources.summer_league.desk_read.resolve_home_owner",
         lambda now, events: None,  # nobody wins the takeover this tick.
     )
 
@@ -1428,7 +1431,7 @@ async def test_force_on_bypasses_ownership_gate(
     await db_session.commit()
 
     monkeypatch.setattr(
-        "app.services.summer_league.desk_read.resolve_home_owner",
+        "app.services.sources.summer_league.desk_read.resolve_home_owner",
         lambda now, events: None,
     )
     monkeypatch.setattr(settings, "sl_desk_force_mode", "on")

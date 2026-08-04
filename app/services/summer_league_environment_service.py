@@ -14,7 +14,7 @@ Aggregation honors the frozen implementation contract
   counted for schedule disclosure only.
 * Every rate recomputes from **pooled numerators and denominators**; a season
   profile pools every normalized competition in its year (§2/§4). Possessions
-  reuse the opponent-adjusted :class:`app.services.summer_league.metrics.Box`
+  reuse the opponent-adjusted :class:`app.services.sources.summer_league.metrics.Box`
   possession estimate — never a competing formula (§4).
 * Each metric is independently certified ``complete`` / ``partial`` /
   ``unavailable`` from audited input coverage; a partial metric is published as
@@ -25,7 +25,7 @@ Aggregation honors the frozen implementation contract
   team-box rows with **every** metric-required field non-null
   (:func:`_box_row_usable` -- a null field silently becomes 0 in
   ``Box.add_row`` otherwise); a shot/PBP-complete game needs its
-  ``SummerLeagueRawFile.parse_status`` to be ``PARSED`` for that specific game
+  ``SummerLeagueSourceDocument.parse_status`` to be ``PARSED`` for that specific game
   (:func:`_load_game_parse_status`), and an unmapped/unknown non-backcourt shot
   zone additionally uncertifies that game's shot coverage.
 * Publication acquires the transaction-scoped Summer League writer lock
@@ -51,7 +51,7 @@ from app.schemas.players_master import PlayerMaster
 from app.schemas.player_status import PlayerStatus
 from app.schemas.positions import Position
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
@@ -73,17 +73,17 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentSeasonMembership,
 )
 from app.schemas.summer_league import (
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
 )
 from app.services.stats.percentiles import percentile as _percentile
-from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
+from app.services.sources.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
 
 # discipline: file-size formula audit keeps this legacy aggregation module reviewable.
 from app.services.stats.formulas import pace_per_48, points_per_100
-from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
+from app.services.ingest.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import (
     CALCULATION_VERSION,
     FIELD_COMPOSITION_ATTRIBUTES,
@@ -107,7 +107,7 @@ CLOSE_GAME_MARGIN = 5
 RIM_ZONE = "Restricted Area"
 BACKCOURT_ZONE = "Backcourt"
 # The full NBA SHOT_ZONE_BASIC taxonomy this pipeline understands -- mirrors
-# app.services.summer_league.metrics._ZONE_TO_BUCKET plus its excluded
+# app.services.sources.summer_league.metrics._ZONE_TO_BUCKET plus its excluded
 # Backcourt zone. A shot row whose zone is null or outside this set is
 # "unmapped": a parse/taxonomy gap, not a legitimate backcourt heave, and it
 # invalidates that game's shot certification rather than silently dropping
@@ -815,9 +815,9 @@ class _CompetitionInputs:
     # run/source references") -- the audited scrape manifest this
     # competition's normalized facts came from, if any.
     raw_run_id: Optional[int] = None
-    # Worst-case SummerLeagueRawRun.status for that manifest.
+    # Worst-case SummerLeagueIngestionRun.status for that manifest.
     raw_run_status: Optional[str] = None
-    # Worst-case SummerLeagueRawFile.parse_status per source kind ("box" /
+    # Worst-case SummerLeagueSourceDocument.parse_status per source kind ("box" /
     # "shot" / "pbp") across this competition's eligible final games.
     parse_status_by_source: dict[str, str] = field(default_factory=dict)
     # Per-game raw-file parse status: internal game id -> {"box"/"shot"/"pbp":
@@ -885,26 +885,26 @@ async def _target_competitions(
     *,
     year: Optional[int],
     competition_id: Optional[int],
-) -> list[SummerLeagueCompetition]:
+) -> list[SummerLeagueEdition]:
     """Resolve the competitions in scope for a rebuild request (set-based)."""
-    stmt = select(SummerLeagueCompetition)
+    stmt = select(SummerLeagueEdition)
     if competition_id is not None:
-        stmt = stmt.where(col(SummerLeagueCompetition.id) == competition_id)
+        stmt = stmt.where(col(SummerLeagueEdition.id) == competition_id)
     elif year is not None:
-        stmt = stmt.where(col(SummerLeagueCompetition.year) == year)
-    stmt = stmt.order_by(col(SummerLeagueCompetition.id))
+        stmt = stmt.where(col(SummerLeagueEdition.year) == year)
+    stmt = stmt.order_by(col(SummerLeagueEdition.id))
     return list((await db.execute(stmt)).scalars())
 
 
 async def _load_competition_inputs(
-    db: AsyncSession, competitions: list[SummerLeagueCompetition]
+    db: AsyncSession, competitions: list[SummerLeagueEdition]
 ) -> dict[int, _CompetitionInputs]:
     """Load every eligible-final-game fact for ``competitions`` in bulk.
 
     Issues a fixed, small number of set-based grouped queries (never one per
     competition or player) and assembles per-competition accumulators in memory,
     mirroring the offline materialization boundary in
-    :mod:`app.services.summer_league.metrics`.
+    :mod:`app.services.sources.summer_league.metrics`.
     """
     inputs: dict[int, _CompetitionInputs] = {
         int(c.id): _CompetitionInputs(  # type: ignore[arg-type]
@@ -1294,8 +1294,8 @@ def _worse_status(current: Optional[str], candidate: str, rank: dict[str, int]) 
     return current
 
 
-# SummerLeagueRawFile.endpoint -> the Competition Context source kind it
-# feeds (single source of truth mirroring app.services.summer_league.
+# SummerLeagueSourceDocument.endpoint -> the Competition Context source kind it
+# feeds (single source of truth mirroring app.services.sources.summer_league.
 # raw_ingestion.GAME_ENDPOINTS' box/shot/pbp split).
 _BOX_RAW_ENDPOINTS = (
     "boxscoretraditionalv2",
@@ -1317,7 +1317,7 @@ async def _load_raw_run_status(
     """Bulk-load each contributing competition's raw-run (source) status.
 
     One set-based query keyed by the distinct ``raw_run_id`` values already
-    captured on ``inputs`` (from ``SummerLeagueCompetition.raw_run_id``) --
+    captured on ``inputs`` (from ``SummerLeagueEdition.raw_run_id``) --
     populates the "source status" disclosure (contract: "populate ... source
     status where modeled").
     """
@@ -1328,8 +1328,8 @@ async def _load_raw_run_status(
         return
     rows = (
         await db.execute(
-            select(SummerLeagueRawRun.id, SummerLeagueRawRun.status).where(  # type: ignore[call-overload]
-                col(SummerLeagueRawRun.id).in_(raw_run_ids)
+            select(SummerLeagueIngestionRun.id, SummerLeagueIngestionRun.status).where(  # type: ignore[call-overload]
+                col(SummerLeagueIngestionRun.id).in_(raw_run_ids)
             )
         )
     ).all()
@@ -1346,7 +1346,7 @@ async def _load_game_parse_status(
 ) -> None:
     """Bulk-load per-game, then per-competition, raw-file parse status.
 
-    Joins ``SummerLeagueRawFile`` to eligible final games by
+    Joins ``SummerLeagueSourceDocument`` to eligible final games by
     ``nba_stats_game_id`` (unique) and reduces to the worst-case
     :class:`SummerLeagueRawFileStatus` per **(game, source kind)** --
     populating :attr:`_CompetitionInputs.game_parse_status`, the audited
@@ -1360,7 +1360,7 @@ async def _load_game_parse_status(
     are left absent from both dicts.
 
     A raw file's own ``raw_run_id`` is matched against the competition's
-    pinned ``SummerLeagueCompetition.raw_run_id`` (the exact scrape manifest
+    pinned ``SummerLeagueEdition.raw_run_id`` (the exact scrape manifest
     ``raw_run_ids`` provenance already traces the profile to -- see
     ``_load_raw_run_status``). Without this, a stale file left behind by an
     older/failed scrape re-run for the same NBA game id would pool into the
@@ -1370,7 +1370,7 @@ async def _load_game_parse_status(
     with no pinned ``raw_run_id`` (pre-audit legacy data) fall back to the
     unscoped, game-id-only match.
     """
-    raw_file = SummerLeagueRawFile
+    raw_file = SummerLeagueSourceDocument
     game = SummerLeagueGame
     rows = (
         await db.execute(
@@ -1490,11 +1490,11 @@ async def _load_player_attributes(
     game = SummerLeagueGame
     year_rows = (
         await db.execute(
-            select(pgl.player_id, SummerLeagueCompetition.year)  # type: ignore[call-overload]
+            select(pgl.player_id, SummerLeagueEdition.year)  # type: ignore[call-overload]
             .join(game, col(game.id) == col(pgl.game_id))
             .join(
-                SummerLeagueCompetition,
-                col(SummerLeagueCompetition.id) == col(pgl.competition_id),
+                SummerLeagueEdition,
+                col(SummerLeagueEdition.id) == col(pgl.competition_id),
             )
             .where(
                 col(game.status) == SummerLeagueGameStatus.FINAL,

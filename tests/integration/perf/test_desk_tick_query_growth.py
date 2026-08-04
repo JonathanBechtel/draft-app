@@ -35,11 +35,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -47,9 +47,9 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.event_desk.timeutils import to_eastern_date
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.perf._capture import count_queries
 from tests.integration.perf.budgets import DESK_TICK_DURATION_BUDGET_MS
@@ -98,7 +98,7 @@ async def _seed_roster_scenario(
     growth variable this test measures.
     """
     today = to_eastern_date(now)
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug=f"growth-{_idx()}",
@@ -155,7 +155,7 @@ async def _seed_roster_scenario(
         await db.flush()
         assert player.id is not None
 
-        source_player = SummerLeagueSourcePlayer(
+        source_player = SummerLeagueSourceRecord(
             nba_stats_person_id=f"growth-src-{_idx()}",
             raw_player_name=player.display_name or "",
             normalized_name=(player.display_name or "").lower(),
@@ -175,7 +175,7 @@ async def _seed_roster_scenario(
             )
         )
         db.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=comp.id,
                 player_id=player.id,
                 year=year,

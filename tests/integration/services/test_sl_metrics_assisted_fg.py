@@ -1,4 +1,4 @@
-"""Integration tests for assisted-FG columns on SummerLeaguePlayerSeason.
+"""Integration tests for assisted-FG columns on SummerLeagueDerivedAgg.
 
 Exercises metrics.rebuild() end-to-end against a real Postgres test schema and
 asserts that:
@@ -23,18 +23,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
-from app.services.summer_league.metrics import rebuild
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
+from app.services.sources.summer_league.metrics import rebuild
 from app.services.summer_league_stats_service import get_player_shotchart_context
 
 
@@ -53,8 +53,8 @@ async def _make_player(db: AsyncSession, *, slug: str) -> PlayerMaster:
 
 async def _make_competition(
     db: AsyncSession, *, year: int = 2024, league_id: str = "15"
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"las_vegas_{year}_{league_id}",
@@ -105,8 +105,8 @@ async def _make_source_player(
     *,
     nba_stats_person_id: str,
     canonical_player_id: int | None = None,
-) -> SummerLeagueSourcePlayer:
-    sp = SummerLeagueSourcePlayer(
+) -> SummerLeagueSourceRecord:
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=nba_stats_person_id,
         raw_player_name=f"Player {nba_stats_person_id}",
         normalized_name=f"player{nba_stats_person_id}",
@@ -343,8 +343,8 @@ async def test_assisted_fg_columns_populate_after_rebuild(
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == scorer.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == scorer.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -427,8 +427,8 @@ async def test_assisted_fg_counts_unresolved_assister(
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == scorer.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == scorer.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -490,8 +490,8 @@ async def test_assisted_fg_null_when_no_pbp_data(db_session: AsyncSession) -> No
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -584,8 +584,8 @@ async def test_assisted_fg_excludes_unresolved_scorer_events(
 
     season = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == scorer.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == scorer.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -666,7 +666,9 @@ async def test_shotchart_context_exposes_assisted_fg_pct(
                     player_id=player.id,
                     nba_stats_person_id=sp.nba_stats_person_id,
                     nba_stats_game_id="1522400210",
-                    nba_stats_game_event_id=ev_i + 1 + (1000 if player is player_b else 0),
+                    nba_stats_game_event_id=ev_i
+                    + 1
+                    + (1000 if player is player_b else 0),
                     shot_zone_basic="Restricted Area",
                     shot_zone_area="Center(C)",
                     shot_zone_range="Less Than 8 ft.",

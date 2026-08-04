@@ -9,15 +9,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 
@@ -26,8 +26,8 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _raw_run() -> SummerLeagueRawRun:
-    return SummerLeagueRawRun(
+def _raw_run() -> SummerLeagueIngestionRun:
+    return SummerLeagueIngestionRun(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -42,13 +42,13 @@ def _raw_run() -> SummerLeagueRawRun:
 
 async def _seed_game_context(
     db_session: AsyncSession,
-) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry, SummerLeagueGame]:
+) -> tuple[SummerLeagueEdition, SummerLeagueTeamEntry, SummerLeagueGame]:
     raw_run = _raw_run()
     db_session.add(raw_run)
     await db_session.flush()
     assert raw_run.id is not None
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -100,7 +100,7 @@ async def test_product_schema_persists_core_enums_and_nullable_links(
     """Product rows persist enums and allow unresolved player game logs."""
     competition, team, game = await _seed_game_context(db_session)
 
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id="1630001",
         raw_player_name="Test Prospect",
         normalized_name="test prospect",
@@ -161,7 +161,7 @@ async def test_product_schema_requires_unique_nba_stats_person_id(
 ) -> None:
     """NBA.com PERSON_ID is globally unique in source players."""
     db_session.add(
-        SummerLeagueSourcePlayer(
+        SummerLeagueSourceRecord(
             nba_stats_person_id="1630002",
             raw_player_name="Duplicate Person",
             normalized_name="duplicate person",
@@ -169,7 +169,7 @@ async def test_product_schema_requires_unique_nba_stats_person_id(
     )
     await db_session.flush()
     db_session.add(
-        SummerLeagueSourcePlayer(
+        SummerLeagueSourceRecord(
             nba_stats_person_id="1630002",
             raw_player_name="Duplicate Person Jr",
             normalized_name="duplicate person jr",

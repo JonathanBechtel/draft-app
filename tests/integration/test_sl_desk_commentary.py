@@ -16,29 +16,29 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
-from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueGame
+from app.schemas.summer_league import SummerLeagueEdition, SummerLeagueGame
 from app.schemas.summer_league_desk import (
     SummerLeagueDeskPlayerGrade,
     SummerLeagueDeskSlate,
 )
-from app.services.summer_league.cohort_baselines import build_baselines
-from app.services.summer_league.desk_commentary import (
+from app.services.sources.summer_league.cohort_baselines import build_baselines
+from app.services.sources.summer_league.desk_commentary import (
     persist_grade_facts,
     persist_slate_facts,
 )
-from app.services.summer_league.desk_facts import (
+from app.services.sources.summer_league.desk_facts import (
     Fact,
     FactKind,
     FactProvenance,
     FactSubject,
 )
-from app.services.summer_league.desk_grades import grade_player_event
+from app.services.sources.summer_league.desk_grades import grade_player_event
 
 pytestmark = pytest.mark.asyncio
 
 
-async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id="13",
         venue_slug="las_vegas",
@@ -73,19 +73,19 @@ async def _seed_player(
 async def _seed_season(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     player: PlayerMaster,
     year: int,
     gmsc: float,
     minutes: float,
     gp: int,
 ) -> None:
-    from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+    from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 
     assert competition.id is not None
     assert player.id is not None
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=year,

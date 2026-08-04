@@ -31,7 +31,7 @@ from app.services.event_desk.render_snapshots import (
     serialize_desk_payload,
     serialize_desk_view,
 )
-from app.services.summer_league.desk_read import DeskView
+from app.services.sources.summer_league.desk_read import DeskView
 
 
 def _freshness() -> DeskFreshness:
@@ -249,7 +249,9 @@ def _recap_view() -> DeskView:
 
 
 @pytest.mark.parametrize(
-    "make_view", [_preview_view, _live_view, _recap_view], ids=["preview", "live", "recap"]
+    "make_view",
+    [_preview_view, _live_view, _recap_view],
+    ids=["preview", "live", "recap"],
 )
 def test_desk_view_round_trips_losslessly(make_view: object) -> None:
     """Preview/Live/Recap DeskView fixtures survive encode -> decode unchanged."""
@@ -452,7 +454,9 @@ def test_serialize_desk_view_preserves_pretip_hero_line_all_none_fields() -> Non
     assert decoded.payload.hero.subject_line_2.pts is None
 
 
-def test_deserialize_hero_defaults_subject_lines_to_none_for_pre_541_snapshots() -> None:
+def test_deserialize_hero_defaults_subject_lines_to_none_for_pre_541_snapshots() -> (
+    None
+):
     """A schema_version=1 row persisted before #541 has no `subject_line*` keys.
 
     `_deserialize_hero` must decode it to `None`/`None` (the pre-#541 default)
@@ -477,7 +481,12 @@ def test_deserialize_hero_defaults_subject_lines_to_none_for_pre_541_snapshots()
             "slate": [],
             "live_board": [],
             "ledger": [],
-            "tracker": {"cohort": "full_class", "stat_view": "box", "rows": [], "truncated": False},
+            "tracker": {
+                "cohort": "full_class",
+                "stat_view": "box",
+                "rows": [],
+                "truncated": False,
+            },
             "freshness": {
                 "last_tick_at": None,
                 "next_tick_eta": None,

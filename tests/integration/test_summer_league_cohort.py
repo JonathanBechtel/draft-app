@@ -8,12 +8,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.cohort import summer_league_cohort
+from app.services.backbone.cohort import summer_league_cohort
 from tests.integration.conftest import make_player
 
 _N = {"i": 0}
@@ -21,10 +21,10 @@ _N = {"i": 0}
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, league_id: str, venue_slug: str
-) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry]:
+) -> tuple[SummerLeagueEdition, SummerLeagueTeamEntry]:
     """Seed one competition with a single team entry."""
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -58,7 +58,7 @@ async def _participate(
     canonical_player_id: int | None,
 ) -> SummerLeagueParticipation:
     """Seed one participation row, resolved or unresolved."""
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=name,
         normalized_name=name.lower(),

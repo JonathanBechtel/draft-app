@@ -44,7 +44,7 @@ from app.services.summer_league_metrics_service import (
     _ADV_BLEND_SUM_COLS,
     _career,
 )
-from app.services.summer_league.desk_read import (
+from app.services.sources.summer_league.desk_read import (
     _ADV_RATE_COMPOSITE_KEYS,
     _build_stat_columns,
 )
@@ -88,16 +88,15 @@ def test_require_rollup_class_raises_for_a_reclassified_or_undeclared_key() -> N
     with pytest.raises(LookupError, match=r"test site: 'ws82'"):
         require_rollup_class("test site", RollupClass.RECOMBINABLE, "ts_pct", "ws82")
     with pytest.raises(LookupError, match=r"'not_a_real_metric'"):
-        require_rollup_class(
-            "test site", RollupClass.RECOMBINABLE, "not_a_real_metric"
-        )
+        require_rollup_class("test site", RollupClass.RECOMBINABLE, "not_a_real_metric")
 
 
 def test_rollup_class_matches_accepts_multiple_expected_classes() -> None:
     """Any one of several expected classes is enough to match."""
-    assert rollup_class_matches(
-        "ws", RollupClass.RECOMBINABLE, RollupClass.ADDITIVE_SHARE
-    ) is True
+    assert (
+        rollup_class_matches("ws", RollupClass.RECOMBINABLE, RollupClass.ADDITIVE_SHARE)
+        is True
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -106,9 +105,7 @@ def test_rollup_class_matches_accepts_multiple_expected_classes() -> None:
 
 
 def _box(**kwargs: float) -> SimpleNamespace:
-    fields: dict[str, float] = dict(
-        pts=0, fgm=0, fga=0, fg3m=0, fg3a=0, ftm=0, fta=0
-    )
+    fields: dict[str, float] = dict(pts=0, fgm=0, fga=0, fg3m=0, fg3a=0, ftm=0, fta=0)
     fields.update(kwargs)
     return SimpleNamespace(**fields)
 
@@ -188,12 +185,32 @@ def test_game_score_line_recombination_matches_summed_game_scores() -> None:
     it holds *because* gmsc is recombinable, not despite it.
     """
     line_a = dict(
-        pts=20, fgm=8, fga=15, ftm=2, fta=3, oreb=1, dreb=4,
-        ast=3, stl=1, blk=0, tov=2, pf=2,
+        pts=20,
+        fgm=8,
+        fga=15,
+        ftm=2,
+        fta=3,
+        oreb=1,
+        dreb=4,
+        ast=3,
+        stl=1,
+        blk=0,
+        tov=2,
+        pf=2,
     )
     line_b = dict(
-        pts=14, fgm=5, fga=12, ftm=3, fta=4, oreb=2, dreb=5,
-        ast=5, stl=2, blk=1, tov=3, pf=1,
+        pts=14,
+        fgm=5,
+        fga=12,
+        ftm=3,
+        fta=4,
+        oreb=2,
+        dreb=5,
+        ast=5,
+        stl=2,
+        blk=1,
+        tov=3,
+        pf=1,
     )
     summed = {k: line_a[k] + line_b[k] for k in line_a}
     assert game_score_line(**summed) == pytest.approx(
@@ -206,17 +223,51 @@ def test_game_score_line_recombination_matches_summed_game_scores() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _season(*, minutes: float, ws: Optional[float] = None, vorp: Optional[float] = None) -> PlayerMetricSeason:
+def _season(
+    *, minutes: float, ws: Optional[float] = None, vorp: Optional[float] = None
+) -> PlayerMetricSeason:
     return PlayerMetricSeason(
-        year=2025, venue_slug="las_vegas", venue_label="Las Vegas", venue_abbr="LV",
-        gp=3, minutes=minutes, pts=0, fga=0, fg3a=0, fta=0, tov=0,
-        ts_pct=None, efg_pct=None, gmsc=None, fg3ar=None, ftr=None,
-        ast_fgm=None, unast_fgm=None, astd_pct=None,
-        usg_pct=None, ast_pct=None, tov_pct=None, orb_pct=None, drb_pct=None,
-        trb_pct=None, stl_pct=None, blk_pct=None,
-        per=None, ortg=None, drtg=None, net_rtg=None, obpm=None, dbpm=None,
-        ws=ws, ows=None, dws=None, ws40=None, ws82=None, bpm=None,
-        vorp=vorp, vorp82=None,
+        year=2025,
+        venue_slug="las_vegas",
+        venue_label="Las Vegas",
+        venue_abbr="LV",
+        gp=3,
+        minutes=minutes,
+        pts=0,
+        fga=0,
+        fg3a=0,
+        fta=0,
+        tov=0,
+        ts_pct=None,
+        efg_pct=None,
+        gmsc=None,
+        fg3ar=None,
+        ftr=None,
+        ast_fgm=None,
+        unast_fgm=None,
+        astd_pct=None,
+        usg_pct=None,
+        ast_pct=None,
+        tov_pct=None,
+        orb_pct=None,
+        drb_pct=None,
+        trb_pct=None,
+        stl_pct=None,
+        blk_pct=None,
+        per=None,
+        ortg=None,
+        drtg=None,
+        net_rtg=None,
+        obpm=None,
+        dbpm=None,
+        ws=ws,
+        ows=None,
+        dws=None,
+        ws40=None,
+        ws82=None,
+        bpm=None,
+        vorp=vorp,
+        vorp82=None,
     )
 
 
@@ -231,7 +282,10 @@ def test_career_sums_ws_then_reshares_into_ws40() -> None:
     WS is summed directly (1.0 + 2.0); WS/40 is *derived* from that sum, not
     minute-weight-averaged from each pool's own WS/40.
     """
-    seasons = [_season(minutes=100.0, ws=1.0, vorp=0.6), _season(minutes=300.0, ws=2.0, vorp=1.4)]
+    seasons = [
+        _season(minutes=100.0, ws=1.0, vorp=0.6),
+        _season(minutes=300.0, ws=2.0, vorp=1.4),
+    ]
     career = _career(seasons)
     assert career.ws == pytest.approx(3.0)
     assert career.vorp == pytest.approx(2.0)
@@ -282,11 +336,28 @@ def test_class_tracker_tov_pct_is_the_same_flagged_conflict() -> None:
 
 def _tracker_row(**kwargs: float) -> SimpleNamespace:
     fields: dict[str, object] = {
-        "gp": 3, "minutes": 90.0, "pace": None,
-        "pts": 0, "reb": 0, "ast": 0, "stl": 0, "blk": 0, "tov": 0,
-        "fgm": 0, "fga": 0, "fg3m": 0, "fg3a": 0, "ftm": 0, "fta": 0,
-        "per": None, "usg_pct": None, "ast_pct": None, "tov_pct": None,
-        "trb_pct": None, "ws82": None, "bpm": None,
+        "gp": 3,
+        "minutes": 90.0,
+        "pace": None,
+        "pts": 0,
+        "reb": 0,
+        "ast": 0,
+        "stl": 0,
+        "blk": 0,
+        "tov": 0,
+        "fgm": 0,
+        "fga": 0,
+        "fg3m": 0,
+        "fg3a": 0,
+        "ftm": 0,
+        "fta": 0,
+        "per": None,
+        "usg_pct": None,
+        "ast_pct": None,
+        "tov_pct": None,
+        "trb_pct": None,
+        "ws82": None,
+        "bpm": None,
     }
     fields.update(kwargs)
     return SimpleNamespace(**fields)

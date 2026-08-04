@@ -15,13 +15,14 @@ Explorer pushes down), :mod:`~app.services.stats.scaling` (per-36 / per-100),
 :mod:`~app.services.stats.capabilities` (``requires`` ∩ ``provides``).
 
 **Contract** (enforced by import-linter; see ``[tool.importlinter]`` in ``pyproject.toml``):
-nothing here may import ``app.services.summer_league*`` or ``app.schemas.summer_league*``. The
-engine takes neutral inputs and returns numbers; Summer League is one caller, not its shape.
+nothing here may import ``app.services.sources.summer_league*``, the ``app.services.summer_league_*``
+read-side siblings, or ``app.schemas.summer_league*``. The engine takes neutral inputs and
+returns numbers; Summer League is one caller, not its shape.
 The contract exists before the code so the engine cannot acquire a spoke dependency on its
 first day — see ``docs/plans/programmatic-code-discipline.md`` §3.1.
 
 **T2 (Phase 2, #722) populated this package** by lifting the pure engine out of
-``app.services.summer_league.metrics`` — a pure move, zero behavior change, pinned by the
+``app.services.sources.summer_league.metrics`` — a pure move, zero behavior change, pinned by the
 golden-number parity harness in ``tests/unit/test_stat_engine_parity.py`` and
 ``tests/integration/test_stat_engine_parity.py``:
 
@@ -37,11 +38,11 @@ golden-number parity harness in ``tests/unit/test_stat_engine_parity.py`` and
   :func:`compute_ortg`, :func:`compute_drtg`), and the season-basket assembler
   :func:`compute_metrics`.
 
-``app.services.summer_league.metrics`` re-exports every one of these names under their
+``app.services.sources.summer_league.metrics`` re-exports every one of these names under their
 historical names (``Box``, ``LeagueContext``, ``_d``, ...) so no caller outside the engine had
 to change for this move. Everything DB-bound — loading raw logs, the SL-native Pythagorean/BPM
 coefficient fits, and persisting the materialized projection (``compute``, ``rebuild``,
-``rebuild_staged``) — stays in ``app.services.summer_league.metrics``; the seam is *pure
+``rebuild_staged``) — stays in ``app.services.sources.summer_league.metrics``; the seam is *pure
 function vs. orchestration*, not "everything that used to be in metrics.py".
 """
 

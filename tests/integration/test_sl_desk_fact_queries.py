@@ -1,7 +1,7 @@
 """Integration tests for the shared ``first_qualifying_games`` lookup (#539).
 
 Focuses on the two new/changed async functions in
-``app.services.summer_league.desk_fact_queries``: :func:`fetch_first_qualifying_games`
+``app.services.sources.summer_league.desk_fact_queries``: :func:`fetch_first_qualifying_games`
 (the ONE batched ``player_id -> first-qualifying-game`` query the storyline
 debut trigger and the fact-path debut status both read) and
 :func:`fetch_debut_status` (rewritten to derive from that same lookup).
@@ -19,13 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.desk_fact_queries import (
+from app.services.sources.summer_league.desk_fact_queries import (
     fetch_debut_status,
     fetch_first_qualifying_games,
 )
@@ -41,8 +41,8 @@ def _next_idx() -> int:
     return _N["i"]
 
 
-async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug=f"las_vegas-{_next_idx()}",
@@ -55,7 +55,7 @@ async def _seed_competition(db: AsyncSession, *, year: int) -> SummerLeagueCompe
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     idx = _next_idx()
     assert competition.id is not None
@@ -89,7 +89,7 @@ async def _seed_player(db: AsyncSession, *, name: str) -> PlayerMaster:
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -114,10 +114,10 @@ async def _seed_game(
 
 async def _seed_source_player(
     db: AsyncSession, *, player: PlayerMaster
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     idx = _next_idx()
     assert player.id is not None
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"src-{idx}",
         raw_player_name=player.display_name or "Test Player",
         normalized_name=(player.display_name or "test player").lower(),
@@ -132,10 +132,10 @@ async def _seed_source_player(
 async def _seed_game_log(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     player: PlayerMaster,
     minutes_seconds: int,
     pts: float,
@@ -221,7 +221,9 @@ async def test_fetch_first_qualifying_games_gates_below_floor_multi_game(
     player = await _seed_player(db_session, name="Thin")
     source = await _seed_source_player(db_session, player=player)
 
-    thin_game = await _seed_game(db_session, comp, home, away, game_date=date(2026, 7, 8))
+    thin_game = await _seed_game(
+        db_session, comp, home, away, game_date=date(2026, 7, 8)
+    )
     await _seed_game_log(
         db_session,
         competition=comp,
@@ -232,7 +234,9 @@ async def test_fetch_first_qualifying_games_gates_below_floor_multi_game(
         minutes_seconds=3 * 60,  # below the 10-minute per-game floor
         pts=20.0,
     )
-    ok_game = await _seed_game(db_session, comp, home, away, game_date=date(2026, 7, 10))
+    ok_game = await _seed_game(
+        db_session, comp, home, away, game_date=date(2026, 7, 10)
+    )
     await _seed_game_log(
         db_session,
         competition=comp,
@@ -261,7 +265,9 @@ async def test_fetch_first_qualifying_games_is_one_batched_query_regardless_of_p
     for i in range(5):
         player = await _seed_player(db_session, name=f"P{i}")
         source = await _seed_source_player(db_session, player=player)
-        game = await _seed_game(db_session, comp, home, away, game_date=date(2026, 7, 10))
+        game = await _seed_game(
+            db_session, comp, home, away, game_date=date(2026, 7, 10)
+        )
         await _seed_game_log(
             db_session,
             competition=comp,

@@ -17,10 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league_season_service import (
@@ -45,10 +45,10 @@ async def _seed_competition(
     pts: int = 20,
     reb: int = 8,
     ast: int = 5,
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     """Seed one competition with ``n_games`` games and a per-game log for player."""
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -78,7 +78,7 @@ async def _seed_competition(
     await db.flush()
     assert home.id is not None and away.id is not None
 
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"p-{_N['i']}",
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),

@@ -1,5 +1,7 @@
 """Summer League raw audit and normalized product schemas."""
 
+# discipline: file-size one spoke table family per module; growth is the additive team_program_id retarget
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -98,8 +100,11 @@ class SummerLeagueReviewStatus(str, Enum):
     STUB_CREATED = "STUB_CREATED"
 
 
-class SummerLeagueRawRun(SQLModel, table=True):  # type: ignore[call-arg]
-    """One audited Summer League raw scrape manifest."""
+class SummerLeagueIngestionRun(SQLModel, table=True):  # type: ignore[call-arg]
+    """One audited Summer League raw scrape manifest.
+
+    An ingestion run / document batch in backbone terms (journey-graph §10).
+    """
 
     __tablename__ = "summer_league_raw_runs"
     __table_args__ = (
@@ -142,8 +147,11 @@ class SummerLeagueRawRun(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
-class SummerLeagueRawFile(SQLModel, table=True):  # type: ignore[call-arg]
-    """One audited Summer League raw JSON snapshot file."""
+class SummerLeagueSourceDocument(SQLModel, table=True):  # type: ignore[call-arg]
+    """One audited Summer League raw JSON snapshot file.
+
+    A source document in backbone terms (journey-graph §10).
+    """
 
     __tablename__ = "summer_league_raw_files"
     __table_args__ = (
@@ -202,8 +210,12 @@ class SummerLeagueRawFile(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
-class SummerLeagueCompetition(SQLModel, table=True):  # type: ignore[call-arg]
-    """One normalized Summer League competition for a year and NBA.com LeagueID."""
+class SummerLeagueEdition(SQLModel, table=True):  # type: ignore[call-arg]
+    """One normalized Summer League competition for a year and NBA.com LeagueID.
+
+    The recurring series is the competition; this row is one dated instance of
+    it — an edition (journey-graph §7).
+    """
 
     __tablename__ = "summer_league_competitions"
     __table_args__ = (
@@ -255,6 +267,7 @@ class SummerLeagueTeamEntry(SQLModel, table=True):  # type: ignore[call-arg]
             name="uq_summer_league_team_entries_competition_source_team",
         ),
         Index("ix_summer_league_team_entries_nba_team_id", "nba_team_id"),
+        Index("ix_summer_league_team_entries_team_program_id", "team_program_id"),
         Index(
             "ix_summer_league_team_entries_competition_team_slug",
             "competition_id",
@@ -265,6 +278,19 @@ class SummerLeagueTeamEntry(SQLModel, table=True):  # type: ignore[call-arg]
     id: Optional[int] = Field(default=None, primary_key=True)
     competition_id: int = Field(foreign_key="summer_league_competitions.id")
     nba_team_id: Optional[int] = Field(default=None, foreign_key="nba_teams.id")
+    # Generic org-model target, additive alongside nba_team_id (journey-graph
+    # §7a, §13; phase-4 spec §5.1 decision D3). No row is ever repointed or
+    # nulled -- reads resolve through
+    # app.services.player_affiliation.resolve_team_target, which prefers this
+    # column and falls back to nba_team_id.
+    #
+    # Soft reference (no DB-level FK): this table is created by the earlier
+    # b6c7d8e9f0a1 create_all() migration, which reflects the live model, so a
+    # hard FK here would forward-reference team_programs (created four
+    # migrations later in b8c9d0e1f2a3) and break upgrade-from-base. Same
+    # trade-off, same reason as participation_id on
+    # summer_league_player_game_logs (2f09df4af11c).
+    team_program_id: Optional[int] = Field(default=None)
     nba_stats_team_id: str = Field(nullable=False)
     raw_team_name: str = Field(nullable=False)
     raw_team_abbreviation: Optional[str] = Field(default=None)
@@ -351,8 +377,11 @@ class SummerLeagueGame(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
 
-class SummerLeagueSourcePlayer(SQLModel, table=True):  # type: ignore[call-arg]
-    """One NBA.com source player identity before and after canonical resolution."""
+class SummerLeagueSourceRecord(SQLModel, table=True):  # type: ignore[call-arg]
+    """One NBA.com source player identity before and after canonical resolution.
+
+    A source record in backbone terms (journey-graph §10).
+    """
 
     __tablename__ = "summer_league_source_players"
     __table_args__ = (

@@ -4,7 +4,7 @@ Two concerns live here, deliberately kept in one small module rather than split 
 a "codec" file and a "repository" file, because neither is useful without the other:
 
 * **Codec** -- pure functions that turn a
-  :class:`~app.services.summer_league.desk_read.DeskView` into JSON-safe dicts
+  :class:`~app.services.sources.summer_league.desk_read.DeskView` into JSON-safe dicts
   (`serialize_desk_view`) and back (`deserialize_desk_view`). No I/O, no `AsyncSession`.
   A schema-version mismatch on read raises :class:`UnsupportedRenderSnapshotSchemaVersion`
   rather than guessing at a shape the codec no longer understands.
@@ -41,7 +41,7 @@ from app.services.event_desk.payload import (
     DeskTrackerRow,
     DeskTrackerSection,
 )
-from app.services.summer_league.desk_read import DeskView
+from app.services.sources.summer_league.desk_read import DeskView
 
 # JSON-safe dict alias used throughout this module's codec functions -- `Any` (not a
 # recursive JSON type) deliberately, so assigning a decoded value back onto a typed

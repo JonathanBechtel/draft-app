@@ -14,7 +14,7 @@ For one deterministic, hand-built competition it asserts, for a fixed player::
 across the four independently-computed surfaces:
 
 * **engine**    -- ``compute()`` called directly (in-memory, pre-persistence).
-* **stored**    -- ``rebuild()``'s materialized ``SummerLeaguePlayerSeason`` row.
+* **stored**    -- ``rebuild()``'s materialized ``SummerLeagueDerivedAgg`` row.
 * **Explorer**  -- ``run_explorer_query()`` (the real read path the page uses),
   ``subject="players"``, ``grain="per_competition"``.
 * **leaderboard** -- ``get_leaders(mode="advanced", ...)`` (the real read path
@@ -54,15 +54,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
-from app.services.summer_league.metrics import compute, rebuild
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
+from app.services.sources.summer_league.metrics import compute, rebuild
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     run_explorer_query,
@@ -125,7 +125,7 @@ async def _players(db: AsyncSession, n: int) -> list:
         p = make_player(f"Parity{_N['i']}", f"Player{_N['i']}")
         db.add(p)
         await db.flush()
-        sp = SummerLeagueSourcePlayer(
+        sp = SummerLeagueSourceRecord(
             nba_stats_person_id=f"sp-{_N['i']}",
             raw_player_name=p.display_name or "P",
             normalized_name=(p.display_name or "p").lower(),
@@ -144,7 +144,7 @@ async def _seed_fixture(db: AsyncSession) -> tuple[int, str]:
     below), so plus-minus totals +8 over the 4 games (not asserted on here,
     but keeps the fixture's shape self-documenting for anyone extending it).
     """
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=_YEAR,
         league_id="15",
         venue_slug=_VENUE,
@@ -275,10 +275,10 @@ async def test_engine_stored_explorer_and_leaderboard_agree_on_recombinable_metr
     await db_session.commit()
     stored = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.competition_id == comp_id,
-                SummerLeaguePlayerSeason.player_id == target.id,
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.competition_id == comp_id,
+                SummerLeagueDerivedAgg.player_id == target.id,
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
         )
     ).scalar_one()
@@ -357,10 +357,10 @@ async def test_default_explorer_reads_current_snapshot_and_exposes_source_curren
     await db_session.commit()
     stored = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.competition_id == comp_id,
-                SummerLeaguePlayerSeason.player_id == target.id,
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.competition_id == comp_id,
+                SummerLeagueDerivedAgg.player_id == target.id,
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
         )
     ).scalar_one()
@@ -417,10 +417,10 @@ async def test_engine_stored_explorer_and_leaderboard_agree_on_pool_recalibrated
     await db_session.commit()
     stored = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.competition_id == comp_id,
-                SummerLeaguePlayerSeason.player_id == target.id,
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.competition_id == comp_id,
+                SummerLeagueDerivedAgg.player_id == target.id,
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
         )
     ).scalar_one()

@@ -16,11 +16,15 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType
-from app.schemas.image_snapshots import PlayerImageAsset, PlayerImageSnapshot
+from app.schemas.image_snapshots import (
+    IMAGE_PIPELINE_CALCULATION_VERSION,
+    PlayerImageAsset,
+    PlayerImageSnapshot,
+)
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.image_generation import image_generation_service
@@ -30,9 +34,9 @@ from tests.integration.conftest import make_player
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, league_id: str, venue_slug: str
-) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry]:
+) -> tuple[SummerLeagueEdition, SummerLeagueTeamEntry]:
     """Seed one Summer League competition with a single team entry."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -66,7 +70,7 @@ async def _participate(
     canonical_player_id: int,
 ) -> SummerLeagueParticipation:
     """Seed one resolved participation row tying a source player to a canonical player."""
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=name,
         normalized_name=name.lower(),
@@ -170,6 +174,8 @@ async def test_summer_league_batch_targets_only_missing_cohort_players(
         cohort=CohortType.global_scope,
         image_size="1K",
         system_prompt="test system prompt",
+        registry_version="test",
+        calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
     )
     db_session.add(existing_snapshot)
     await db_session.commit()
@@ -215,6 +221,8 @@ async def test_summer_league_batch_targets_only_missing_cohort_players(
         cohort=CohortType.global_scope,
         image_size="1K",
         system_prompt="test system prompt",
+        registry_version="test",
+        calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
     )
     db_session.add(build_snapshot)
     await db_session.commit()

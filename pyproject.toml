@@ -145,22 +145,22 @@ convention = "google"
 "app/services/share_cards/model_builders.py" = ["C901", "PLR0915"]
 "app/services/similarity_service.py" = ["PLR0913"]
 "app/services/stats/formulas.py" = ["PLR0913", "PLR0915"]
-"app/services/summer_league/audit.py" = ["PLR0913"]
-"app/services/summer_league/batch_progress.py" = ["PLR0913"]
-"app/services/summer_league/desk_fact_queries.py" = ["PLR0913"]
-"app/services/summer_league/desk_facts.py" = ["PLR0913"]
-"app/services/summer_league/desk_grades.py" = ["PLR0913"]
-"app/services/summer_league/desk_read.py" = ["C901", "PLR0913", "PLR0915"]
-"app/services/summer_league/desk_storylines.py" = ["C901", "PLR0913", "PLR0915"]
-"app/services/summer_league/environment_fixtures.py" = ["PLR0913"]
-"app/services/summer_league/live_ingestion.py" = ["PLR0913"]
-"app/services/summer_league/metrics.py" = ["C901"]
-"app/services/summer_league/normalization.py" = ["C901", "PLR0913", "PLR0915"]
-"app/services/summer_league/pipeline_state.py" = ["PLR0913"]
-"app/services/summer_league/player_resolution.py" = ["PLR0913"]
-"app/services/summer_league/roster_fetch.py" = ["C901", "PLR0913"]
-"app/services/summer_league/roster_ingest.py" = ["C901", "PLR0913", "PLR0915"]
-"app/services/summer_league/scoreboard_ingest.py" = ["C901", "PLR0913"]
+"app/services/sources/summer_league/audit.py" = ["PLR0913"]
+"app/services/ingest/batch_progress.py" = ["PLR0913"]
+"app/services/sources/summer_league/desk_fact_queries.py" = ["PLR0913"]
+"app/services/sources/summer_league/desk_facts.py" = ["PLR0913"]
+"app/services/sources/summer_league/desk_grades.py" = ["PLR0913"]
+"app/services/sources/summer_league/desk_read.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/sources/summer_league/desk_storylines.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/sources/summer_league/environment_fixtures.py" = ["PLR0913"]
+"app/services/sources/summer_league/live_ingestion.py" = ["PLR0913"]
+"app/services/sources/summer_league/metrics.py" = ["C901"]
+"app/services/sources/summer_league/normalization.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/ingest/pipeline_state.py" = ["PLR0913"]
+"app/services/backbone/player_resolution.py" = ["PLR0913"]
+"app/services/sources/summer_league/roster_fetch.py" = ["C901", "PLR0913"]
+"app/services/sources/summer_league/roster_ingest.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/sources/summer_league/scoreboard_ingest.py" = ["C901", "PLR0913"]
 "app/services/summer_league_environment_service.py" = ["C901", "PLR0915"]
 "app/services/summer_league_explorer_service.py" = ["C901", "PLR0913", "PLR0915"]
 "app/services/summer_league_games_service.py" = ["PLR0913"]
@@ -198,8 +198,8 @@ convention = "google"
 # ratcheted counts live in complexity-baseline.json and went DOWN across the
 # split (262 -> 261 repo-wide).
 "app/cli/_desk_class_runner.py" = ["PLR0913"]
-"app/services/summer_league/desk_tick/commentary.py" = ["C901", "PLR0913", "PLR0915"]
-"app/services/summer_league/desk_tick/composite.py" = ["PLR0913"]
+"app/services/sources/summer_league/desk_tick/commentary.py" = ["C901", "PLR0913", "PLR0915"]
+"app/services/sources/summer_league/desk_tick/composite.py" = ["PLR0913"]
 "scripts/top100/cbb_enrich.py" = ["PLR0913"]
 "scripts/top100/prod_cleanup_plan.py" = ["PLR0913"]
 "scripts/top100/prod_promote.py" = ["PLR0913"]
@@ -242,7 +242,7 @@ name = "app.services.stats must not import Summer League"
 type = "forbidden"
 source_modules = ["app.services.stats"]
 forbidden_modules = [
-    "app.services.summer_league",
+    "app.services.sources.summer_league",
     "app.services.summer_league_environment_registry",
     "app.services.summer_league_environment_service",
     "app.services.summer_league_explorer_service",
@@ -285,7 +285,7 @@ name = "app.services.event_desk must not import Summer League"
 type = "forbidden"
 source_modules = ["app.services.event_desk"]
 forbidden_modules = [
-    "app.services.summer_league",
+    "app.services.sources.summer_league",
     "app.services.summer_league_environment_registry",
     "app.services.summer_league_environment_service",
     "app.services.summer_league_explorer_service",
@@ -307,9 +307,9 @@ forbidden_modules = [
 # Same enumeration rationale as contract 3, and the same reflective guard covers both lists.
 ignore_imports = [
     "app.services.event_desk.registry -> app.schemas.summer_league",
-    "app.services.event_desk.registry -> app.services.summer_league.scoreboard_ingest",
-    "app.services.event_desk.render_snapshots -> app.services.summer_league.desk_read",
-    "app.services.event_desk.snapshot_materialization -> app.services.summer_league.desk_read",
+    "app.services.event_desk.registry -> app.services.sources.summer_league.scoreboard_ingest",
+    "app.services.event_desk.render_snapshots -> app.services.sources.summer_league.desk_read",
+    "app.services.event_desk.snapshot_materialization -> app.services.sources.summer_league.desk_read",
 ]
 # An entry that no longer matches a real import is an error, not a shrug: it would mean the
 # baseline is stale and quietly larger than the debt it claims to describe.

@@ -219,6 +219,9 @@ harness; the trend surface renders from retained history.
 
 ## Phase 4 — Journey-graph conversion
 
+**Status: COMPLETE 2026-08-04** (Waves A + B; Waves C + D remain deferred by decision D1, not
+started).
+
 **Why here:** the largest architecture-shaping phase, now protected by Phase 0's contracts and
 informed by a stabilized stat/ops layer.
 
@@ -226,17 +229,34 @@ informed by a stabilized stat/ops layer.
 Waves A + B (vocabulary, namespacing, mixin adoption, service shape, and the org-model migration)
 and defers canon-entity promotion to Wave C alongside spoke #2.
 
-| Item | Spec |
-|---|---|
-| Domain vocabulary — `temporal.py` first (`Watermark`, `VersionStamps`, `Scope`), then identity/spoke | vocabulary doc |
-| Light namespacing: class/module/docstring alignment, no `__tablename__` changes | alignment §5a |
-| Adopt `DatedVersionMixin` (defined in Phase 1) on the remaining versioned tables | alignment §5b |
-| **Organization → team/program model + affiliation retarget** — the single blocker for spoke #2 | alignment §3 |
-| Service reorganization into `stats/` `backbone/` `ingest/` `sources/<spoke>/` | alignment §4 |
-| Canon-entity promotion (edition / game / provenance) — best done *alongside* spoke #2 | alignment §5, Wave C |
+| Item | Spec | Status |
+|---|---|---|
+| Domain vocabulary — `temporal.py` first (`Watermark`, `VersionStamps`, `Scope`), then identity/spoke | vocabulary doc | **`temporal.py` done (#780).** identity/spoke/canon/provenance/assertions not started — Wave C |
+| Light namespacing: class/module/docstring alignment, no `__tablename__` changes | alignment §5a | **Done (#786–#788).** `SummerLeagueEdition`, `SummerLeagueSourceDocument`, `SummerLeagueSourceRecord`, `SummerLeagueIngestionRun`, `SummerLeagueDerivedAgg`; no `__tablename__` changed |
+| Adopt `DatedVersionMixin` (defined in Phase 1) on the remaining versioned tables | alignment §5b | **Done (#785).** `MetricSnapshot`, `PlayerImageSnapshot`, `SummerLeagueEnvironmentProfile`; `SummerLeagueCohortBaseline` kept as a documented exception |
+| **Organization → team/program model + affiliation retarget** — the single blocker for spoke #2 | alignment §3 | **Done (#781–#784).** See exit-criteria note below for the population/read-path caveats |
+| Service reorganization into `stats/` `backbone/` `ingest/` `sources/<spoke>/` | alignment §4 | **Done (#789).** `backbone/` shipped narrower than sketched — only `cohort.py` + `player_resolution.py`; the 11 top-level `summer_league_*.py` read services deliberately stayed put |
+| Canon-entity promotion (edition / game / provenance) — best done *alongside* spoke #2 | alignment §5, Wave C | **Not started — deferred by decision, not next-up** |
 
-**Exit:** `team_program_id` populated and affiliations retargeted; a non-NBA source could assert an
-affiliation; the backbone doc's code-location table has no stale rows.
+**Exit — assessed honestly against the two caveats below, not glossed:**
+- ~~`team_program_id` populated~~ — **capability shipped, population did not happen.** The column,
+  index, backfill script, and dual-read helper (`resolve_team_target`) all ship and work, proven
+  by an integration test writing a FEDERATION-owned team_program affiliation with `nba_team_id`
+  NULL. But `player_affiliations.team_program_id` backfilled **zero rows on dev** — every
+  affiliation row's `nba_team_id` is also NULL, because Summer League roster ingest never wrote
+  it, so there is nothing to backfill *from* yet. `summer_league_team_entries` fared better:
+  519/622 dev rows backfilled from `nba_stats_team_id`.
+- **Affiliations retargeted — capability yes, live reads no.** A non-NBA source *could* assert an
+  affiliation against `team_program_id` today; nothing has yet, and no production read path
+  (`summer_league_team_service.py`, `summer_league_franchise_service.py`) calls the dual-read
+  helper — both still read `nba_team_id` directly. Infrastructure is in place; rendering is
+  unchanged by construction.
+- **The backbone doc's code-location table has no stale rows** — verified against HEAD as part of
+  this phase's docs pass (#790); see `global-player-journey-graph.md`.
+
+Both caveats are pre-existing, intentional, and tracked in `global-player-journey-graph.md` §4's
+2026-08-03 status update and `summer-league-journey-graph-alignment.md` §3 — not new gaps
+introduced by closing this phase.
 
 ---
 

@@ -21,14 +21,14 @@ from sqlalchemy.orm import aliased
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeaguePlayByPlayEvent,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.services.summer_league.metrics import (
+from app.services.sources.summer_league.metrics import (
     Box,
     game_advanced_line,
     game_score_from_row,
@@ -290,7 +290,7 @@ async def search_games(
     home = aliased(SummerLeagueTeamEntry)
     away = aliased(SummerLeagueTeamEntry)
     game = SummerLeagueGame
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
 
     filters: list[Any] = []
     if year is not None:
@@ -379,14 +379,14 @@ async def search_games(
 async def get_games_facets(db: AsyncSession) -> GamesFacets:
     """Return distinct years, venues, and teams for the index filter controls."""
     year_rows = await db.execute(
-        select(SummerLeagueCompetition.year)  # type: ignore[call-overload, misc]
+        select(SummerLeagueEdition.year)  # type: ignore[call-overload, misc]
         .distinct()
-        .order_by(desc(SummerLeagueCompetition.year))  # type: ignore[arg-type]
+        .order_by(desc(SummerLeagueEdition.year))  # type: ignore[arg-type]
     )
     years = [int(y) for (y,) in year_rows.all()]
 
     venue_rows = await db.execute(
-        select(SummerLeagueCompetition.venue_slug).distinct()  # type: ignore[call-overload]
+        select(SummerLeagueEdition.venue_slug).distinct()  # type: ignore[call-overload]
     )
     venue_slugs = [v for (v,) in venue_rows.all() if v]
     venues = [
@@ -518,7 +518,7 @@ async def get_game_box_score(db: AsyncSession, game_id: int) -> Optional[GameBox
     home = aliased(SummerLeagueTeamEntry)
     away = aliased(SummerLeagueTeamEntry)
     game = SummerLeagueGame
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
 
     header_stmt = (
         select(
@@ -732,7 +732,7 @@ async def get_player_game_logs(
     opponent = aliased(SummerLeagueTeamEntry)
     pgl = SummerLeaguePlayerGameLog
     game = SummerLeagueGame
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
 
     stmt = (
         select(

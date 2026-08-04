@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.normalization import (
     parse_minutes_to_seconds,
     parse_player_box_rows,
     parse_player_gamelog,

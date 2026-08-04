@@ -7,8 +7,8 @@ from typing import Any
 
 import pytest
 
-from app.services.summer_league import metrics_input
-from app.services.summer_league.metrics_input import (
+from app.services.sources.summer_league import metrics_input
+from app.services.sources.summer_league.metrics_input import (
     calculate_metrics_input_watermark,
 )
 

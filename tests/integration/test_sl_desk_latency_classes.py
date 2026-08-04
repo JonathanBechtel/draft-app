@@ -48,20 +48,20 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.schemas.event_desk import EventDailyState, EventDeskState
 from app.schemas.summer_league import SummerLeagueGame, SummerLeagueGameStatus
 from app.schemas.summer_league_pipeline import SummerLeaguePipelineJob
-from app.services.summer_league.desk_tick.backbone import run_backbone_tick
-from app.services.summer_league.desk_tick.composite import run_desk_tick
-from app.services.summer_league.desk_tick.fast import run_fast_tick
-from app.services.summer_league.desk_tick.projection import run_projection_tick
+from app.services.sources.summer_league.desk_tick.backbone import run_backbone_tick
+from app.services.sources.summer_league.desk_tick.composite import run_desk_tick
+from app.services.sources.summer_league.desk_tick.fast import run_fast_tick
+from app.services.sources.summer_league.desk_tick.projection import run_projection_tick
 from app.cli.sl_desk_fast_tick import configure_fast_session_timeouts
-from app.services.summer_league.desk_tick.shared import (
+from app.services.sources.summer_league.desk_tick.shared import (
     NO_WRITER_LOCK,
     DeskLatencyClass,
     TickContext,
     WriterLockPolicy,
 )
-from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
-from app.services.summer_league.write_lock import SummerLeagueWriterLockTimeout
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
+from app.services.ingest.write_lock import SummerLeagueWriterLockTimeout
 from tests.integration._desk_replay import (
     CAPTURE_REFERENCE_NOW,
     ReplaySession,
@@ -219,9 +219,7 @@ async def test_fast_class_fails_fast_on_backbone_game_row_locks(
     await _seed_live_window(db_session)
     await _pin_schema(db_session, test_schema)
     anchor = (
-        await db_session.execute(
-            select(SummerLeagueGame).order_by(SummerLeagueGame.id)
-        )
+        await db_session.execute(select(SummerLeagueGame).order_by(SummerLeagueGame.id))
     ).scalar_one()
     # Reuse a real game ID from the captured schedule so the row-lock replay
     # exercises an actual ON CONFLICT update rather than an insert-only path.

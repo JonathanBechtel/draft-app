@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.summer_league_trends import TrendPoint
-from app.services.summer_league.metric_trends import get_daily_trend
+from app.services.sources.summer_league.metric_trends import get_daily_trend
 from app.utils.db_async import get_session
 
 router = APIRouter(tags=["summer-league"])

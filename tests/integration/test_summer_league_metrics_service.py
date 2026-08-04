@@ -19,13 +19,13 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.summer_league_metrics_service import get_player_metric_seasons
 from tests.integration.conftest import make_player
 
@@ -34,8 +34,8 @@ _SEQ = {"n": 0}
 
 async def _competition(
     db: AsyncSession, *, year: int, venue_slug: str, league_id: str
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -56,12 +56,12 @@ async def _player(db: AsyncSession, first: str, last: str):
 async def _season(
     db: AsyncSession,
     *,
-    comp: SummerLeagueCompetition,
+    comp: SummerLeagueEdition,
     player,
     adv_eligible: bool = True,
     **metrics,
-) -> SummerLeaguePlayerSeason:
-    row = SummerLeaguePlayerSeason(
+) -> SummerLeagueDerivedAgg:
+    row = SummerLeagueDerivedAgg(
         competition_id=comp.id,
         player_id=player.id,
         year=comp.year,
@@ -214,7 +214,7 @@ async def test_percentage_columns_not_rescaled(db_session: AsyncSession) -> None
 
 
 async def _seed_minimal_game_log(
-    db: AsyncSession, *, comp: SummerLeagueCompetition, player
+    db: AsyncSession, *, comp: SummerLeagueEdition, player
 ) -> None:
     """Seed one game log so the player-detail SL section renders for the page."""
     _SEQ["n"] += 1
@@ -234,7 +234,7 @@ async def _seed_minimal_game_log(
     )
     db.add_all([team, opp])
     await db.flush()
-    source = SummerLeagueSourcePlayer(
+    source = SummerLeagueSourceRecord(
         nba_stats_person_id=f"sp-{_SEQ['n']}",
         raw_player_name=player.display_name or "P",
         normalized_name=(player.display_name or "p").lower(),

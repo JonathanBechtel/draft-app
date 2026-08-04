@@ -23,7 +23,7 @@ wipe+rebuild, not scoped to one venue/year).
 
 5. Refreshes the active Summer League event's *forward* schedule (the
    ``scheduleleaguev2`` feed, via
-   ``app.services.summer_league.scoreboard_ingest.run_scoreboard_ingest``)
+   ``app.services.sources.summer_league.scoreboard_ingest.run_scoreboard_ingest``)
    so ``summer_league_games.tip_datetime`` stays fresh at this cron's own
    hourly cadence, decoupled from the Summer League Desk tick
    (``app/cli/sl_desk_tick.py``) -- previously the *only* place that feed
@@ -55,7 +55,7 @@ Environment overrides:
     SL_INGEST_FULL_RECONCILE - when set to a truthy value ("1", "true",
         "yes"), forces a complete shot/PBP reprocess for every venue this
         run by clearing all of that venue/year's durable batch-progress
-        rows (see app.services.summer_league.batch_progress) before the
+        rows (see app.services.ingest.batch_progress) before the
         batched phases run, bypassing the "already completed, skip it"
         filter entirely. An operator escape hatch for repair -- e.g. after
         a raw-snapshot backfill/migration that could have silently changed
@@ -84,7 +84,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.event_desk import EventLifecyclePhase
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.services.event_desk.lifecycle import lifecycle_phase
 from app.services.event_desk.registry import DeskEvent, SUMMER_LEAGUE_REGISTRATION
 from app.services.event_desk.timeutils import to_eastern_date
@@ -92,18 +92,18 @@ from app.services.player_identity_guard import (
     IdentityDuplicateAuditReport,
     audit_variant_player_duplicates,
 )
-from app.services.summer_league.backfill import (
+from app.services.sources.summer_league.backfill import (
     SummerLeagueBackfillOptions,
     backfill_summer_league_backbone,
     summarize_backfill_report,
 )
-from app.services.summer_league.endpoints import normalize_league_id
-from app.services.summer_league.manifest import SummerLeagueRawManifest
-from app.services.summer_league.metrics_rebuild_gate import (
+from app.services.sources.summer_league.endpoints import normalize_league_id
+from app.services.sources.summer_league.manifest import SummerLeagueRawManifest
+from app.services.sources.summer_league.metrics_rebuild_gate import (
     MetricsStageContext,
     run_metrics_stage,
 )
-from app.services.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     SummerLeagueResolutionReport,
     SummerLeagueResolutionResult,
     apply_source_player_resolution_plan,
@@ -111,14 +111,14 @@ from app.services.summer_league.player_resolution import (
     prepare_summer_league_player_resolutions,
     revalidate_source_player_resolution_plan,
 )
-from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.batch_progress import (
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
+from app.services.ingest.batch_progress import (
     count_pending_batch_games,
     get_completed_batch_game_ids,
     invalidate_batch_progress,
     record_batch_progress,
 )
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.normalization import (
     SummerLeaguePBPEventReport,
     SummerLeagueShotEventReport,
     chunked,
@@ -127,23 +127,23 @@ from app.services.summer_league.normalization import (
     normalize_pbp_events,
     normalize_shot_events,
 )
-from app.services.summer_league.pipeline_state import (
+from app.services.ingest.pipeline_state import (
     defer_full_reconciliation,
     record_pipeline_failure,
 )
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
-from app.services.summer_league.raw_ingestion import (
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
+from app.services.sources.summer_league.raw_ingestion import (
     RawIngestionOptions,
     SummerLeagueRawIngestor,
     dirty_game_ids_from_manifest,
 )
-from app.services.summer_league.raw_store import SummerLeagueRawStore
-from app.services.summer_league.scoreboard_ingest import (
+from app.services.sources.summer_league.raw_store import SummerLeagueRawStore
+from app.services.sources.summer_league.scoreboard_ingest import (
     ScoreboardIngestReport,
     resolve_target_competitions,
     run_scoreboard_ingest,
 )
-from app.services.summer_league.write_lock import (
+from app.services.ingest.write_lock import (
     try_acquire_summer_league_writer_lock,
     try_acquire_summer_league_writer_lock_yielding,
 )
@@ -321,7 +321,7 @@ _SCHEDULE_ELIGIBLE_PHASES = frozenset(
 
 
 def _synthetic_schedule_dates(
-    competitions: Sequence[SummerLeagueCompetition],
+    competitions: Sequence[SummerLeagueEdition],
 ) -> tuple[date, ...]:
     """Every day spanned by each target competition's ``starts_on``/``ends_on``.
 
@@ -337,7 +337,7 @@ def _synthetic_schedule_dates(
 
     Args:
         competitions: The target competitions for today
-            (:func:`~app.services.summer_league.scoreboard_ingest.resolve_target_competitions`).
+            (:func:`~app.services.sources.summer_league.scoreboard_ingest.resolve_target_competitions`).
 
     Returns:
         Every date in each competition's inclusive ``[starts_on, ends_on]``
@@ -398,7 +398,7 @@ async def _schedule_pull_in_window(db: AsyncSession, *, now: datetime) -> bool:
             competition-year fallback and as `lifecycle_phase`'s clock).
 
     Returns:
-        Whether the caller should run :func:`~app.services.summer_league.scoreboard_ingest.run_scoreboard_ingest`
+        Whether the caller should run :func:`~app.services.sources.summer_league.scoreboard_ingest.run_scoreboard_ingest`
         this cycle.
     """
     today = to_eastern_date(now)
@@ -437,7 +437,7 @@ async def _refresh_schedule(
             second client.
 
     Returns:
-        The :class:`~app.services.summer_league.scoreboard_ingest.ScoreboardIngestReport`
+        The :class:`~app.services.sources.summer_league.scoreboard_ingest.ScoreboardIngestReport`
         when the window guard allowed a fetch; ``None`` when skipped
         (off-window) or on an unexpected failure.
     """
@@ -525,7 +525,7 @@ async def _run_lock_bounded_batches(
     :func:`_run_batched_phase` (shot/PBP normalization) and
     :func:`_run_resolution_phase` (identity resolution): open ``db.begin()``,
     try the writer lock (yielding first to a waiting Desk tick via
-    :func:`~app.services.summer_league.write_lock.try_acquire_summer_league_writer_lock_yielding`),
+    :func:`~app.services.ingest.write_lock.try_acquire_summer_league_writer_lock_yielding`),
     defer and stop on contention, otherwise run ``process_batch`` for this
     batch and move on. Releasing the lock between batches is what bounds how
     long either kind of lower-priority writer can starve the hourly Summer
@@ -597,14 +597,14 @@ async def _run_batched_phase(
     """Normalize ``game_ids`` for one phase in small, independently committed batches.
 
     Reads durable per-game progress (see
-    :mod:`app.services.summer_league.batch_progress`) first so a run
+    :mod:`app.services.ingest.batch_progress`) first so a run
     resumed after a crash/interruption only reprocesses games that were
     never committed for this phase -- and, as a side effect, a routine run
     against an already-fully-normalized venue only ever processes newly
     discovered games. Each batch then commits in its own
     ``db.begin()``/advisory-lock lifetime, releasing the writer lock
     between batches via
-    :func:`~app.services.summer_league.write_lock.try_acquire_summer_league_writer_lock_yielding`
+    :func:`~app.services.ingest.write_lock.try_acquire_summer_league_writer_lock_yielding`
     (which yields to a waiting Desk tick before each reacquisition), so one
     venue's shot/PBP volume can never again hold the lock for the venue's
     full duration (the 87.7-minute production incident this module exists to
@@ -821,7 +821,7 @@ async def _reconcile_batch_progress(
     * Dirty-game detection (routine runs): any game whose
       ``shotchartdetail``/``playbyplayv2`` raw file was actually rewritten
       this run (see
-      ``app.services.summer_league.raw_ingestion.dirty_game_ids_from_manifest``)
+      ``app.services.sources.summer_league.raw_ingestion.dirty_game_ids_from_manifest``)
       has its SHOT/PBP progress marker cleared, scoped per-phase to the
       endpoint that phase actually reads -- a rewritten box-score file alone
       never invalidates SHOT/PBP progress, since neither phase reads it.
@@ -901,7 +901,7 @@ async def _log_batch_backlog(
 ) -> None:
     """Log the SHOT/PBP dirty-game backlog left outstanding for this venue.
 
-    Surfaces :func:`~app.services.summer_league.batch_progress.count_pending_batch_games`
+    Surfaces :func:`~app.services.ingest.batch_progress.count_pending_batch_games`
     (#626) as a queryable/loggable metric (this ticket's scope item) rather
     than something an operator can only infer from raw file timestamps.
     Runs from the caller's ``finally`` block so the backlog is reported
@@ -981,7 +981,7 @@ async def _run_venue(
     Desk tick: previously the whole block ran for as long as 87.7 minutes in
     production; now the lock is released and reacquired (yielding first to
     a waiting Desk tick, see
-    :func:`~app.services.summer_league.write_lock.try_acquire_summer_league_writer_lock_yielding`)
+    :func:`~app.services.ingest.write_lock.try_acquire_summer_league_writer_lock_yielding`)
     at every phase and batch boundary.
 
     Before the batched shot/PBP phases run, :func:`_reconcile_batch_progress`
@@ -1209,7 +1209,7 @@ async def _retry_incomplete_team_boxes(
     hasn't posted the official box yet -- is cached forever and never
     revisited. Every run, this closes that gap: any game whose team row is
     still sourced from the season-gamelog fallback (see
-    :func:`~app.services.summer_league.normalization.find_incomplete_team_box_game_ids`,
+    :func:`~app.services.sources.summer_league.normalization.find_incomplete_team_box_game_ids`,
     which is how such a game is recognized -- it never carries team minutes)
     gets one fresh, forced re-fetch and re-normalize pass. Bounded to a
     single retry per run: a game still incomplete after the forced re-fetch

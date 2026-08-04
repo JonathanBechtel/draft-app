@@ -19,7 +19,7 @@ from sqlmodel import SQLModel
 from app.schemas.base import DatedVersionMixin
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 
 
@@ -55,7 +55,7 @@ def test_is_current_defaults_to_false() -> None:
     """
     assert DatedVersionMixin.model_fields["is_current"].default is False
     assert SummerLeagueMetricContext.model_fields["is_current"].default is False
-    assert SummerLeaguePlayerSeason.model_fields["is_current"].default is False
+    assert SummerLeagueDerivedAgg.model_fields["is_current"].default is False
 
 
 def test_as_of_is_optional_so_unknown_currency_is_representable() -> None:

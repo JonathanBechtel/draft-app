@@ -12,8 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.summer_league import metrics as metrics_service
-from app.services.summer_league.metrics import (
+from app.services.sources.summer_league import metrics as metrics_service
+from app.services.sources.summer_league.metrics import (
     BPM_FEATURES,
     Box,
     LeagueContext,

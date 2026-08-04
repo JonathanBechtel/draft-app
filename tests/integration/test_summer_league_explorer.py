@@ -20,16 +20,16 @@ from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.positions import Position
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services import summer_league_explorer_service as explorer_service
 from app.services.summer_league_explorer_service import (
@@ -48,7 +48,7 @@ _N = {"i": 0}
 
 async def _comp(db: AsyncSession, *, year: int, venue_slug: str, league_id: str) -> int:
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -108,7 +108,7 @@ async def _log(
         db.add(g)
         await db.flush()
         assert g.id is not None
-        sp = SummerLeagueSourcePlayer(
+        sp = SummerLeagueSourceRecord(
             nba_stats_person_id=f"ex-person-{_N['i']}",
             raw_player_name=player.display_name or "Player",
             normalized_name=(player.display_name or "player").lower(),
@@ -872,10 +872,10 @@ async def _season(
     tov_pct: float | None = None,
     adv_eligible: bool = False,
 ) -> None:
-    """Add one SummerLeaguePlayerSeason row for a (player, competition)."""
+    """Add one SummerLeagueDerivedAgg row for a (player, competition)."""
     assert player.id is not None
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=comp_id,
             player_id=player.id,
             year=year,
@@ -1404,9 +1404,7 @@ async def test_snapshot_freshness_uses_oldest_current_watermark(
 ) -> None:
     """A pooled career result never overstates currency from a newer row."""
     await _seed_grain(db_session)
-    seasons = (
-        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
-    )
+    seasons = (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
     newest = datetime(2026, 8, 1, 12, 0)
     oldest = newest - timedelta(days=3)
     seasons[0].as_of = newest
@@ -1424,9 +1422,7 @@ async def test_snapshot_freshness_is_unknown_when_any_watermark_is_missing(
 ) -> None:
     """A dated row cannot mask degraded currency elsewhere in the scope."""
     await _seed_grain(db_session)
-    seasons = (
-        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
-    )
+    seasons = (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
     seasons[0].as_of = datetime(2026, 8, 1, 12, 0)
     seasons[1].as_of = None
     await db_session.flush()
@@ -1453,9 +1449,7 @@ async def test_per_competition_freshness_is_stable_across_pages(
 ) -> None:
     """Pagination cannot hide an older watermark elsewhere in the same scope."""
     await _seed_grain(db_session)
-    seasons = (
-        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
-    )
+    seasons = (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
     newest = datetime(2026, 8, 1, 12, 0)
     oldest = newest - timedelta(days=3)
     seasons[0].as_of = newest
@@ -1878,7 +1872,7 @@ async def _seed_per_comp_filters(db: AsyncSession) -> None:
     for player, team, pts in ((early, t_early, 20), (late, t_late, 10)):
         assert player.id is not None
         assert team.id is not None
-        season = SummerLeaguePlayerSeason(
+        season = SummerLeagueDerivedAgg(
             competition_id=c,
             player_id=player.id,
             year=2024,
@@ -2497,10 +2491,10 @@ async def _season_with_composites(
     vorp: float = 0.4,
     adv_eligible: bool = True,
 ) -> None:
-    """Seed a SummerLeaguePlayerSeason with composite columns populated."""
+    """Seed a SummerLeagueDerivedAgg with composite columns populated."""
     assert player.id is not None
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=comp_id,
             player_id=player.id,
             year=year,
@@ -3144,7 +3138,7 @@ async def _seed_age_filter_per_comp(
     for player, pts in ((young, 20), (old, 15)):
         assert player.id is not None
         db.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=c,
                 player_id=player.id,
                 year=2023,
@@ -3764,7 +3758,7 @@ async def test_career_box_parity_after_source_switch(
         db_session.add(g)
         await db_session.flush()
         assert g.id is not None
-        sp = SummerLeagueSourcePlayer(
+        sp = SummerLeagueSourceRecord(
             nba_stats_person_id=f"parity-sp-{_N['i']}",
             raw_player_name=player.display_name or "Player",
             normalized_name=(player.display_name or "player").lower(),
@@ -3796,7 +3790,7 @@ async def test_career_box_parity_after_source_switch(
     # season values, proving it reads the season table rather than the game logs.
     assert player.id is not None
     db_session.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=c,
             player_id=player.id,
             year=2024,
@@ -4763,13 +4757,13 @@ async def test_full_advanced_suite_career_rollups(db_session: AsyncSession) -> N
     from sqlalchemy import update as sa_update
 
     await db_session.execute(
-        sa_update(SummerLeaguePlayerSeason)
-        .where(SummerLeaguePlayerSeason.year == 2024)  # type: ignore[arg-type]
+        sa_update(SummerLeagueDerivedAgg)
+        .where(SummerLeagueDerivedAgg.year == 2024)  # type: ignore[arg-type]
         .values(ows=0.7, dws=0.3, ws82=8.0, vorp82=4.0, orb_pct=10.0, ws40=0.4)
     )
     await db_session.execute(
-        sa_update(SummerLeaguePlayerSeason)
-        .where(SummerLeaguePlayerSeason.year == 2025)  # type: ignore[arg-type]
+        sa_update(SummerLeagueDerivedAgg)
+        .where(SummerLeagueDerivedAgg.year == 2025)  # type: ignore[arg-type]
         .values(ows=0.4, dws=0.1, ws82=14.0, vorp82=7.0, orb_pct=16.0, ws40=0.4)
     )
     await db_session.commit()
@@ -4842,13 +4836,13 @@ async def test_assisted_share_pools_counts_across_grains(
     from sqlalchemy import update as sa_update
 
     await db_session.execute(
-        sa_update(SummerLeaguePlayerSeason)
-        .where(SummerLeaguePlayerSeason.year == 2024)  # type: ignore[arg-type]
+        sa_update(SummerLeagueDerivedAgg)
+        .where(SummerLeagueDerivedAgg.year == 2024)  # type: ignore[arg-type]
         .values(ast_fgm=6, unast_fgm=4)
     )
     await db_session.execute(
-        sa_update(SummerLeaguePlayerSeason)
-        .where(SummerLeaguePlayerSeason.year == 2025)  # type: ignore[arg-type]
+        sa_update(SummerLeagueDerivedAgg)
+        .where(SummerLeagueDerivedAgg.year == 2025)  # type: ignore[arg-type]
         .values(ast_fgm=2, unast_fgm=8)
     )
     pre_pbp = make_player("Pre", "Pbp")
@@ -5167,7 +5161,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeagueShotEvent,
 )
-from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP
+from app.services.sources.summer_league.metrics import MIN_COMPLETE_TEAM_MP
 from app.services.summer_league_environment_service import (
     competition_scope_key,
     rebuild_environment_profiles,
@@ -5180,9 +5174,9 @@ _CC = {"n": 0}
 
 async def _cc_competition(
     db: AsyncSession, *, year: int, venue: str
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     _CC["n"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=f"cc-league-{_CC['n']}",
         venue_slug=venue,
@@ -5275,7 +5269,7 @@ async def _cc_player_log(
     player: PlayerMaster,
 ) -> None:
     _CC["n"] += 1
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"cc-person-{_CC['n']}",
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),
@@ -5302,7 +5296,7 @@ async def _cc_shots(
     db: AsyncSession, *, comp_id: int, game_id: int, team_id: int, player: PlayerMaster
 ) -> None:
     _CC["n"] += 1
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"cc-shot-person-{_CC['n']}",
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),

@@ -1,7 +1,7 @@
 """Integration tests for the Summer League Desk percentile + grade service (#503).
 
 Seeds a T1 baseline (via #502's ``build_baselines``) plus subject
-``SummerLeaguePlayerSeason`` rows, runs ``grade_player_event``, and asserts
+``SummerLeagueDerivedAgg`` rows, runs ``grade_player_event``, and asserts
 the persisted T2 (`summer_league_desk_player_grades`) row end to end,
 including the adaptive gate-ladder suppression on thin/1-game samples and a
 thin-cohort baseline.
@@ -16,17 +16,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
-from app.schemas.summer_league import SummerLeagueCompetition
+from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_desk import (
     SummerLeagueDeskGrade,
     SummerLeagueDeskPlayerGrade,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
-from app.services.summer_league.cohort_baselines import (
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
+from app.services.sources.summer_league.cohort_baselines import (
     build_baselines,
     compute_breakpoints,
 )
-from app.services.summer_league.desk_grades import GradeRow, grade_player_event
+from app.services.sources.summer_league.desk_grades import GradeRow, grade_player_event
 from app.services.summer_league_leaders_service import TARGET_BOARD_ROWS
 
 pytestmark = pytest.mark.asyncio
@@ -34,8 +34,8 @@ pytestmark = pytest.mark.asyncio
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, venue_slug: str = "las_vegas", league_id: str = "13"
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -74,16 +74,16 @@ async def _seed_player(
 async def _seed_season(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     player: PlayerMaster,
     year: int,
     gmsc: float,
     minutes: float,
     gp: int,
-) -> SummerLeaguePlayerSeason:
+) -> SummerLeagueDerivedAgg:
     assert competition.id is not None
     assert player.id is not None
-    season = SummerLeaguePlayerSeason(
+    season = SummerLeagueDerivedAgg(
         competition_id=competition.id,
         player_id=player.id,
         year=year,
@@ -105,11 +105,15 @@ async def _seed_lottery_cohort_history(
     for i, gmsc in enumerate(values):
         year = start_year + i
         comp = await _seed_competition(db, year=year)
-        player = await _seed_player(
-            db, name=f"Hist{i}", draft_round=1, draft_pick=1
-        )
+        player = await _seed_player(db, name=f"Hist{i}", draft_round=1, draft_pick=1)
         await _seed_season(
-            db, competition=comp, player=player, year=year, gmsc=gmsc, minutes=100.0, gp=5
+            db,
+            competition=comp,
+            player=player,
+            year=year,
+            gmsc=gmsc,
+            minutes=100.0,
+            gp=5,
         )
 
 
@@ -202,16 +206,31 @@ async def test_grade_player_event_blends_across_venues_same_year(
         db_session, year=2024, venue_slug="sacramento", league_id="14"
     )
     await _seed_season(
-        db_session, competition=vegas, player=subject, year=2024, gmsc=10.0, minutes=50.0, gp=2
+        db_session,
+        competition=vegas,
+        player=subject,
+        year=2024,
+        gmsc=10.0,
+        minutes=50.0,
+        gp=2,
     )
     await _seed_season(
-        db_session, competition=sac, player=subject, year=2024, gmsc=20.0, minutes=50.0, gp=2
+        db_session,
+        competition=sac,
+        player=subject,
+        year=2024,
+        gmsc=20.0,
+        minutes=50.0,
+        gp=2,
     )
 
     assert subject.id is not None
     assert vegas.id is not None
     row = await grade_player_event(
-        db_session, player_id=subject.id, competition_id=vegas.id, baseline_version=version
+        db_session,
+        player_id=subject.id,
+        competition_id=vegas.id,
+        baseline_version=version,
     )
     # games-weighted mean: (10*2 + 20*2) / 4 == 15.0
     assert row.subject_value == 15.0
@@ -230,7 +249,9 @@ async def test_grade_player_event_one_game_sample_is_gated(
     await db_session.flush()
 
     subject_comp = await _seed_competition(db_session, year=2024)
-    subject = await _seed_player(db_session, name="OneGame", draft_round=1, draft_pick=1)
+    subject = await _seed_player(
+        db_session, name="OneGame", draft_round=1, draft_pick=1
+    )
     await _seed_season(
         db_session,
         competition=subject_comp,
@@ -265,7 +286,13 @@ async def test_grade_player_event_thin_cohort_gates_even_confident_subject(
             db_session, name=f"Late{i}", draft_round=1, draft_pick=20
         )
         await _seed_season(
-            db_session, competition=comp, player=player, year=year, gmsc=gmsc, minutes=100.0, gp=5
+            db_session,
+            competition=comp,
+            player=player,
+            year=year,
+            gmsc=gmsc,
+            minutes=100.0,
+            gp=5,
         )
 
     version = await build_baselines(
@@ -326,22 +353,32 @@ async def test_grade_player_event_upsert_is_idempotent_on_rerun(
     assert subject.id is not None
     assert subject_comp.id is not None
     first = await grade_player_event(
-        db_session, player_id=subject.id, competition_id=subject_comp.id, baseline_version=version
+        db_session,
+        player_id=subject.id,
+        competition_id=subject_comp.id,
+        baseline_version=version,
     )
     second = await grade_player_event(
-        db_session, player_id=subject.id, competition_id=subject_comp.id, baseline_version=version
+        db_session,
+        player_id=subject.id,
+        competition_id=subject_comp.id,
+        baseline_version=version,
     )
     assert first.subject_value == second.subject_value
 
     rows = (
-        await db_session.execute(
-            select(SummerLeagueDeskPlayerGrade).where(
-                SummerLeagueDeskPlayerGrade.player_id == subject.id,  # type: ignore[arg-type]
-                SummerLeagueDeskPlayerGrade.competition_id == subject_comp.id,  # type: ignore[arg-type]
-                SummerLeagueDeskPlayerGrade.baseline_version == version,  # type: ignore[arg-type]
+        (
+            await db_session.execute(
+                select(SummerLeagueDeskPlayerGrade).where(
+                    SummerLeagueDeskPlayerGrade.player_id == subject.id,  # type: ignore[arg-type]
+                    SummerLeagueDeskPlayerGrade.competition_id == subject_comp.id,  # type: ignore[arg-type]
+                    SummerLeagueDeskPlayerGrade.baseline_version == version,  # type: ignore[arg-type]
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
 
 
@@ -352,7 +389,10 @@ async def test_grade_player_event_raises_for_unknown_competition(
     assert player.id is not None
     with pytest.raises(ValueError, match="summer_league_competitions"):
         await grade_player_event(
-            db_session, player_id=player.id, competition_id=999999, baseline_version="v1"
+            db_session,
+            player_id=player.id,
+            competition_id=999999,
+            baseline_version="v1",
         )
 
 
@@ -376,7 +416,10 @@ async def test_grade_player_event_raises_when_player_has_no_data_that_year(
     assert player.id is not None
     with pytest.raises(ValueError, match="No Summer League game data"):
         await grade_player_event(
-            db_session, player_id=player.id, competition_id=comp.id, baseline_version="v1"
+            db_session,
+            player_id=player.id,
+            competition_id=comp.id,
+            baseline_version="v1",
         )
 
 
@@ -384,9 +427,17 @@ async def test_grade_player_event_raises_when_no_active_baseline_for_cohort(
     db_session: AsyncSession,
 ) -> None:
     comp = await _seed_competition(db_session, year=2024)
-    player = await _seed_player(db_session, name="NoBaseline", draft_round=1, draft_pick=1)
+    player = await _seed_player(
+        db_session, name="NoBaseline", draft_round=1, draft_pick=1
+    )
     await _seed_season(
-        db_session, competition=comp, player=player, year=2024, gmsc=10.0, minutes=50.0, gp=3
+        db_session,
+        competition=comp,
+        player=player,
+        year=2024,
+        gmsc=10.0,
+        minutes=50.0,
+        gp=3,
     )
     assert comp.id is not None
     assert player.id is not None

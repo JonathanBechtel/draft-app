@@ -1,6 +1,6 @@
 """Integration tests for the scoped Summer League metrics rebuild (#523).
 
-`app.services.summer_league.metrics.rebuild` appends an inactive dated
+`app.services.sources.summer_league.metrics.rebuild` appends an inactive dated
 projection and flips the selected scopes current after the build. That keeps
 history for the offline job while making the hourly desk tick safe to refresh
 only the competition(s) it normalized this hour.
@@ -8,7 +8,7 @@ only the competition(s) it normalized this hour.
 These tests prove, in two groups:
 
 * **Direct `rebuild()` scoping** -- a scoped call (`competition_ids=[...]`)
-  refreshes only the target competition's `SummerLeaguePlayerSeason` /
+  refreshes only the target competition's `SummerLeagueDerivedAgg` /
   `SummerLeagueMetricContext` rows; a different competition's rows survive
   byte-for-byte, the shared `SummerLeagueMetricModel` row is left alone, and
   re-running the scoped call is idempotent. A parallel unscoped-call test is
@@ -34,11 +34,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -51,14 +51,14 @@ from app.schemas.summer_league_desk import (
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeagueMetricModel,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
-from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league import metrics
-from app.services.summer_league.metrics import game_score_line, rebuild
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league import metrics
+from app.services.sources.summer_league.metrics import game_score_line, rebuild
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from app.services.stats.registry import METRIC_REGISTRY_VERSION
-from app.services.summer_league.metric_publish import publish_metric_version
+from app.services.sources.summer_league.metric_publish import publish_metric_version
 from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.conftest import make_player
 
@@ -118,7 +118,7 @@ async def _players(db: AsyncSession, n: int) -> list[tuple[PlayerMaster, Any]]:
         p = make_player(f"ScopeFirst{i}", f"ScopeLast{i}")
         db.add(p)
         await db.flush()
-        sp = SummerLeagueSourcePlayer(
+        sp = SummerLeagueSourceRecord(
             nba_stats_person_id=f"scope-sp-{i}",
             raw_player_name=p.display_name or "P",
             normalized_name=(p.display_name or "p").lower(),
@@ -140,7 +140,7 @@ async def _seed_pool(  # noqa: PLR0913 - fixture parameters describe the seeded 
     n_games: int,
 ) -> int:
     """Seed a two-team pool with ``n_games`` complete games; return competition id."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue,
@@ -348,9 +348,9 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
         s.id: (s.player_id, s.gmsc, s.minutes, s.gp)
         for s in (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == comp_b,  # type: ignore[arg-type]
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == comp_b,  # type: ignore[arg-type]
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -386,9 +386,9 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
     a_seasons_after = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == comp_a,  # type: ignore[arg-type]
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == comp_a,  # type: ignore[arg-type]
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -406,9 +406,9 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
     b_seasons_after = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == comp_b,  # type: ignore[arg-type]
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == comp_b,  # type: ignore[arg-type]
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -450,9 +450,9 @@ async def test_scoped_rebuild_refreshes_target_only_and_is_idempotent(
     a_seasons_twice = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == comp_a,  # type: ignore[arg-type]
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == comp_a,  # type: ignore[arg-type]
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -500,9 +500,9 @@ async def test_metric_publish_stamps_source_watermark_and_hides_candidates(
     staged_seasons = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == comp_id,
-                    SummerLeaguePlayerSeason.version == version,
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == comp_id,
+                    SummerLeagueDerivedAgg.version == version,
                 )
             )
         )
@@ -536,9 +536,9 @@ async def test_metric_publish_stamps_source_watermark_and_hides_candidates(
     current_seasons = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == comp_id,
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == comp_id,
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -698,7 +698,7 @@ async def test_scoped_rebuild_empty_scope_is_a_noop(db_session: AsyncSession) ->
     await rebuild(db_session)
     await db_session.commit()
     seasons_before = (
-        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
+        (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
     )
     assert len(seasons_before) == 12
 
@@ -710,7 +710,7 @@ async def test_scoped_rebuild_empty_scope_is_a_noop(db_session: AsyncSession) ->
     assert summary["version"] == 0
 
     seasons_after = (
-        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
+        (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
     )
     assert {s.id for s in seasons_after} == {s.id for s in seasons_before}
     assert comp_a  # sanity: the pool used above
@@ -746,9 +746,7 @@ async def test_unscoped_rebuild_retains_projection_history(
     assert first["seasons"] == second["seasons"] == 24
     assert first["contexts"] == second["contexts"] == 2
 
-    seasons = (
-        (await db_session.execute(select(SummerLeaguePlayerSeason))).scalars().all()
-    )
+    seasons = (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
     current_seasons = [season for season in seasons if season.is_current]
     assert len(seasons) == 48
     assert len(current_seasons) == 24
@@ -995,14 +993,14 @@ def _write_raw_fixture(raw_root: Path, *, year: int) -> None:
 
 async def _seed_state_unlocking_game(
     db: AsyncSession, *, year: int, league_id: str, game_date: date, tip: datetime
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     """Pre-seed a competition + FINAL game so the tick resolves an active state.
 
     The Job B dormancy pre-check runs *before* normalize can create
     anything, so ``game_date`` needs a game that already exists.
     """
     i = _next_idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"vegas-tick-{i}",
@@ -1101,7 +1099,7 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
     await db_session.flush()
     assert player.id is not None
     db_session.add(
-        SummerLeagueSourcePlayer(
+        SummerLeagueSourceRecord(
             nba_stats_person_id="1640001",
             raw_player_name="Rookie Guy",
             normalized_name="rookie guy",
@@ -1109,10 +1107,10 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
         )
     )
 
-    # A deliberately stale SummerLeaguePlayerSeason row for A -- what a prior
+    # A deliberately stale SummerLeagueDerivedAgg row for A -- what a prior
     # tick (or a since-superseded rebuild) left behind. The scoped rebuild
     # this tick performs must replace it with freshly computed values.
-    stale_season = SummerLeaguePlayerSeason(
+    stale_season = SummerLeagueDerivedAgg(
         competition_id=competition_a.id,
         player_id=player.id,
         year=year,
@@ -1131,7 +1129,7 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
     # excludes it entirely -- this tick never normalizes, grades, or
     # rebuilds anything for it. Its season row must come out byte-for-byte
     # identical to how it went in.
-    competition_b = SummerLeagueCompetition(
+    competition_b = SummerLeagueEdition(
         year=year - 1,
         league_id="15",
         venue_slug="vegas-untouched",
@@ -1150,7 +1148,7 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
     db_session.add(other_player)
     await db_session.flush()
     assert other_player.id is not None
-    untouched_season = SummerLeaguePlayerSeason(
+    untouched_season = SummerLeagueDerivedAgg(
         competition_id=competition_b.id,
         player_id=other_player.id,
         year=year - 1,
@@ -1185,15 +1183,15 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
     # matches what the box line actually computes to.
     refreshed = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.competition_id == competition_a.id,  # type: ignore[arg-type]
-                SummerLeaguePlayerSeason.player_id == player.id,  # type: ignore[arg-type]
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.competition_id == competition_a.id,  # type: ignore[arg-type]
+                SummerLeagueDerivedAgg.player_id == player.id,  # type: ignore[arg-type]
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
         )
     ).scalar_one()
     assert refreshed.gp == 1
-    # SummerLeaguePlayerSeason.minutes is rounded to 1 dp (24:28 == 24.4667 -> 24.5).
+    # SummerLeagueDerivedAgg.minutes is rounded to 1 dp (24:28 == 24.4667 -> 24.5).
     assert refreshed.minutes == pytest.approx(24.5)
     expected_gmsc = round(
         game_score_line(
@@ -1232,9 +1230,9 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
     # byte-for-byte, same id and same (deliberately implausible) values.
     still_untouched = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.competition_id == competition_b.id,  # type: ignore[arg-type]
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.competition_id == competition_b.id,  # type: ignore[arg-type]
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
         )
     ).scalar_one()
@@ -1253,9 +1251,9 @@ async def test_desk_tick_scoped_rebuild_refreshes_normalized_competition_only(  
     a_rows_after_second = (
         (
             await db_session.execute(
-                select(SummerLeaguePlayerSeason).where(
-                    SummerLeaguePlayerSeason.competition_id == competition_a.id,  # type: ignore[arg-type]
-                    SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.competition_id == competition_a.id,  # type: ignore[arg-type]
+                    SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
                 )
             )
         )
@@ -1270,14 +1268,14 @@ async def test_desk_tick_off_window_never_touches_player_seasons(
 ) -> None:
     """The dormant/off-window path never calls the scoped rebuild.
 
-    A directly seeded `SummerLeaguePlayerSeason` row survives an off-window
+    A directly seeded `SummerLeagueDerivedAgg` row survives an off-window
     tick untouched -- the rebuild call lives strictly inside the
     active-path branch, same as steps 0-4.
     """
     year = 2099
     now = datetime(year, 1, 15, 12, 0)
 
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year, league_id="15", venue_slug="off-window", display_name="off-window"
     )
     db_session.add(comp)
@@ -1287,7 +1285,7 @@ async def test_desk_tick_off_window_never_touches_player_seasons(
     db_session.add(player)
     await db_session.flush()
     assert player.id is not None
-    season = SummerLeaguePlayerSeason(
+    season = SummerLeagueDerivedAgg(
         competition_id=comp.id,
         player_id=player.id,
         year=year,
@@ -1311,8 +1309,8 @@ async def test_desk_tick_off_window_never_touches_player_seasons(
 
     unchanged = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.id == season_id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.id == season_id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()

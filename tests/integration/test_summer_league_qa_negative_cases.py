@@ -12,23 +12,23 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
 from app.services.player_mention_service import _normalized_name_key
-from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.qa import (
+from app.services.sources.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league.qa import (
     SummerLeagueSlice,
     run_summer_league_backbone_qa,
 )
@@ -43,12 +43,12 @@ def _db_case(name: str) -> dict[str, Any]:
 
 async def _load_raw_run(
     db_session: AsyncSession, *, year: int, league_id: str
-) -> SummerLeagueRawRun:
+) -> SummerLeagueIngestionRun:
     raw_run = (
         await db_session.execute(
-            select(SummerLeagueRawRun).where(
-                SummerLeagueRawRun.year == year,  # type: ignore[arg-type]
-                SummerLeagueRawRun.league_id == league_id,  # type: ignore[arg-type]
+            select(SummerLeagueIngestionRun).where(
+                SummerLeagueIngestionRun.year == year,  # type: ignore[arg-type]
+                SummerLeagueIngestionRun.league_id == league_id,  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -58,13 +58,13 @@ async def _load_raw_run(
 
 
 def _raw_file(
-    raw_run: SummerLeagueRawRun,
+    raw_run: SummerLeagueIngestionRun,
     *,
     endpoint: str,
     relative_path: str,
     game_id: str | None = None,
-) -> SummerLeagueRawFile:
-    return SummerLeagueRawFile(
+) -> SummerLeagueSourceDocument:
+    return SummerLeagueSourceDocument(
         raw_run_id=raw_run.id or 0,
         year=raw_run.year,
         league_id=raw_run.league_id,
@@ -129,7 +129,7 @@ async def test_qa_reports_count_mismatches_and_unresolved_players(
     raw_run.team_gamelog_rows = 3
     raw_run.player_gamelog_rows = 2
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -180,7 +180,7 @@ async def test_qa_reports_count_mismatches_and_unresolved_players(
         )
     )
     unresolved = _db_case("unresolved_player")
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=str(unresolved["nba_stats_person_id"]),
         raw_player_name=str(unresolved["raw_player_name"]),
         normalized_name=_normalized_name_key(str(unresolved["raw_player_name"])),
@@ -224,7 +224,7 @@ async def test_qa_reports_duplicate_raw_file_rows(
 ) -> None:
     """Duplicate raw audit rows for one endpoint scope emit a duplicate code."""
     duplicate_case = _db_case("duplicate_raw_files")
-    raw_run = SummerLeagueRawRun(
+    raw_run = SummerLeagueIngestionRun(
         year=int(duplicate_case["year"]),
         league_id=str(duplicate_case["league_id"]),
         venue_slug=str(duplicate_case["venue_slug"]),
@@ -274,7 +274,7 @@ async def test_qa_reports_orphaned_normalized_rows(
 ) -> None:
     """Normalized rows without the right parent slice links emit orphan codes."""
     orphan_case = _db_case("orphan_competition")
-    target = SummerLeagueCompetition(
+    target = SummerLeagueEdition(
         year=int(orphan_case["year"]),
         league_id=str(orphan_case["league_id"]),
         venue_slug=str(orphan_case["venue_slug"]),
@@ -284,7 +284,7 @@ async def test_qa_reports_orphaned_normalized_rows(
         shotchart_available=False,
         raw_run_id=None,
     )
-    other = SummerLeagueCompetition(
+    other = SummerLeagueEdition(
         year=2024,
         league_id="99",
         venue_slug="other_fixture",

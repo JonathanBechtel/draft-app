@@ -31,13 +31,13 @@ from app.schemas.player_content_mentions import (
 )
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services import consensus_service as svc
 from tests.integration.conftest import (
     make_article,
@@ -128,7 +128,7 @@ async def _seed_summer_league(
     db: AsyncSession, player: PlayerMaster
 ) -> SummerLeagueGame:
     """Seed a populated event, player log, and published trend projection."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",
@@ -174,7 +174,7 @@ async def _seed_summer_league(
     db.add(game)
     await db.flush()
     assert game.id is not None
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id="perf-sl-person",
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),
@@ -198,7 +198,7 @@ async def _seed_summer_league(
         )
     )
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=competition.year,

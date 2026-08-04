@@ -13,8 +13,8 @@ caller decision -- three call sites disagreed on both before this module existed
 0-1 inputs, ``round(..., 2)`` vs. none, raise vs. ``{}`` on empty), so pushing either choice
 into the shared function would move a caller's stored values. Callers round and guard empty
 input themselves; see ``app.services.summer_league_environment_service._percentile``,
-``app.services.summer_league.cohort_baselines.compute_breakpoints``, and
-``app.services.summer_league.desk_grades.percentile_of_value``.
+``app.services.sources.summer_league.cohort_baselines.compute_breakpoints``, and
+``app.services.sources.summer_league.desk_grades.percentile_of_value``.
 """
 
 from __future__ import annotations

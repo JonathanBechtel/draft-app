@@ -37,7 +37,11 @@ from app.schemas.news_sources import FeedType, NewsSource
 from app.schemas.player_aliases import PlayerAlias
 from app.schemas.player_bio_snapshots import PlayerBioSnapshot
 from app.schemas.player_college_stats import PlayerCollegeStats
-from app.schemas.player_content_mentions import ContentType, MentionSource, PlayerContentMention
+from app.schemas.player_content_mentions import (
+    ContentType,
+    MentionSource,
+    PlayerContentMention,
+)
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.player_lifecycle import PlayerLifecycle
 from app.schemas.player_status import PlayerStatus
@@ -58,7 +62,9 @@ from app.services.player_merge_service import (
 # ---------------------------------------------------------------------------
 
 
-async def _player(db: AsyncSession, display_name: str, is_stub: bool = True) -> PlayerMaster:
+async def _player(
+    db: AsyncSession, display_name: str, is_stub: bool = True
+) -> PlayerMaster:
     """Insert and flush a minimal PlayerMaster."""
     p = PlayerMaster(display_name=display_name, is_stub=is_stub)
     db.add(p)
@@ -165,7 +171,9 @@ async def _seed_full_fk(
     meta["bio_snap_id"] = snap.id
 
     # --- player_external_ids ---
-    ext = PlayerExternalId(player_id=discard.id, system="bbr", external_id="testplayer01")
+    ext = PlayerExternalId(
+        player_id=discard.id, system="bbr", external_id="testplayer01"
+    )
     db.add(ext)
     await db.flush()
     meta["ext_id"] = ext.id
@@ -337,12 +345,18 @@ async def test_merge_full_fk(db_session: AsyncSession) -> None:
 
     # Alias added on survivor
     alias_rows = (
-        await db_session.execute(
-            select(PlayerAlias).where(PlayerAlias.player_id == keep.id)  # type: ignore[arg-type]
+        (
+            await db_session.execute(
+                select(PlayerAlias).where(PlayerAlias.player_id == keep.id)  # type: ignore[arg-type]
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     alias_names = {a.full_name for a in alias_rows}
-    assert "Discard Player" in alias_names, "Alias for discard name must exist on survivor"
+    assert "Discard Player" in alias_names, (
+        "Alias for discard name must exist on survivor"
+    )
 
     # No orphaned FKs — check a sample of child tables
     for table, col in [
@@ -362,9 +376,7 @@ async def test_merge_full_fk(db_session: AsyncSession) -> None:
     ]:
         orphan_count = (
             await db_session.execute(
-                text(
-                    f"SELECT count(*) FROM {table} WHERE {col} = :discard_id"
-                ),
+                text(f"SELECT count(*) FROM {table} WHERE {col} = :discard_id"),
                 {"discard_id": discard.id},
             )
         ).scalar()
@@ -449,7 +461,9 @@ async def test_merge_singleton_no_conflict(db_session: AsyncSession) -> None:
     ).scalar()
     assert lc_for_keep == 1
 
-    assert report.per_table.get("player_lifecycle.player_id", {}).get("reassigned", 0) >= 1
+    assert (
+        report.per_table.get("player_lifecycle.player_id", {}).get("reassigned", 0) >= 1
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -510,7 +524,11 @@ async def test_merge_unique_conflict_college_stats(db_session: AsyncSession) -> 
 @pytest.mark.asyncio
 async def test_merge_similarity_self_links_deleted(db_session: AsyncSession) -> None:
     """player_similarity rows that would become self-links are deleted."""
-    from app.schemas.metrics import MetricSnapshot, PlayerSimilarity
+    from app.schemas.metrics import (
+        METRIC_SNAPSHOT_VERSION_TAG,
+        MetricSnapshot,
+        PlayerSimilarity,
+    )
     from app.models.fields import CohortType, MetricSource, SimilarityDimension
 
     async with db_session.begin_nested():
@@ -525,6 +543,8 @@ async def test_merge_similarity_self_links_deleted(db_session: AsyncSession) -> 
             source=MetricSource.combine_anthro,
             population_size=3,
             version=1,
+            registry_version=METRIC_SNAPSHOT_VERSION_TAG,
+            calculation_version=METRIC_SNAPSHOT_VERSION_TAG,
         )
         db_session.add(snap)
         await db_session.flush()
@@ -571,13 +591,17 @@ async def test_merge_similarity_self_links_deleted(db_session: AsyncSession) -> 
     # No orphans for discard
     orphan_anchor = (
         await db_session.execute(
-            text("SELECT count(*) FROM player_similarity WHERE anchor_player_id = :pid"),
+            text(
+                "SELECT count(*) FROM player_similarity WHERE anchor_player_id = :pid"
+            ),
             {"pid": discard.id},
         )
     ).scalar()
     orphan_comp = (
         await db_session.execute(
-            text("SELECT count(*) FROM player_similarity WHERE comparison_player_id = :pid"),
+            text(
+                "SELECT count(*) FROM player_similarity WHERE comparison_player_id = :pid"
+            ),
             {"pid": discard.id},
         )
     ).scalar()
@@ -636,12 +660,14 @@ async def test_preview_merge_matches_execute(db_session: AsyncSession) -> None:
     # Per-table counts from preview should match executed
     for key in preview.per_table:
         if key in executed.per_table:
-            assert preview.per_table[key]["reassigned"] == executed.per_table[key]["reassigned"], (
-                f"{key}: preview reassigned != executed reassigned"
-            )
-            assert preview.per_table[key]["deleted_conflict"] == executed.per_table[key]["deleted_conflict"], (
-                f"{key}: preview deleted_conflict != executed deleted_conflict"
-            )
+            assert (
+                preview.per_table[key]["reassigned"]
+                == executed.per_table[key]["reassigned"]
+            ), f"{key}: preview reassigned != executed reassigned"
+            assert (
+                preview.per_table[key]["deleted_conflict"]
+                == executed.per_table[key]["deleted_conflict"]
+            ), f"{key}: preview deleted_conflict != executed deleted_conflict"
 
     # Both should report the alias
     assert preview.alias_added == executed.alias_added
@@ -850,7 +876,9 @@ async def test_count_inbound_references_with_data(db_session: AsyncSession) -> N
 
 
 @pytest.mark.asyncio
-async def test_find_duplicate_candidates_excludes_self(db_session: AsyncSession) -> None:
+async def test_find_duplicate_candidates_excludes_self(
+    db_session: AsyncSession,
+) -> None:
     """find_duplicate_candidates never returns the player itself."""
     async with db_session.begin_nested():
         player = await _player(db_session, "John Smith")
@@ -888,7 +916,9 @@ async def test_merge_alias_idempotent(db_session: AsyncSession) -> None:
     async with db_session.begin_nested():
         # Pre-create the alias that merge_players would insert.
         db_session.add(
-            PlayerAlias(player_id=keep.id, full_name="Discard Player", context="pre_existing")
+            PlayerAlias(
+                player_id=keep.id, full_name="Discard Player", context="pre_existing"
+            )
         )
         await db_session.flush()
 
@@ -964,7 +994,9 @@ async def test_merge_enrichment_job_reassigned(db_session: AsyncSession) -> None
             {"pid": discard.id},
         )
     ).scalar()
-    assert orphan_count == 0, "No enrichment job should reference the deleted discard player"
+    assert orphan_count == 0, (
+        "No enrichment job should reference the deleted discard player"
+    )
 
     # The job should now point to the survivor
     survivor_count = (
@@ -985,7 +1017,9 @@ async def test_merge_enrichment_job_reassigned(db_session: AsyncSession) -> None
 
 
 @pytest.mark.asyncio
-async def test_merge_board_entries_same_board_conflict(db_session: AsyncSession) -> None:
+async def test_merge_board_entries_same_board_conflict(
+    db_session: AsyncSession,
+) -> None:
     """Discard's board entry is deleted when survivor is on the same board.
 
     Before the fix, board_entries had no conflict_columns spec, so reassigning
@@ -1055,7 +1089,9 @@ async def test_merge_board_entries_same_board_conflict(db_session: AsyncSession)
             {"pid": discard.id},
         )
     ).scalar()
-    assert orphan_count == 0, "No board entries should reference the deleted discard player"
+    assert orphan_count == 0, (
+        "No board entries should reference the deleted discard player"
+    )
 
     # Survivor's original entry on board_a must be intact (not overwritten)
     keep_a_exists = (
@@ -1067,7 +1103,9 @@ async def test_merge_board_entries_same_board_conflict(db_session: AsyncSession)
             {"pid": keep.id, "bid": board_a.id, "eid": keep_entry_a_id},
         )
     ).scalar()
-    assert keep_a_exists == 1, "Survivor's original board_a entry must survive the merge"
+    assert keep_a_exists == 1, (
+        "Survivor's original board_a entry must survive the merge"
+    )
 
     # No duplicate (board_a, keep.id) entries
     dup_count = (

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from itertools import count
 
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.normalization import (
     ParsedPlayerBoxRow,
     ParsedShotEvent,
     build_shot_player_crosswalk,

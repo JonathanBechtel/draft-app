@@ -8,8 +8,8 @@ from typing import Mapping
 
 import pytest
 
-from app.services.summer_league.manifest import SummerLeagueRawManifest
-from app.services.summer_league.raw_ingestion import (
+from app.services.sources.summer_league.manifest import SummerLeagueRawManifest
+from app.services.sources.summer_league.raw_ingestion import (
     GAME_ENDPOINTS,
     REQUIRED_GAME_ENDPOINTS,
     RawIngestionOptions,
@@ -19,7 +19,7 @@ from app.services.summer_league.raw_ingestion import (
     extract_game_ids,
     is_required_game_endpoint,
 )
-from app.services.summer_league.raw_store import SummerLeagueRawStore
+from app.services.sources.summer_league.raw_store import SummerLeagueRawStore
 
 
 class FakeNBAStatsClient:
@@ -116,8 +116,12 @@ def test_is_required_game_endpoint_true_for_box_score_endpoints(endpoint: str) -
     assert is_required_game_endpoint(endpoint) is True
 
 
-@pytest.mark.parametrize("endpoint", ["playbyplayv2", "shotchartdetail", "unknownendpoint"])
-def test_is_required_game_endpoint_false_for_non_box_score_endpoints(endpoint: str) -> None:
+@pytest.mark.parametrize(
+    "endpoint", ["playbyplayv2", "shotchartdetail", "unknownendpoint"]
+)
+def test_is_required_game_endpoint_false_for_non_box_score_endpoints(
+    endpoint: str,
+) -> None:
     """pbp/shotchart (and anything unrecognized) classify as non-blocking."""
     assert is_required_game_endpoint(endpoint) is False
 
@@ -146,7 +150,9 @@ def test_fetch_year_league_writes_gamelogs_game_payloads_and_manifest(
     store = SummerLeagueRawStore(tmp_path)
     ingestor = SummerLeagueRawIngestor(client=client, store=store, sleep=lambda _: None)
 
-    manifest = ingestor.fetch_year_league(RawIngestionOptions(year=2024, league_id="15"))
+    manifest = ingestor.fetch_year_league(
+        RawIngestionOptions(year=2024, league_id="15")
+    )
 
     assert manifest.team_gamelog_rows == 4
     assert manifest.player_gamelog_rows == 2
@@ -156,14 +162,11 @@ def test_fetch_year_league_writes_gamelogs_game_payloads_and_manifest(
     assert (tmp_path / "2024" / "15" / "leaguegamelog_team.json").exists()
     assert (tmp_path / "2024" / "15" / "leaguegamelog_player.json").exists()
     assert (
-        tmp_path
-        / "2024"
-        / "15"
-        / "games"
-        / "1522400002"
-        / "boxscoretraditionalv2.json"
+        tmp_path / "2024" / "15" / "games" / "1522400002" / "boxscoretraditionalv2.json"
     ).exists()
-    manifest_payload = json.loads((tmp_path / "2024" / "15" / "manifest.json").read_text())
+    manifest_payload = json.loads(
+        (tmp_path / "2024" / "15" / "manifest.json").read_text()
+    )
     assert manifest_payload["game_count"] == 2
     assert len([call for call in client.calls if call[0] == "leaguegamelog"]) == 2
     assert len([call for call in client.calls if call[0] in GAME_ENDPOINTS]) == 10
@@ -235,8 +238,7 @@ def test_fetch_year_league_dry_run_plans_without_per_game_fetches(
     assert (tmp_path / "2024" / "15" / "manifest.json").exists()
     assert "2024/15/leaguegamelog_team.json" in manifest.files_skipped
     assert (
-        "2024/15/games/1522400002/boxscoretraditionalv2.json"
-        in manifest.files_skipped
+        "2024/15/games/1522400002/boxscoretraditionalv2.json" in manifest.files_skipped
     )
 
 
@@ -259,12 +261,7 @@ def test_fetch_year_league_records_partial_game_endpoint_failures(
         tmp_path / "2024" / "15" / "games" / "1522400002" / "playbyplayv2.json"
     ).exists()
     assert (
-        tmp_path
-        / "2024"
-        / "15"
-        / "games"
-        / "1522400002"
-        / "boxscorescoringv2.json"
+        tmp_path / "2024" / "15" / "games" / "1522400002" / "boxscorescoringv2.json"
     ).exists()
 
 
@@ -282,7 +279,9 @@ def test_fetch_year_league_fails_when_required_team_gamelog_fails(
     ):
         ingestor.fetch_year_league(RawIngestionOptions(year=2024, league_id="15"))
 
-    manifest_payload = json.loads((tmp_path / "2024" / "15" / "manifest.json").read_text())
+    manifest_payload = json.loads(
+        (tmp_path / "2024" / "15" / "manifest.json").read_text()
+    )
     assert manifest_payload["game_count"] == 0
     assert manifest_payload["team_gamelog_rows"] == 0
     assert manifest_payload["errors"][0]["endpoint"] == "leaguegamelog"
@@ -303,7 +302,9 @@ def test_fetch_year_league_fails_when_required_player_gamelog_fails(
     ):
         ingestor.fetch_year_league(RawIngestionOptions(year=2024, league_id="15"))
 
-    manifest_payload = json.loads((tmp_path / "2024" / "15" / "manifest.json").read_text())
+    manifest_payload = json.loads(
+        (tmp_path / "2024" / "15" / "manifest.json").read_text()
+    )
     assert manifest_payload["game_count"] == 2
     assert manifest_payload["team_gamelog_rows"] == 4
     assert manifest_payload["player_gamelog_rows"] == 0
@@ -411,11 +412,17 @@ def test_fetch_year_league_game_ids_force_replaces_existing_files(
     """
     store = SummerLeagueRawStore(tmp_path)
     stale_path = store.game_file(
-        year=2024, league_id="15", game_id="1522400001", endpoint="boxscoretraditionalv2"
+        year=2024,
+        league_id="15",
+        game_id="1522400001",
+        endpoint="boxscoretraditionalv2",
     )
     store.write_json(stale_path, {"stale": True})
     other_path = store.game_file(
-        year=2024, league_id="15", game_id="9999999999", endpoint="boxscoretraditionalv2"
+        year=2024,
+        league_id="15",
+        game_id="9999999999",
+        endpoint="boxscoretraditionalv2",
     )
     assert not other_path.exists()
 
@@ -479,7 +486,9 @@ def test_fetch_year_league_reuses_existing_snapshots_without_requests(
 
     assert manifest.game_ids == ["1522400002", "1522400001"]
     assert ("boxscoretraditionalv2", {"GameID": "1522400002"}) not in client.calls
-    assert any(message.startswith("reuse 2024/15/leaguegamelog_team") for message in progress)
+    assert any(
+        message.startswith("reuse 2024/15/leaguegamelog_team") for message in progress
+    )
     assert any(
         message.startswith("reuse 2024/15/games/1522400002/boxscoretraditionalv2")
         for message in progress
@@ -560,12 +569,12 @@ def test_dirty_game_ids_from_manifest_scoped_to_endpoints() -> None:
         ],
     )
 
-    assert dirty_game_ids_from_manifest(
-        manifest, endpoints=("shotchartdetail",)
-    ) == {"002"}
-    assert dirty_game_ids_from_manifest(
-        manifest, endpoints=("playbyplayv2",)
-    ) == {"003"}
+    assert dirty_game_ids_from_manifest(manifest, endpoints=("shotchartdetail",)) == {
+        "002"
+    }
+    assert dirty_game_ids_from_manifest(manifest, endpoints=("playbyplayv2",)) == {
+        "003"
+    }
     assert dirty_game_ids_from_manifest(manifest) == {"001", "002", "003"}
 
 

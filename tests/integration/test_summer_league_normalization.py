@@ -12,20 +12,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayByPlayEvent,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
 from app.services.player_mention_service import _normalized_name_key
-from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league.normalization import (
     find_incomplete_team_box_game_ids,
     normalize_competition_games,
     normalize_pbp_events,
@@ -487,7 +487,7 @@ async def test_normalize_competition_games_advances_scores_across_partial_passes
         db_session, raw_root=tmp_path, year=2024, league_id="15"
     )
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -573,7 +573,7 @@ async def test_normalize_competition_games_populates_score_from_teamstats_when_g
     )
     _rewrite_team_gamelog_empty(tmp_path)
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -680,7 +680,7 @@ async def test_normalize_competition_games_teamstats_fallback_never_clobbers_exi
     )
     _rewrite_team_gamelog_empty(tmp_path)
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -757,7 +757,7 @@ async def test_normalize_competition_games_is_idempotent(
     )
 
     competition_count = await db_session.scalar(
-        select(func.count()).select_from(SummerLeagueCompetition)
+        select(func.count()).select_from(SummerLeagueEdition)
     )
     team_count = await db_session.scalar(
         select(func.count()).select_from(SummerLeagueTeamEntry)
@@ -840,7 +840,7 @@ async def test_normalize_competition_games_never_promotes_a_scoreboard_scheduled
     # Scheduled before normalization ever runs (mirrors `upsert_scoreboard_games`
     # creating the row first; `_upsert_competition`'s (year, league_id) upsert
     # reuses this same competition row).
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -891,7 +891,7 @@ async def test_normalize_competition_games_keeps_final_monotonic_against_partial
         db_session, raw_root=tmp_path, year=2024, league_id="15"
     )
 
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2024,
         league_id="15",
         venue_slug="las_vegas",
@@ -947,9 +947,9 @@ async def test_normalize_competition_games_sets_competition_date_window_from_gam
 
     competition = (
         await db_session.execute(
-            select(SummerLeagueCompetition).where(
-                SummerLeagueCompetition.year == 2024,  # type: ignore[arg-type]
-                SummerLeagueCompetition.league_id == "15",  # type: ignore[arg-type]
+            select(SummerLeagueEdition).where(
+                SummerLeagueEdition.year == 2024,  # type: ignore[arg-type]
+                SummerLeagueEdition.league_id == "15",  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -966,7 +966,7 @@ async def test_refresh_competition_date_window_spans_min_and_max_game_dates(
     Seeds three games directly (bypassing the raw-file pipeline) with dates
     out of order, so a naive "last game wins" implementation would fail.
     """
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",
@@ -999,7 +999,7 @@ async def test_refresh_competition_date_window_ignores_null_game_dates(
     db_session: AsyncSession,
 ) -> None:
     """A game row with no ``game_date`` yet must not corrupt the aggregate."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2025,
         league_id="14",
         venue_slug="orlando",
@@ -1042,7 +1042,7 @@ async def test_refresh_competition_date_window_leaves_null_with_zero_dated_games
     That is expected and low-urgency -- this test only proves the helper
     itself is a safe no-op rather than nulling out or erroring.
     """
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=2027,
         league_id="15",
         venue_slug="las_vegas",
@@ -1478,7 +1478,7 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
     assert resolved_wing.id is not None
     db_session.add_all(
         [
-            SummerLeagueSourcePlayer(
+            SummerLeagueSourceRecord(
                 nba_stats_person_id="2001",
                 raw_player_name="Resolved Guard",
                 normalized_name=_normalized_name_key("Resolved Guard"),
@@ -1489,7 +1489,7 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
                 resolution_confidence=1.0,
                 resolved_by="test",
             ),
-            SummerLeagueSourcePlayer(
+            SummerLeagueSourceRecord(
                 nba_stats_person_id="2002",
                 raw_player_name="Resolved Wing",
                 normalized_name=_normalized_name_key("Resolved Wing"),
@@ -1555,8 +1555,8 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
     # upsert for the already-resolved id.
     source_2001 = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "2001"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "2001"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -1567,8 +1567,8 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
 
     source_2003 = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "2003"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "2003"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -1582,8 +1582,8 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
     # shot-side bulk upsert must never touch it.
     source_2002 = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "2002"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "2002"  # type: ignore[arg-type]
             )
         )
     ).scalar_one()
@@ -1620,8 +1620,8 @@ async def test_bulk_shot_and_pbp_normalization_matches_row_by_row_semantics(
     assert pbp_events[1].person1_id is None
     unknown_actor = (
         await db_session.execute(
-            select(SummerLeagueSourcePlayer).where(
-                SummerLeagueSourcePlayer.nba_stats_person_id == "2099"  # type: ignore[arg-type]
+            select(SummerLeagueSourceRecord).where(
+                SummerLeagueSourceRecord.nba_stats_person_id == "2099"  # type: ignore[arg-type]
             )
         )
     ).scalar_one_or_none()

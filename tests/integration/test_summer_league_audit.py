@@ -10,12 +10,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
 )
-from app.services.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league.audit import audit_summer_league_raw
 
 
 def _payload(row_count: int, *, game_ids: list[str] | None = None) -> dict[str, object]:
@@ -82,16 +82,16 @@ async def test_audit_summer_league_raw_upserts_idempotently(
     )
 
     raw_run_count = await db_session.scalar(
-        select(func.count()).select_from(SummerLeagueRawRun)
+        select(func.count()).select_from(SummerLeagueIngestionRun)
     )
     raw_file_count = await db_session.scalar(
-        select(func.count()).select_from(SummerLeagueRawFile)
+        select(func.count()).select_from(SummerLeagueSourceDocument)
     )
-    raw_run = (await db_session.execute(select(SummerLeagueRawRun))).scalar_one()
+    raw_run = (await db_session.execute(select(SummerLeagueIngestionRun))).scalar_one()
     shotchart = (
         await db_session.execute(
-            select(SummerLeagueRawFile).where(
-                SummerLeagueRawFile.endpoint == "shotchartdetail"
+            select(SummerLeagueSourceDocument).where(
+                SummerLeagueSourceDocument.endpoint == "shotchartdetail"
             )
         )
     ).scalar_one()

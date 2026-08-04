@@ -25,7 +25,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.services.player_bio.bbref_scrape import scrape_letters  # noqa: E402
-from app.services.summer_league.bio_enrichment_targets import (  # noqa: E402
+from app.services.sources.summer_league.bio_enrichment_targets import (  # noqa: E402
     select_bio_enrichment_targets,
 )
 from app.utils.db_async import SessionLocal  # noqa: E402

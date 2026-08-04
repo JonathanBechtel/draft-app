@@ -13,15 +13,18 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from app.services.summer_league.endpoints import normalize_league_id, normalize_season
-from app.services.summer_league.manifest import SummerLeagueRawManifest
-from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.raw_ingestion import (
+from app.services.sources.summer_league.endpoints import (
+    normalize_league_id,
+    normalize_season,
+)
+from app.services.sources.summer_league.manifest import SummerLeagueRawManifest
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.raw_ingestion import (
     GAME_ENDPOINTS,
     RawIngestionOptions,
     SummerLeagueRawIngestor,
 )
-from app.services.summer_league.raw_store import SummerLeagueRawStore
+from app.services.sources.summer_league.raw_store import SummerLeagueRawStore
 
 
 @dataclass(frozen=True)

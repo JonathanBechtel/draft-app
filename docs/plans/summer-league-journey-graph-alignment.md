@@ -1,6 +1,9 @@
 # Aligning Summer League with the Player-Journey Graph (doc #4)
 
-**Status:** Design analysis. Strategy document — no code changes proposed inline.
+**Status:** Design analysis. Strategy document — no code changes proposed inline. **Waves A and B
+of the sequencing in §5 SHIPPED 2026-08-03/04 as Phase 4** (`summer-league-remediation-roadmap.md`
+Phase 4; detail spec `summer-league-phase4-journey-graph-conversion-spec.md`). Waves C and D remain
+the standing plan — deliberately deferred (decision D1), not promoted by this update.
 
 **Canonical backbone doc:** `docs/plans/global-player-journey-graph.md`. This doc does **not**
 restate or replace it — it answers one question: *how should the existing Summer League
@@ -101,23 +104,43 @@ N=1 framework trap one layer down.
 
 ## 3. The blocker, and why it's also the unlock
 
-`player_affiliation.py:73` reads `# team_program_id: reserved — added when the generic org model
-ships`. Affiliations can only target `nba_team_id` today, so **no non-NBA source can assert an
-affiliation at all.** That makes §7a (organization → team/program → team_entry) the single live
-blocker for spoke #2.
+**RESOLVED 2026-08-03 (Phase 4, Wave B).** This section originally described the blocker as open;
+it is now a record of what shipped and the order it shipped in.
 
-The useful part: **promoting `summer_league_team_entries` and shipping the org model are the same
-piece of work.** SL's `team_entries.nba_stats_team_id` and affiliations' `nba_team_id` both need
-retargeting at the same new `team/program` entity. Doing them together means the org model ships
-*validated by an existing production spoke* rather than as a speculative schema.
+`Organization` / `TeamProgram` / `OrganizationRelationship` now exist
+(`app/schemas/organization.py`, `org_kind` per §13.3), and both `player_affiliations` and
+`summer_league_team_entries` carry a nullable `team_program_id`, resolved through one shared
+helper (`app.services.player_affiliation.resolve_team_target`, generalized from the affiliation-only
+`resolve_affiliation_target` which is kept as an alias). An integration test proves the capability
+end-to-end: a FEDERATION-owned team_program affiliation with `nba_team_id` NULL. **No non-NBA
+source is blocked from asserting an affiliation any more.**
 
-Order of operations for that one change:
+**Two things this did not close, both intentional and tracked, not oversights:**
+- **Population.** `player_affiliations.team_program_id` backfilled **zero rows on dev** — every
+  affiliation row has `nba_team_id` NULL too, because Summer League roster ingest never populated
+  that column in the first place, so there was nothing for the backfill to derive from. SL
+  `team_entries` fared better: `scripts/backfill_sl_team_entry_team_program.py` backfilled 519/622
+  dev rows from `nba_stats_team_id`.
+- **Read-path adoption.** SL's live readers (`summer_league_team_service.py`,
+  `summer_league_franchise_service.py`) still read `nba_team_id` directly. The dual-read helper
+  exists and is exercised by tests, but nothing in production rendering calls it yet.
+
+The **write** side is closed, however: the roster-ingest supersede chain
+(`roster_ingest.py` — CUT reactivation, box-score healing, and `_cut_player`) carries
+`team_program_id` forward alongside `nba_team_id`, so a future backfill is not silently re-nulled
+row by row by the next roster pull. Guarded by
+`tests/integration/test_roster_loader.py::test_cut_carries_team_program_target_forward`.
+
+The order of operations executed, matching the plan below:
 
 1. Introduce `organization` (with `org_kind` per §13.3) → `team_program` → retarget `team_entry`.
+   **Done** — #781.
 2. Populate from existing NBA teams (a known, closed, correct set — a safe first population).
+   **Done** — #782, 30 CLUB orgs + 30 team programs on dev.
 3. Add `team_program_id` to `player_affiliations`; backfill from `nba_team_id`; keep both during
-   transition.
-4. Retarget SL `team_entries`.
+   transition. **Done (capability)** — #783; **backfill population is the caveat above**, not a
+   gap in the shipped column/index/helper.
+4. Retarget SL `team_entries`. **Done** — #784, 519/622 dev rows.
 
 ---
 
@@ -141,6 +164,21 @@ app/services/
     <spoke 2>/       FIBA LiveStats adapter (§13.5)
   event_desk/   presentation projection                             (doc #3)
 ```
+
+**Shipped 2026-08-04 (Phase 4, #789).** `app/services/ingest/` (4 modules: `batch_progress.py`,
+`pipeline_state.py`, `pipeline_telemetry.py`, `write_lock.py`) and
+`app/services/sources/summer_league/` (52 modules — the NBA Stats client, endpoints,
+normalization, roster parsing) landed as targeted above. `app/services/backbone/` also landed, but
+narrower than this diagram: today it holds only `cohort.py` and `player_resolution.py` — identity
+resolution and cohort queries. Affiliations, participation, and canon-entity services are **not**
+in `backbone/` yet; `player_affiliation.py`'s resolution helper stayed top-level
+(`app/services/player_affiliation.py`), and participation/canon-entity services don't exist as
+separate modules because their promotion out of the SL namespace is Wave C, not Phase 4. `stats/`
+(Phase 2) and `event_desk/` were already correctly shaped and untouched by this reorganization. All
+11 top-level `summer_league_*.py` **read-side** services (explorer, leaders, season, games,
+franchise, metrics, shotchart, stats, team, environment_registry, environment_service)
+deliberately stayed put — they are consumers of the reorganized write/ingest layers, not part of
+it.
 
 **The governing rule — the one the user stated as the product requirement:**
 
@@ -172,11 +210,14 @@ Two concrete consequences:
 Table renames and migrations are expensive and risky; service reorganization and interface
 extraction are cheap and internal. Sequence accordingly.
 
-**Wave A — free, no migration.** Reorganize the service layer into the §4 shape (module moves +
-imports). Extract the stat engine (doc #2 Issue A). Introduce generic *read interfaces* over
-existing SL tables — the adapter seams — without touching schemas. **Plus the vocabulary
-alignment pass in §5a.** This delivers most of the reuse benefit at near-zero schema risk and
-makes the remaining coupling visible.
+**Wave A — free, no migration. ✅ SHIPPED 2026-08-03/04.** Reorganize the service layer into the
+§4 shape (module moves + imports) — done, #789, see §4's shipped note for the actual (narrower
+than originally sketched) `backbone/` contents. Extract the stat engine (doc #2 Issue A) — done in
+Phase 2, prior to this project. Introduce generic *read interfaces* over existing SL tables — the
+adapter seams — without touching schemas. **Plus the vocabulary alignment pass in §5a** — done,
+#786–#788. `app/domain/temporal.py` (`Watermark`, `VersionStamps`, `Scope`) also shipped here
+(#780), plus `DatedVersionMixin` adoption on `MetricSnapshot`, `PlayerImageSnapshot`, and
+`SummerLeagueEnvironmentProfile` (#785; `SummerLeagueCohortBaseline` kept a documented exception).
 
 ### 5a. Light namespacing — align vocabulary without touching the schema
 
@@ -195,15 +236,18 @@ one, it is misnamed"* — which is the entire finding of §1 of this doc.
 (game), `SummerLeagueParticipation` (participation — and its docstring already cites
 *journey-graph §7b*, which is the pattern below), `SummerLeagueEnvironmentProfile` (scope profile).
 
-**Misaligned — rename the class, keep the table:**
+**Misaligned — rename the class, keep the table. ✅ SHIPPED 2026-08-03 (#786, #787, #788).** Table
+below is the mapping as planned *and* as executed — the "Current class" column names are now
+historical; the classes live under the "Journey-graph term" column's name today. No
+`__tablename__` changed.
 
-| Current class | Journey-graph term (§) | Note |
+| Former class | Renamed to (journey-graph term, §) | Note |
 |---|---|---|
-| `SummerLeagueCompetition` | **edition** (§7) | The *competition* is the recurring series; the 2026 Las Vegas instance is an **edition**. Current name claims the parent concept. |
-| `SummerLeagueRawFile` | **source_document** (§10) | An ingestion snapshot — exactly §10's definition |
-| `SummerLeagueRawRun` | **source_document batch / ingestion run** (§10) | The run that produced a set of source documents |
-| `SummerLeagueSourcePlayer` | **source_record** (§10) + resolution target (§6) | A row within a document, carrying the identity assertion |
-| `SummerLeaguePlayerSeason` | **derived_agg** (§3) | §3's spoke chain is `participation → game_log → derived_agg`; this is the third element |
+| `SummerLeagueCompetition` | `SummerLeagueEdition` — **edition** (§7) | The *competition* is the recurring series; the 2026 Las Vegas instance is an **edition**. Former name claimed the parent concept. |
+| `SummerLeagueRawFile` | `SummerLeagueSourceDocument` — **source_document** (§10) | An ingestion snapshot — exactly §10's definition |
+| `SummerLeagueRawRun` | `SummerLeagueIngestionRun` — **source_document batch / ingestion run** (§10) | The run that produced a set of source documents |
+| `SummerLeagueSourcePlayer` | `SummerLeagueSourceRecord` — **source_record** (§10) + resolution target (§6) | A row within a document, carrying the identity assertion |
+| `SummerLeaguePlayerSeason` | `SummerLeagueDerivedAgg` — **derived_agg** (§3) | §3's spoke chain is `participation → game_log → derived_agg`; this is the third element |
 
 **Two conventions to adopt, both free:**
 
@@ -222,16 +266,19 @@ only when a second consumer justifies the migration.
 archaeological, and when Wave C arrives the physical rename becomes mechanical — the conceptual
 work is already done and reviewed.
 
-**Wave B — the blocker.** Ship the org → team/program model and retarget affiliations +
-`team_entries` (§3). This is the one migration that genuinely gates spoke #2.
+**Wave B — the blocker. ✅ SHIPPED 2026-08-03 (#781–#784).** Ship the org → team/program model and
+retarget affiliations + `team_entries` (§3). This is the one migration that genuinely gates
+spoke #2 — see §3 above for what shipped and the population/read-path caveats that remain.
 
-**Wave C — promote canon entities.** Generalize edition / game / provenance out of the SL
-namespace, with SL as the first (already-populated) spoke. Best done *with* spoke #2 in flight so
-the shape is validated by two real cases rather than one plus a guess.
+**Wave C — promote canon entities. Deferred — not started; standing plan, not next-up.**
+Generalize edition / game / provenance out of the SL namespace, with SL as the first
+(already-populated) spoke. Best done *with* spoke #2 in flight so the shape is validated by two
+real cases rather than one plus a guess. `app/domain/canon.py`, `provenance.py`, and
+`assertions.py` (journey-graph-domain-vocabulary.md) land with this wave.
 
-**Wave D — promote the analytical layer.** Environment/scope profiles and cohort baselines to
-generic scope-relative baselines; this is the substrate the Ledger and the level-adjusted metric
-model both need.
+**Wave D — promote the analytical layer. Deferred — not started; standing plan, not next-up.**
+Environment/scope profiles and cohort baselines to generic scope-relative baselines; this is the
+substrate the Ledger and the level-adjusted metric model both need.
 
 **Throughout:** doc #2's dated materialization (P2) and doc #3's Desk work proceed in parallel —
 they are orthogonal to this reorganization and address the operational risk.
@@ -249,8 +296,8 @@ separated by one rule:
 > abstraction generalized from a single producer is not.**
 
 Doc #2's engine *requires* a neutral `StatInputs` — a real requirement right now, with SL merely
-its first supplier. Safe. A `BaseCompetition` distilled from `SummerLeagueCompetition` is guessing
-what spoke #2 needs from a sample of one. Not safe. Same instinct, opposite risk.
+its first supplier. Safe. A `BaseCompetition` distilled from `SummerLeagueEdition` is guessing what
+spoke #2 needs from a sample of one. Not safe. Same instinct, opposite risk.
 
 **Current state:** `app/schemas/base.py` contains exactly one mixin (`SoftDeleteMixin`);
 `Protocol`/ABC patterns are already used in ~5 services (including `event_desk/registry.py`,
@@ -303,9 +350,14 @@ polymorphism: no.
 
 Value objects and the `DatedVersionMixin` belong in **Wave A** — they are free, they encode
 decisions already made (P2, doc #3's watermark contract), and they make later waves mechanical.
-Protocols land with their consumers: `StatInputsProvider` and `CapabilityDeclaration` with doc #2's
-engine; `SourceAdapter` when the service layer is reorganized (§4). Nothing here waits on spoke #2
-— but nothing here is *generalized from* SL either.
+**Shipped 2026-08-03:** `DatedVersionMixin` adoption (#785) and the first value-object module,
+`app/domain/temporal.py` (`Watermark`, `VersionStamps`, `Scope`, #780). The rest of the value-object
+catalog (`identity.py`, `canon.py`, `assertions.py`, `provenance.py`, `spoke.py`) and the protocols
+below are **not yet built** — see `journey-graph-domain-vocabulary.md`'s sequencing, which schedules
+them alongside Wave C. Protocols land with their consumers: `StatInputsProvider` and
+`CapabilityDeclaration` with doc #2's engine; `SourceAdapter` when the service layer is reorganized
+(§4, shipped #789 — but `SourceAdapter` itself was not introduced as a `Protocol` in that move).
+Nothing here waits on spoke #2 — but nothing here is *generalized from* SL either.
 
 ---
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 import pytest
 
 from app.schemas.summer_league_desk import SummerLeagueDeskGrade
-from app.services.summer_league.desk_grades import (
+from app.services.sources.summer_league.desk_grades import (
     gate_rung,
     grade_for_percentile,
     is_gated,
@@ -59,7 +59,7 @@ def test_percentile_of_value_empty_breakpoints_raises() -> None:
 
 def test_percentile_of_value_round_trips_compute_breakpoints() -> None:
     """Inverting compute_breakpoints' own output recovers the fitted percentile."""
-    from app.services.summer_league.cohort_baselines import compute_breakpoints
+    from app.services.sources.summer_league.cohort_baselines import compute_breakpoints
 
     values = [10.0, 20.0, 30.0, 40.0, 50.0]
     bp = compute_breakpoints(values, percentiles=(0, 25, 50, 75, 100))

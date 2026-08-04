@@ -13,7 +13,7 @@ from app.schemas.player_aliases import PlayerAlias
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
@@ -22,11 +22,11 @@ from app.schemas.summer_league import (
     SummerLeagueResolutionStatus,
     SummerLeagueReviewStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.player_mention_service import _normalized_name_key
-from app.services.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     NBA_STATS_SYSTEM,
     STUB_BIO_SOURCE,
     apply_source_player_resolution_plan,
@@ -53,8 +53,8 @@ async def _seed_game_context(
     *,
     year: int = 2024,
     league_id: str = "15",
-) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry, SummerLeagueGame]:
-    competition = SummerLeagueCompetition(
+) -> tuple[SummerLeagueEdition, SummerLeagueTeamEntry, SummerLeagueGame]:
+    competition = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug="las_vegas",
@@ -96,13 +96,13 @@ async def _source_with_log(
     *,
     raw_name: str,
     person_id: str,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     game: SummerLeagueGame,
     canonical_player_id: int | None = None,
     status: SummerLeagueResolutionStatus = SummerLeagueResolutionStatus.UNRESOLVED,
-) -> SummerLeagueSourcePlayer:
-    source_player = SummerLeagueSourcePlayer(
+) -> SummerLeagueSourceRecord:
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=raw_name,
         normalized_name=_normalized_name_key(raw_name),
@@ -198,7 +198,7 @@ async def test_external_id_resolution_wins_and_backfills_logs(
         raise AssertionError("candidate search should not run")
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fail_search,
     )
 
@@ -395,7 +395,7 @@ async def test_variant_names_resolve_before_stub_creation(
         raise AssertionError("normalized variant match should precede hybrid search")
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         _search_must_not_run,
     )
     result = await resolve_source_player(
@@ -437,7 +437,7 @@ async def test_single_suffix_variant_stays_unresolved_when_only_namesake_exists(
         raise AssertionError("suffix-only variant matches should bypass hybrid search")
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         _search_must_not_run,
     )
     result = await resolve_source_player(
@@ -495,7 +495,7 @@ async def test_namesake_collision_stays_unresolved_in_stub_mode(
         raise AssertionError("ambiguous normalized matches should bypass hybrid search")
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         _search_must_not_run,
     )
     result = await resolve_source_player(
@@ -577,7 +577,7 @@ async def test_ambiguous_exact_match_collects_candidates_without_resolution(
         ]
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_search,
     )
 
@@ -616,7 +616,7 @@ async def test_unresolved_without_candidates_does_not_create_stub_by_default(
         return []
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_search,
     )
 
@@ -664,7 +664,7 @@ async def test_stub_creation_requires_stub_mode_and_no_serious_candidate(
         ]
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_search,
     )
 
@@ -769,7 +769,7 @@ async def test_prepare_source_player_resolution_performs_no_writes(
         return []
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_search,
     )
 
@@ -835,7 +835,7 @@ async def test_prepare_then_apply_matches_one_shot_resolve(
         ]
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_search,
     )
 

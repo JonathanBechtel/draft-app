@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from app.cli import summer_league_roster_runner as runner
-from app.services.summer_league import event_window
+from app.services.sources.summer_league import event_window
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +222,9 @@ def test_resolve_year_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert event_window.resolve_roster_year() == event_window.default_roster_year()
 
 
-def test_default_year_derives_from_current_date(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_year_derives_from_current_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The default year follows the calendar rather than a hard-coded value.
 
     This is the exact defect the ticket closes: a hard-coded ``DEFAULT_YEAR``

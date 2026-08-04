@@ -5,7 +5,7 @@ Exercises two surfaces:
   - GET /players/{slug}/summer-league/{year} — per-season page
 
 Cases:
-  1. Player with resolved shot events + SummerLeaguePlayerSeason  → chart rendered.
+  1. Player with resolved shot events + SummerLeagueDerivedAgg  → chart rendered.
   2. Player with game logs but no shot events                     → graceful empty.
   3. Player with no SL data at all                                → section absent.
 """
@@ -21,14 +21,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueShotEvent,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from tests.integration.conftest import make_player
 
 # ---------------------------------------------------------------------------
@@ -49,18 +49,18 @@ def _uid() -> str:
 
 async def _make_competition(
     db: AsyncSession, *, year: int, venue_slug: str = "las_vegas"
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     existing = (
         await db.execute(
-            select(SummerLeagueCompetition).where(  # type: ignore[call-overload]
-                SummerLeagueCompetition.year == year,
-                SummerLeagueCompetition.venue_slug == venue_slug,
+            select(SummerLeagueEdition).where(  # type: ignore[call-overload]
+                SummerLeagueEdition.year == year,
+                SummerLeagueEdition.venue_slug == venue_slug,
             )
         )
     ).scalar_one_or_none()
     if existing is not None:
         return existing
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=f"15-{_uid()}",
         venue_slug=venue_slug,
@@ -86,8 +86,8 @@ async def _make_team(db: AsyncSession, *, comp_id: int) -> SummerLeagueTeamEntry
 
 async def _make_source_player(
     db: AsyncSession, *, player: PlayerMaster
-) -> SummerLeagueSourcePlayer:
-    sp = SummerLeagueSourcePlayer(
+) -> SummerLeagueSourceRecord:
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=_uid(),
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),
@@ -102,8 +102,8 @@ async def _make_game_and_log(
     db: AsyncSession,
     *,
     player: PlayerMaster,
-    source_player: SummerLeagueSourcePlayer,
-    comp: SummerLeagueCompetition,
+    source_player: SummerLeagueSourceRecord,
+    comp: SummerLeagueEdition,
     game_date: date,
 ) -> SummerLeagueGame:
     """Seed one game + log for a player."""
@@ -152,7 +152,7 @@ async def _make_game_and_log(
 def _make_shot_event(  # noqa: PLR0913
     *,
     player: PlayerMaster,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     game: SummerLeagueGame,
     comp_id: int,
     team_entry_id: int,
@@ -180,8 +180,8 @@ async def _seed_rich_player(
     db: AsyncSession,
     *,
     year: int = 2024,
-) -> tuple[PlayerMaster, SummerLeagueCompetition]:
-    """Seed a player with ≥20 shot events and a SummerLeaguePlayerSeason row."""
+) -> tuple[PlayerMaster, SummerLeagueEdition]:
+    """Seed a player with ≥20 shot events and a SummerLeagueDerivedAgg row."""
     player = make_player("Shot", "Charter", school="Duke")
     db.add(player)
     await db.flush()
@@ -242,8 +242,8 @@ async def _seed_rich_player(
         db.add(ev)
     await db.flush()
 
-    # Seed a SummerLeaguePlayerSeason row with shot-diet rates.
-    season_row = SummerLeaguePlayerSeason(
+    # Seed a SummerLeagueDerivedAgg row with shot-diet rates.
+    season_row = SummerLeagueDerivedAgg(
         competition_id=comp.id,
         player_id=player.id,
         year=year,
@@ -526,7 +526,7 @@ async def test_competition_resolver_honors_venue(db_session: AsyncSession) -> No
     for comp, venue in ((lv, "las_vegas"), (slc, "salt_lake_city")):
         assert comp.id is not None
         db_session.add(
-            SummerLeaguePlayerSeason(
+            SummerLeagueDerivedAgg(
                 competition_id=comp.id,
                 player_id=player.id,
                 year=2024,
@@ -564,8 +564,8 @@ async def test_season_page_shows_advanced_metrics_for_eligible_year(
     player, comp = await _seed_rich_player(db_session, year=2023)
     row = (
         await db_session.execute(
-            select(SummerLeaguePlayerSeason).where(
-                SummerLeaguePlayerSeason.player_id == player.id  # type: ignore[arg-type]
+            select(SummerLeagueDerivedAgg).where(
+                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
             )
         )
     ).scalar_one()

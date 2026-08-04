@@ -18,11 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.summer_league_team_service import get_team_season, get_venue
@@ -72,7 +72,7 @@ async def _game(
     db.add(g)
     await db.flush()
     assert g.id is not None
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"person-{_N['i']}",
         raw_player_name=log_player.display_name or "Player",
         normalized_name=(log_player.display_name or "player").lower(),
@@ -103,10 +103,10 @@ async def _game(
 
 async def _seed_venue(
     db: AsyncSession, *, year: int, venue_slug: str, league_id: str, star: PlayerMaster
-) -> tuple[SummerLeagueCompetition, SummerLeagueTeamEntry, SummerLeagueTeamEntry]:
+) -> tuple[SummerLeagueEdition, SummerLeagueTeamEntry, SummerLeagueTeamEntry]:
     """Seed a competition with two teams; team A wins both games over team B."""
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -228,7 +228,7 @@ async def _announce(
     canonical: PlayerMaster | None,
 ) -> None:
     """Seed one announced/cut participation row (no game logs)."""
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=name,
         normalized_name=name.lower(),
@@ -262,7 +262,7 @@ async def test_team_season_shows_announced_roster_pre_event(
     are excluded; the stats-derived roster stays empty until box scores exist.
     """
     _N["i"] += 1
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2026,
         league_id="15",
         venue_slug="las_vegas",
@@ -333,7 +333,7 @@ async def test_team_season_shows_announced_roster_pre_event(
         status=AffiliationStatus.ANNOUNCED,
         canonical=None,
     )
-    sp_blank = SummerLeagueSourcePlayer(
+    sp_blank = SummerLeagueSourceRecord(
         nba_stats_person_id="1640995",
         raw_player_name="No Number",
         normalized_name="no number",

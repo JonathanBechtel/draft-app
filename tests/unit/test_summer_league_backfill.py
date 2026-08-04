@@ -12,18 +12,20 @@ from app.schemas.summer_league import (
     SummerLeagueRawFileStatus,
     SummerLeagueRawRunStatus,
 )
-from app.services.summer_league import backfill
-from app.services.summer_league.audit import (
+from app.services.sources.summer_league import backfill
+from app.services.sources.summer_league.audit import (
     AuditedRawFile,
     AuditedRawRun,
     RawFileDescriptor,
     SummerLeagueAuditReport,
 )
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.normalization import (
     SummerLeagueNormalizationReport,
     SummerLeaguePlayerLogReport,
 )
-from app.services.summer_league.player_resolution import SummerLeagueResolutionReport
+from app.services.backbone.player_resolution import (
+    SummerLeagueResolutionReport,
+)
 
 
 class FakeTransaction:

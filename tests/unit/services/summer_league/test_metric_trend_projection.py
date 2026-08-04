@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.services.stats.inputs import PlayerSeason, StatInputs
-from app.services.summer_league.metric_trend_projection import (
+from app.services.sources.summer_league.metric_trend_projection import (
     materialize_scoped_season_trend_bands,
     materialize_trend_bands,
 )

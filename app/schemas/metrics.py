@@ -15,6 +15,22 @@ from app.models.fields import (
     MetricStatistic,
     SimilarityDimension,
 )
+from app.schemas.base import DatedVersionMixin
+
+# Documented sentinel (#785): pre-migration MetricSnapshot rows were built before
+# registry_version/calculation_version existed, so backfilling them with any real
+# version identifier would fabricate a formula version they were never actually
+# built under. This value marks that honest gap; it is never assigned by a
+# publisher going forward. See app.schemas.base.DatedVersionMixin's docstring.
+LEGACY_VERSION_SENTINEL = "unknown"
+
+# Unlike the Summer League stat engine (app.services.stats.registry), this
+# combine/percentile pipeline has never distinguished a metric-definition
+# ("registry") version from a calculation-pipeline version -- there is one
+# implicit, undated formula set. Both DatedVersionMixin columns carry this same
+# identifier honestly rather than inventing a false split; bump it when the
+# metric formulas or derivation logic in this module change.
+METRIC_SNAPSHOT_VERSION_TAG = "player-metrics-v1"
 
 
 class MetricDefinition(SQLModel, table=True):  # type: ignore[call-arg]
@@ -58,7 +74,20 @@ class MetricDefinition(SQLModel, table=True):  # type: ignore[call-arg]
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class MetricSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
+class MetricSnapshot(DatedVersionMixin, SQLModel, table=True):  # type: ignore[call-arg]
+    """One versioned snapshot of computed metric values for a cohort/source/scope.
+
+    Inherits ``version`` / ``is_current`` / ``registry_version`` /
+    ``calculation_version`` / ``as_of`` from
+    :class:`app.schemas.base.DatedVersionMixin` (#785). ``registry_version`` and
+    ``calculation_version`` are additive columns on this pre-existing table;
+    pre-migration rows carry :data:`LEGACY_VERSION_SENTINEL` rather than a
+    fabricated version, per the mixin's "did the number move because the formula
+    changed or the data did" rationale. Publishers (``app/cli/compute_metrics.py``,
+    ``app/cli/compute_combine_scores.py``, ``app/cli/split_advanced_snapshots.py``)
+    stamp real values going forward.
+    """
+
     __tablename__ = "metric_snapshots"
     __table_args__ = (
         # Unique version within a (cohort, source, run_key) group
@@ -119,16 +148,8 @@ class MetricSnapshot(SQLModel, table=True):  # type: ignore[call-arg]
     notes: Optional[str] = Field(
         default=None, description="Optional commentary about the run"
     )
-    # Versioning and selection controls
-    version: int = Field(
-        description="Monotonic version within (cohort, source, run_key)"
-    )
-    is_current: bool = Field(
-        default=False,
-        description=(
-            "Marks the active snapshot within (cohort, source, season_id, position scope)"
-        ),
-    )
+    # version / is_current / registry_version / calculation_version / as_of come
+    # from DatedVersionMixin (see class docstring).
 
 
 class PlayerMetricValue(SQLModel, table=True):  # type: ignore[call-arg]

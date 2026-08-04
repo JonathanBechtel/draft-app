@@ -19,7 +19,7 @@ from typing import Optional
 
 import pytest
 
-from app.services.summer_league.constants import MINUTES_PER_GAME
+from app.services.sources.summer_league.constants import MINUTES_PER_GAME
 from app.services.summer_league_explorer_service import (
     _compute_player_values,
     rollup_additive,
@@ -31,6 +31,7 @@ from app.services.summer_league_explorer_service import (
 # --------------------------------------------------------------------------- #
 # Test row fixture
 # --------------------------------------------------------------------------- #
+
 
 @dataclass
 class _Row:
@@ -131,7 +132,7 @@ def test_rate_composite_skips_none_value_pools() -> None:
     """Pools with a None composite value are excluded from numerator and denominator."""
     rows = [
         _Row(per=15.0, minutes=100.0),
-        _Row(per=None, minutes=200.0),   # ineligible pool — not adv-eligible
+        _Row(per=None, minutes=200.0),  # ineligible pool — not adv-eligible
         _Row(per=20.0, minutes=100.0),
     ]
     # Only first and third pools contribute: (15*100 + 20*100) / 200 = 17.5
@@ -143,7 +144,7 @@ def test_rate_composite_skips_zero_minute_pools() -> None:
     """Pools with zero minutes are excluded (would produce infinite rate)."""
     rows = [
         _Row(per=15.0, minutes=100.0),
-        _Row(per=25.0, minutes=0.0),    # zero minutes — skip
+        _Row(per=25.0, minutes=0.0),  # zero minutes — skip
     ]
     result = rollup_rate_composite(rows, "per")
     assert result == pytest.approx(15.0, abs=1e-6)
@@ -196,11 +197,28 @@ def test_rate_composite_percentage_columns_weighted_correctly() -> None:
 # --------------------------------------------------------------------------- #
 
 
-def _box(fgm: int = 0, fga: int = 0, fg3m: int = 0, fg3a: int = 0,
-         ftm: int = 0, fta: int = 0, pts: int = 0,
-         minutes: float = 10.0, pace: Optional[float] = None) -> _Row:
-    return _Row(fgm=fgm, fga=fga, fg3m=fg3m, fg3a=fg3a, ftm=ftm, fta=fta,
-                pts=pts, minutes=minutes, pace=pace)
+def _box(
+    fgm: int = 0,
+    fga: int = 0,
+    fg3m: int = 0,
+    fg3a: int = 0,
+    ftm: int = 0,
+    fta: int = 0,
+    pts: int = 0,
+    minutes: float = 10.0,
+    pace: Optional[float] = None,
+) -> _Row:
+    return _Row(
+        fgm=fgm,
+        fga=fga,
+        fg3m=fg3m,
+        fg3a=fg3a,
+        ftm=ftm,
+        fta=fta,
+        pts=pts,
+        minutes=minutes,
+        pace=pace,
+    )
 
 
 def test_recombinable_ts_pct_from_summed_components() -> None:
@@ -210,7 +228,7 @@ def test_recombinable_ts_pct_from_summed_components() -> None:
     # Summed: 18 pts, 9 fga, 6 fta → ts_denom=2*(9+2.64)=23.28, ts=18/23.28*100≈77.32
     rows = [
         _box(pts=10, fga=5, fta=2),
-        _box(pts=8,  fga=4, fta=4),
+        _box(pts=8, fga=4, fta=4),
     ]
     result = rollup_recombinable(rows, "ts_pct")
     expected = 100.0 * 18 / (2.0 * (9 + 0.44 * 6))
@@ -224,12 +242,12 @@ def test_recombinable_ts_pct_not_mean_of_per_competition_values() -> None:
     function recomputes from box totals and the result differs from the naive mean.
     """
     rows = [
-        _box(pts=100, fga=50, fta=20),   # TS% ≈ 86.2
-        _box(pts=2,   fga=2,  fta=0),    # TS% = 50.0  (tiny pool)
+        _box(pts=100, fga=50, fta=20),  # TS% ≈ 86.2
+        _box(pts=2, fga=2, fta=0),  # TS% = 50.0  (tiny pool)
     ]
     naive_per_comp_ts = [
         100.0 * 100 / (2.0 * (50 + 0.44 * 20)),
-        100.0 * 2   / (2.0 * (2  + 0.44 * 0)),
+        100.0 * 2 / (2.0 * (2 + 0.44 * 0)),
     ]
     naive_mean = sum(naive_per_comp_ts) / 2
 
@@ -247,8 +265,8 @@ def test_recombinable_ts_pct_not_mean_of_per_competition_values() -> None:
 def test_recombinable_efg_pct() -> None:
     """eFG% = (FGM + 0.5*FG3M) / FGA * 100, computed from summed totals."""
     rows = [
-        _box(fgm=4, fga=10, fg3m=2),   # eFG% = (4+1)/10 = 50
-        _box(fgm=3, fga=8,  fg3m=1),   # eFG% = (3+0.5)/8 = 43.75
+        _box(fgm=4, fga=10, fg3m=2),  # eFG% = (4+1)/10 = 50
+        _box(fgm=3, fga=8, fg3m=1),  # eFG% = (3+0.5)/8 = 43.75
     ]
     result = rollup_recombinable(rows, "efg_pct")
     # Summed: fgm=7, fga=18, fg3m=3 → (7+1.5)/18*100 = 8.5/18*100 ≈ 47.22
@@ -320,12 +338,12 @@ def test_all_services_share_possession_base() -> None:
     """Possessions divide by one shared per-48 base, so the per-100 math can't drift.
 
     The pooled Explorer rollup and Summer League stats service use the single
-    ``summer_league.constants.MINUTES_PER_GAME``. Display-only per-mode scaling
+    ``sources.summer_league.constants.MINUTES_PER_GAME``. Display-only per-mode scaling
     delegates to ``app.services.stats.scaling``, whose SQL/Python pair keeps
     leaderboards and rendered values in lockstep.
 
     The engine cannot import the Summer League constant — import-linter
-    contract 3 forbids ``app.services.stats -> app.services.summer_league*`` —
+    contract 3 forbids ``app.services.stats -> app.services.sources.summer_league*`` —
     so the 48 is baked into ``_PER_100_NUMERATOR`` (``100 * 60 * 48``). That is
     the drift this asserts against: the one place the two packages must agree
     numerically without being able to share a symbol.
@@ -355,7 +373,10 @@ def test_recombinable_pts_per100_extrapolates_partial_pace() -> None:
 
 def test_recombinable_pts_per100_all_missing_pace_returns_none() -> None:
     """With no pace-covered minutes, possessions are unknown → None (not a guess)."""
-    rows = [_box(pts=30, minutes=30.0, pace=None), _box(pts=10, minutes=10.0, pace=None)]
+    rows = [
+        _box(pts=30, minutes=30.0, pace=None),
+        _box(pts=10, minutes=10.0, pace=None),
+    ]
     assert rollup_recombinable(rows, "pts_per100") is None
 
 
@@ -369,8 +390,21 @@ def _agg_row(*, pts: int, sec: float, pace_sec: float, gp: int = 1) -> SimpleNam
     fields: dict[str, float] = {
         c: 0.0
         for c in (
-            "pts", "reb", "ast", "stl", "blk", "tov", "oreb", "dreb", "pf",
-            "fgm", "fga", "fg3m", "fg3a", "ftm", "fta",
+            "pts",
+            "reb",
+            "ast",
+            "stl",
+            "blk",
+            "tov",
+            "oreb",
+            "dreb",
+            "pf",
+            "fgm",
+            "fga",
+            "fg3m",
+            "fg3a",
+            "ftm",
+            "fta",
         )
     }
     fields.update(pts=pts, gp=gp, sec=sec, pace_sec=pace_sec, plus_minus=0.0)
@@ -385,7 +419,9 @@ def test_pts_per100_reconciles_recombinable_and_mode_path() -> None:
     /40-vs-/48 mismatch would differ by ~20%, far beyond the rounding tolerance.
     """
     pts, pace, minutes = 20, 95.0, 120.0
-    recombinable = rollup_recombinable([_box(pts=pts, minutes=minutes, pace=pace)], "pts_per100")
+    recombinable = rollup_recombinable(
+        [_box(pts=pts, minutes=minutes, pace=pace)], "pts_per100"
+    )
 
     # Mode-scaling path: seconds = minutes*60; pace_sec = pace * minutes_seconds.
     agg = _agg_row(pts=pts, sec=minutes * 60.0, pace_sec=pace * minutes * 60.0)

@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.summer_league import metric_publish
+from app.services.sources.summer_league import metric_publish
 
 
 def _empty_projection_result(newer_competition_ids: list[int]) -> SimpleNamespace:

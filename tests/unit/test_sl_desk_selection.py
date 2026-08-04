@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from app.schemas.summer_league_desk import SummerLeagueDeskGrade
-from app.services.summer_league.desk_facts import (
+from app.services.sources.summer_league.desk_facts import (
     CohortPeer,
     Fact,
     FactKind,
@@ -21,8 +21,8 @@ from app.services.summer_league.desk_facts import (
     detect_cohort_rank,
     detect_percentile,
 )
-from app.services.summer_league.desk_grades import GradeRow
-from app.services.summer_league.desk_selection import (
+from app.services.sources.summer_league.desk_grades import GradeRow
+from app.services.sources.summer_league.desk_selection import (
     NOTABILITY_FLOOR,
     SURFACE_K,
     Surface,
@@ -253,10 +253,16 @@ def test_tick_note_k_is_reachable_for_one_subject_same_axis() -> None:
     fill k=3 -- previously all four collapsed to one and k>1 was
     unreachable for any single-subject surface."""
     facts = [
-        _fact(kind=FactKind.PERCENTILE, metric="gmsc", cohort="slot:1-4", notability=0.9),
+        _fact(
+            kind=FactKind.PERCENTILE, metric="gmsc", cohort="slot:1-4", notability=0.9
+        ),
         _fact(kind=FactKind.STREAK, metric="gmsc", cohort="slot:1-4", notability=0.85),
-        _fact(kind=FactKind.SELF_DELTA, metric="gmsc", cohort="slot:1-4", notability=0.8),
-        _fact(kind=FactKind.COUNT_CLUB, metric="gmsc", cohort="slot:1-4", notability=0.75),
+        _fact(
+            kind=FactKind.SELF_DELTA, metric="gmsc", cohort="slot:1-4", notability=0.8
+        ),
+        _fact(
+            kind=FactKind.COUNT_CLUB, metric="gmsc", cohort="slot:1-4", notability=0.75
+        ),
     ]
     selected = select_facts(facts, surface=Surface.TICK_NOTE)
     assert len(selected) == SURFACE_K[Surface.TICK_NOTE] == 3
@@ -302,6 +308,8 @@ def test_ties_break_deterministically_regardless_of_input_order() -> None:
 def test_tie_break_is_stable_across_repeated_calls() -> None:
     a = _fact(kind=FactKind.COUNT_CLUB, metric="gmsc", notability=0.7)
     b = _fact(kind=FactKind.FIRST_SINCE, metric="gmsc", notability=0.7)
-    results = {tuple(f.kind for f in select_facts([a, b], surface=Surface.TICK_NOTE))
-               for _ in range(5)}
+    results = {
+        tuple(f.kind for f in select_facts([a, b], surface=Surface.TICK_NOTE))
+        for _ in range(5)
+    }
     assert len(results) == 1

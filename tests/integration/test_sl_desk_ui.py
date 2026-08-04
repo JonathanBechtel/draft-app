@@ -34,12 +34,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -49,11 +49,11 @@ from app.schemas.summer_league_desk import (
 )
 from app.services.event_desk.registry import sync_summer_league_event
 from app.services.event_desk.timeutils import to_eastern_date
-from app.services.summer_league.desk_read import (
+from app.services.sources.summer_league.desk_read import (
     get_desk_payload,
     get_desk_view_context,
 )
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from app.cli.sl_desk_tick import run_desk_tick
 
 pytestmark = pytest.mark.asyncio
@@ -107,11 +107,9 @@ def _fake_client() -> NBAStatsClient:
     return NBAStatsClient(session=_FakeSession())
 
 
-async def _seed_competition(
-    db: AsyncSession, *, today: date
-) -> SummerLeagueCompetition:
+async def _seed_competition(db: AsyncSession, *, today: date) -> SummerLeagueEdition:
     idx = _idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=today.year,
         league_id="15",
         venue_slug=f"vegas-desk-ui-{idx}",
@@ -126,7 +124,7 @@ async def _seed_competition(
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition, *, franchise_stats_id: str
+    db: AsyncSession, competition: SummerLeagueEdition, *, franchise_stats_id: str
 ) -> SummerLeagueTeamEntry:
     idx = _idx()
     assert competition.id is not None
@@ -145,7 +143,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -196,13 +194,13 @@ async def _seed_player(
 
 async def _roster_player(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     idx = _idx()
     assert competition.id is not None and team.id is not None and player.id is not None
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"desk-ui-src-{idx}",
         raw_player_name=player.display_name or "Test Player",
         normalized_name=(player.display_name or "test player").lower(),
@@ -268,10 +266,10 @@ async def _seed_baseline(db: AsyncSession, *, baseline_version: str) -> None:
 async def _seed_game_log(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     player: PlayerMaster,
     pts: int = 24,
 ) -> None:
@@ -329,12 +327,8 @@ async def test_archived_event_restores_standard_homepage(
     today = to_eastern_date(now)
     last_game_date = today - timedelta(days=3)
     competition = await _seed_competition(db_session, today=today)
-    home = await _seed_team(
-        db_session, competition, franchise_stats_id="1610612747"
-    )
-    away = await _seed_team(
-        db_session, competition, franchise_stats_id="1610612744"
-    )
+    home = await _seed_team(db_session, competition, franchise_stats_id="1610612747")
+    away = await _seed_team(db_session, competition, franchise_stats_id="1610612744")
     await _seed_game(
         db_session,
         competition,
@@ -713,8 +707,7 @@ async def test_morning_hero_and_slate_under_ten_never_collapses(
     # Every card carries the signal metadata JS reads (none actually collapse
     # here, but the attribute must always be present for JS to reason about).
     assert (
-        slate_html.count('data-signal="0"') + slate_html.count('data-signal="1"')
-        == 6
+        slate_html.count('data-signal="0"') + slate_html.count('data-signal="1"') == 6
     )
     # Slate tips are naive UTC (01:00 UTC Jul 11) -> must render as 9:00 PM ET
     # (Jul 10), not the raw-UTC "1:00 AM ET" the card used to mislabel them.

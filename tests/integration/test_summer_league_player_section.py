@@ -18,10 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -32,18 +32,18 @@ _COMP_SEQ = {"n": 0}
 
 async def _get_or_create_competition(
     db: AsyncSession, *, year: int, league_id: str, venue_slug: str
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     existing = (
         await db.execute(
-            select(SummerLeagueCompetition).where(  # type: ignore[call-overload]
-                SummerLeagueCompetition.year == year,
-                SummerLeagueCompetition.league_id == league_id,
+            select(SummerLeagueEdition).where(  # type: ignore[call-overload]
+                SummerLeagueEdition.year == year,
+                SummerLeagueEdition.league_id == league_id,
             )
         )
     ).scalar_one_or_none()
     if existing is not None:
         return existing
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue_slug,
@@ -72,9 +72,9 @@ async def _make_team(
 
 async def _make_source_player(
     db: AsyncSession, *, player: PlayerMaster
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     _COMP_SEQ["n"] += 1
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"person-{_COMP_SEQ['n']}",
         raw_player_name=player.display_name or "Player",
         normalized_name=(player.display_name or "player").lower(),
@@ -89,7 +89,7 @@ async def _seed_game(
     db: AsyncSession,
     *,
     player: PlayerMaster,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     year: int,
     league_id: str,
     venue_slug: str,

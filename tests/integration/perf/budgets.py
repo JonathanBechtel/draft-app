@@ -230,7 +230,7 @@ ADMIN_ROUTE_BUDGETS: dict[str, int] = {
 }
 
 # Summer League Desk read service (#508) -- per-state query budgets for
-# `app.services.summer_league.desk_read.get_desk_payload`, asserted directly by
+# `app.services.sources.summer_league.desk_read.get_desk_payload`, asserted directly by
 # `tests/integration/test_sl_desk_home.py` (not by the generic, single-dataset
 # `test_route_query_budgets.py` above -- that harness's seeded dataset never
 # puts the Desk into an active state, so it only ever exercises "off_window").

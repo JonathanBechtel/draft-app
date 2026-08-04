@@ -20,12 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.nba_teams import NbaTeam
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.team_logos import franchise_logo_url
+from app.services.sources.summer_league.team_logos import franchise_logo_url
 from app.services.summer_league_games_service import _enum_str, _venue_label
 
 # Career leaders shown on the franchise page; the rest fold into "All players".
@@ -135,7 +135,7 @@ async def get_franchise_history(
         return None
 
     te = SummerLeagueTeamEntry
-    comp = SummerLeagueCompetition
+    comp = SummerLeagueEdition
     entry_rows = (
         await db.execute(
             select(

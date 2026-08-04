@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv()
 
-from app.services.summer_league.qa import (  # noqa: E402
+from app.services.sources.summer_league.qa import (  # noqa: E402
     SummerLeagueQAFinding,
     SummerLeagueQAReport,
     SummerLeagueQASeverity,

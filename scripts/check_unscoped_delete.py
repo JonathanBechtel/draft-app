@@ -2,7 +2,7 @@
 
 Failure this descends from
 --------------------------
-The Summer League metrics rebuild full-wipes ``SummerLeaguePlayerSeason``,
+The Summer League metrics rebuild full-wipes ``SummerLeagueDerivedAgg``,
 ``SummerLeagueMetricContext`` and ``SummerLeagueMetricModel`` on every run
 (``app/services/summer_league/metrics.py``), destroying the time axis and the auditable
 model-fit history. That is the one standing violation of principle P2 — *retain history by

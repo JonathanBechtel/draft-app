@@ -4,7 +4,7 @@ Intended for a throwaway local database used to drive live browser and visual
 verification of the Competitions Explorer tab (ticket #608) — never a shared
 dev/prod database. It creates the SQLModel tables if missing, then writes the
 derived environment-profile projection rows built by
-``app.services.summer_league.environment_fixtures.seed_competition_context_demo``.
+``app.services.sources.summer_league.environment_fixtures.seed_competition_context_demo``.
 
 Usage (one line)::
 
@@ -22,7 +22,7 @@ from sqlmodel import SQLModel
 # services -> schemas) so create_all can build the full schema.
 import app.main  # noqa: F401
 from app.schemas.summer_league_environment import SummerLeagueEnvironmentProfile
-from app.services.summer_league.environment_fixtures import (
+from app.services.sources.summer_league.environment_fixtures import (
     seed_competition_context_demo,
 )
 

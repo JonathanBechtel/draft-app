@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
     SummerLeagueResolutionStatus,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -39,7 +39,7 @@ def test_raw_audit_enum_values_match_spec() -> None:
 
 def test_raw_run_table_contract_names_constraints_and_indexes() -> None:
     """Raw run table exposes the expected table name, constraints, and indexes."""
-    table = SummerLeagueRawRun.__table__  # type: ignore[attr-defined]
+    table = SummerLeagueIngestionRun.__table__  # type: ignore[attr-defined]
 
     assert table.name == "summer_league_raw_runs"
     assert {
@@ -59,7 +59,7 @@ def test_raw_run_table_contract_names_constraints_and_indexes() -> None:
 
 def test_raw_file_table_contract_names_constraints_and_indexes() -> None:
     """Raw file table exposes expected constraints, indexes, and enum type."""
-    table = SummerLeagueRawFile.__table__  # type: ignore[attr-defined]
+    table = SummerLeagueSourceDocument.__table__  # type: ignore[attr-defined]
 
     assert table.name == "summer_league_raw_files"
     assert {
@@ -108,10 +108,10 @@ def test_product_enum_values_match_spec() -> None:
 
 def test_product_table_names_are_grouped_under_summer_league_prefix() -> None:
     """Normalized product tables use explicit Summer League table names."""
-    assert SummerLeagueCompetition.__table__.name == "summer_league_competitions"  # type: ignore[attr-defined]
+    assert SummerLeagueEdition.__table__.name == "summer_league_competitions"  # type: ignore[attr-defined]
     assert SummerLeagueTeamEntry.__table__.name == "summer_league_team_entries"  # type: ignore[attr-defined]
     assert SummerLeagueGame.__table__.name == "summer_league_games"  # type: ignore[attr-defined]
-    assert SummerLeagueSourcePlayer.__table__.name == "summer_league_source_players"  # type: ignore[attr-defined]
+    assert SummerLeagueSourceRecord.__table__.name == "summer_league_source_players"  # type: ignore[attr-defined]
     assert SummerLeagueTeamGameLog.__table__.name == "summer_league_team_game_logs"  # type: ignore[attr-defined]
     assert SummerLeaguePlayerGameLog.__table__.name == "summer_league_player_game_logs"  # type: ignore[attr-defined]
 
@@ -119,10 +119,10 @@ def test_product_table_names_are_grouped_under_summer_league_prefix() -> None:
 def test_product_table_uniqueness_constraints_are_named() -> None:
     """Product tables expose stable uniqueness constraints for upsert services."""
     tables = [
-        SummerLeagueCompetition.__table__,  # type: ignore[attr-defined]
+        SummerLeagueEdition.__table__,  # type: ignore[attr-defined]
         SummerLeagueTeamEntry.__table__,  # type: ignore[attr-defined]
         SummerLeagueGame.__table__,  # type: ignore[attr-defined]
-        SummerLeagueSourcePlayer.__table__,  # type: ignore[attr-defined]
+        SummerLeagueSourceRecord.__table__,  # type: ignore[attr-defined]
         SummerLeagueTeamGameLog.__table__,  # type: ignore[attr-defined]
         SummerLeaguePlayerGameLog.__table__,  # type: ignore[attr-defined]
     ]

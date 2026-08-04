@@ -1,6 +1,6 @@
 """Unit tests for #541's Live hero running-line + top-performer helpers.
 
-`_hero_line_from_logs` and `_top_performers_from_logs` (`app.services.summer_league.desk_read`)
+`_hero_line_from_logs` and `_top_performers_from_logs` (`app.services.sources.summer_league.desk_read`)
 are pure -- both take an already-fetched `{game_id: [log rows]}` map (the shared,
 single-query fetch `_fetch_game_logs_for_games` does at request time) and never touch a
 session, so they're exercised directly here with plain `SummerLeaguePlayerGameLog`
@@ -15,7 +15,7 @@ from types import SimpleNamespace
 
 import pytest
 
-import app.services.summer_league.desk_read as desk_read
+import app.services.sources.summer_league.desk_read as desk_read
 from app.services.event_desk.payload import (
     DeskFreshness,
     DeskHero,
@@ -29,7 +29,7 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
 )
 from app.schemas.summer_league_desk import SummerLeagueDeskSlate
-from app.services.summer_league.desk_read import (
+from app.services.sources.summer_league.desk_read import (
     _effective_game_status,
     _hero_line_from_logs,
     _live_hero_headline,

@@ -9,7 +9,12 @@ from app.models.fields import (
     MetricSource,
     MetricStatistic,
 )
-from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
+from app.schemas.metrics import (
+    METRIC_SNAPSHOT_VERSION_TAG,
+    MetricDefinition,
+    MetricSnapshot,
+    PlayerMetricValue,
+)
 from app.schemas.combine_agility import CombineAgility
 from app.schemas.combine_shooting import CombineShooting
 from app.schemas.players_master import PlayerMaster
@@ -55,6 +60,8 @@ async def _create_snapshot(
         population_size=10,
         version=version,
         is_current=is_current,
+        registry_version=METRIC_SNAPSHOT_VERSION_TAG,
+        calculation_version=METRIC_SNAPSHOT_VERSION_TAG,
     )
     db_session.add(snapshot)
     await db_session.flush()
@@ -434,6 +441,8 @@ async def test_metrics_uses_source_position_for_shooting_position_adjusted(
         population_size=10,
         version=1,
         is_current=True,
+        registry_version=METRIC_SNAPSHOT_VERSION_TAG,
+        calculation_version=METRIC_SNAPSHOT_VERSION_TAG,
     )
     forward_snapshot = MetricSnapshot(
         run_key="shooting_mismatch|pos=forward",
@@ -445,6 +454,8 @@ async def test_metrics_uses_source_position_for_shooting_position_adjusted(
         population_size=10,
         version=1,
         is_current=True,
+        registry_version=METRIC_SNAPSHOT_VERSION_TAG,
+        calculation_version=METRIC_SNAPSHOT_VERSION_TAG,
     )
     db_session.add_all([wing_snapshot, forward_snapshot])
     await db_session.flush()
@@ -534,6 +545,8 @@ async def test_metrics_formats_values_for_units(app_client, db_session):
         population_size=10,
         version=1,
         is_current=True,
+        registry_version=METRIC_SNAPSHOT_VERSION_TAG,
+        calculation_version=METRIC_SNAPSHOT_VERSION_TAG,
     )
     agility_snapshot = MetricSnapshot(
         run_key="format_test_agility",
@@ -545,6 +558,8 @@ async def test_metrics_formats_values_for_units(app_client, db_session):
         population_size=10,
         version=1,
         is_current=True,
+        registry_version=METRIC_SNAPSHOT_VERSION_TAG,
+        calculation_version=METRIC_SNAPSHOT_VERSION_TAG,
     )
     db_session.add_all([snapshot, agility_snapshot])
     await db_session.flush()

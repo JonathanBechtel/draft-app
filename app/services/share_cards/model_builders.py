@@ -44,9 +44,9 @@ from app.services.share_cards.render_models import (
     WinnerSide,
 )
 from app.services.similarity_service import get_similar_players
-from app.services.summer_league.metric_trends import (
+from app.services.sources.summer_league.metric_trends import (
     get_daily_trend,
-    latest_trend_as_of,
+    latest_trend_watermark,
     resolve_scope_label,
 )
 
@@ -971,7 +971,7 @@ async def build_sl_shot_chart_model(
     """
     from sqlalchemy import desc
 
-    from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+    from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
     from app.services.summer_league_shotchart_service import get_player_shot_zones
 
     if len(player_ids) != 1:
@@ -1019,28 +1019,28 @@ async def build_sl_shot_chart_model(
             )
         )
 
-    # ── Shot diet (from SummerLeaguePlayerSeason) ────────────────────────────
+    # ── Shot diet (from SummerLeagueDerivedAgg) ────────────────────────────
     shot_diet: Optional[SLShotDiet] = None
     if competition_id is not None:
-        diet_stmt = select(SummerLeaguePlayerSeason).where(  # type: ignore[call-overload]
-            SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.competition_id == competition_id,  # type: ignore[arg-type]
-            SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+        diet_stmt = select(SummerLeagueDerivedAgg).where(  # type: ignore[call-overload]
+            SummerLeagueDerivedAgg.player_id == player_id,  # type: ignore[arg-type]
+            SummerLeagueDerivedAgg.competition_id == competition_id,  # type: ignore[arg-type]
+            SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
         )
     else:
         diet_stmt = (
-            select(SummerLeaguePlayerSeason)  # type: ignore[call-overload]
+            select(SummerLeagueDerivedAgg)  # type: ignore[call-overload]
             .where(
-                SummerLeaguePlayerSeason.player_id == player_id,  # type: ignore[arg-type]
-                SummerLeaguePlayerSeason.is_current.is_(True),  # type: ignore[attr-defined]
+                SummerLeagueDerivedAgg.player_id == player_id,  # type: ignore[arg-type]
+                SummerLeagueDerivedAgg.is_current.is_(True),  # type: ignore[attr-defined]
             )
             .order_by(
-                desc(SummerLeaguePlayerSeason.year),  # type: ignore[arg-type]
-                SummerLeaguePlayerSeason.venue_slug,
+                desc(SummerLeagueDerivedAgg.year),  # type: ignore[arg-type]
+                SummerLeagueDerivedAgg.venue_slug,
             )
             .limit(1)
         )
-    diet_row: Optional[SummerLeaguePlayerSeason] = (
+    diet_row: Optional[SummerLeagueDerivedAgg] = (
         await db.execute(diet_stmt)
     ).scalar_one_or_none()
 
@@ -1155,7 +1155,7 @@ async def build_sl_trend_model(
         )
         for lane, key in enumerate(key for key in keys if key in available_keys)
     ]
-    latest_as_of = latest_trend_as_of(points)
+    latest_as_of = latest_trend_watermark(points).source_as_of
     as_of = latest_as_of.date().isoformat() if latest_as_of else "—"
     # A share card leaves the site: it carries the event's name, never the
     # internal scope key it was rendered from.

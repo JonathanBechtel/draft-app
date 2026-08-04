@@ -20,12 +20,12 @@ from app.schemas.consensus import BigBoardConsensus, ConsensusSnapshot, Consensu
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -38,8 +38,8 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskStoryline,
     SummerLeagueDeskTriggerType,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
-from app.services.summer_league.desk_storylines import compute_desk_storylines
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
+from app.services.sources.summer_league.desk_storylines import compute_desk_storylines
 
 pytestmark = pytest.mark.asyncio
 
@@ -55,8 +55,8 @@ def _next_idx() -> int:
 
 async def _seed_competition(
     db: AsyncSession, *, year: int = 2026
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug="las_vegas",
@@ -69,7 +69,7 @@ async def _seed_competition(
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     idx = _next_idx()
     assert competition.id is not None
@@ -87,7 +87,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -132,15 +132,15 @@ async def _seed_player(
 
 async def _roster_player(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     idx = _next_idx()
     assert competition.id is not None
     assert team.id is not None
     assert player.id is not None
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"src-{idx}",
         raw_player_name=player.display_name or "Test Player",
         normalized_name=(player.display_name or "test player").lower(),
@@ -165,11 +165,11 @@ async def _roster_player(
 async def _seed_game_log(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     game: SummerLeagueGame,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     minutes_seconds: int = 25 * 60,
     pts: float = 15.0,
 ) -> SummerLeaguePlayerGameLog:
@@ -206,10 +206,10 @@ async def _seed_game_log(
 async def _seed_prior_game_log(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
-    source_player: SummerLeagueSourcePlayer,
+    source_player: SummerLeagueSourceRecord,
     game_date: date,
 ) -> None:
     """Seed one played prior game (game + box line ~18.4 GmSc) for a streak run."""
@@ -281,7 +281,7 @@ async def _seed_grade(
     db: AsyncSession,
     *,
     player: PlayerMaster,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     cohort_key: str,
     pctl: float,
     subject_value: float = 15.0,
@@ -593,7 +593,7 @@ async def test_compute_desk_storylines_second_look_for_returning_player_and_no_d
     # Prior-year SL season (makes this a returner, not a debutant).
     assert player.id is not None
     prior_competition = await _seed_competition(db_session, year=2025)
-    prior_season = SummerLeaguePlayerSeason(
+    prior_season = SummerLeagueDerivedAgg(
         competition_id=prior_competition.id,
         player_id=player.id,
         year=2025,

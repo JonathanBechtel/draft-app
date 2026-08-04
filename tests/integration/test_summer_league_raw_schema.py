@@ -9,9 +9,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
 )
 
@@ -24,8 +24,8 @@ def _raw_run(
     *,
     manifest_path: str = "2024/15/manifest.json",
     league_id: str = "15",
-) -> SummerLeagueRawRun:
-    return SummerLeagueRawRun(
+) -> SummerLeagueIngestionRun:
+    return SummerLeagueIngestionRun(
         year=2024,
         league_id=league_id,
         venue_slug="las_vegas",
@@ -48,8 +48,8 @@ def _raw_file(
     endpoint: str = "boxscoretraditionalv2",
     game_id: str | None = "1522400001",
     relative_path: str = "2024/15/games/1522400001/boxscoretraditionalv2.json",
-) -> SummerLeagueRawFile:
-    return SummerLeagueRawFile(
+) -> SummerLeagueSourceDocument:
+    return SummerLeagueSourceDocument(
         raw_run_id=raw_run_id,
         year=2024,
         league_id="15",

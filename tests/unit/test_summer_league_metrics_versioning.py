@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.schemas.player_affiliation import AffiliationStatus
-from app.services.summer_league import desk_read, metrics
+from app.services.sources.summer_league import desk_read, metrics
 from app.services.summer_league_explorer_service import ExplorerQuery
 
 

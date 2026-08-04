@@ -14,7 +14,7 @@ from sqlmodel import SQLModel
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeagueMetricModel,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 
 # revision identifiers, used by Alembic.
@@ -27,7 +27,7 @@ depends_on: Union[str, Sequence[str], None] = None
 SUMMER_LEAGUE_METRIC_TABLES = [
     SummerLeagueMetricModel.__table__,  # type: ignore[attr-defined]
     SummerLeagueMetricContext.__table__,  # type: ignore[attr-defined]
-    SummerLeaguePlayerSeason.__table__,  # type: ignore[attr-defined]
+    SummerLeagueDerivedAgg.__table__,  # type: ignore[attr-defined]
 ]
 
 

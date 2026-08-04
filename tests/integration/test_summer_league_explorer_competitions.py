@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from tests.integration.perf._capture import count_queries
 
-from app.services.summer_league.environment_fixtures import (
+from app.services.sources.summer_league.environment_fixtures import (
     CompetitionContextSeed,
     seed_competition_context_demo,
 )
@@ -44,7 +44,9 @@ async def _seed(db: AsyncSession) -> CompetitionContextSeed:
 # --------------------------------------------------------------------------- #
 
 
-async def test_five_tabs_render_with_competitions_active(app_client: AsyncClient) -> None:
+async def test_five_tabs_render_with_competitions_active(
+    app_client: AsyncClient,
+) -> None:
     """The Competitions tab is present beside the four existing subjects and active."""
     resp = await app_client.get(f"{EXPLORER}?subject=competitions")
     assert resp.status_code == 200
@@ -52,11 +54,16 @@ async def test_five_tabs_render_with_competitions_active(app_client: AsyncClient
     for label in ("Players", "Game Finder", "Teams", "Matchups", "Competitions"):
         assert f">{label}</a>" in html
     # Active tab is unambiguous to screen readers.
-    assert 'href="/stats/summer-league/explorer?subject=competitions" aria-current="page"' in html
+    assert (
+        'href="/stats/summer-league/explorer?subject=competitions" aria-current="page"'
+        in html
+    )
     assert "Competition Context" in html
 
 
-async def test_other_subjects_have_no_competition_regression(app_client: AsyncClient) -> None:
+async def test_other_subjects_have_no_competition_regression(
+    app_client: AsyncClient,
+) -> None:
     """Existing subjects still render their own controls, not competition ones."""
     resp = await app_client.get(f"{EXPLORER}?subject=players")
     assert resp.status_code == 200
@@ -341,7 +348,9 @@ async def test_team_count_csv_includes_column(
     idx = header.index("Team Count")
     row = next(r for r in reader if r and r[0].startswith("2024 Summer League"))
     assert row[idx] == "8.0"
-    assert any(r and r[0] == "distinct_teams" for r in reader)  # in the definitions trailer
+    assert any(
+        r and r[0] == "distinct_teams" for r in reader
+    )  # in the definitions trailer
 
 
 # --------------------------------------------------------------------------- #
@@ -357,7 +366,9 @@ async def test_season_detail_names_members(
     resp = await app_client.get(f"{EXPLORER}?subject=competitions&detail_year=2024")
     html = resp.text
     assert "Included competitions" in html
-    assert "salt_lake_city" in html or "Salt Lake" in html.lower() or "Salt Lake" in html
+    assert (
+        "salt_lake_city" in html or "Salt Lake" in html.lower() or "Salt Lake" in html
+    )
     # All five sections present.
     for section in (
         "Identity &amp; format",
@@ -590,7 +601,9 @@ async def test_team_points_iqr_coverage_aware(db_session: AsyncSession) -> None:
     complete = await run_explorer_query(db_session, complete_q)
     assert complete.competition_detail is not None
     assert complete.competition_detail.values["team_points_iqr"] is not None
-    assert complete.competition_detail.coverage["team_points_iqr"].coverage == "complete"
+    assert (
+        complete.competition_detail.coverage["team_points_iqr"].coverage == "complete"
+    )
 
     unavailable_q = parse_query(
         {

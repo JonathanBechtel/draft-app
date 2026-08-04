@@ -8,9 +8,9 @@ existing is a small, predictable footprint) only failed CI if it happened to
 also trip the old composite budget.
 
 This module adds one query-count budget test per class --
-:func:`~app.services.summer_league.desk_tick.fast.run_fast_tick`,
-:func:`~app.services.summer_league.desk_tick.projection.run_projection_tick`,
-and :func:`~app.services.summer_league.desk_tick.backbone.run_backbone_tick`
+:func:`~app.services.sources.summer_league.desk_tick.fast.run_fast_tick`,
+:func:`~app.services.sources.summer_league.desk_tick.projection.run_projection_tick`,
+and :func:`~app.services.sources.summer_league.desk_tick.backbone.run_backbone_tick`
 -- run against the same real-capture replay fixtures
 (``tests/integration/_desk_replay.py``) the #699 acceptance suite
 (``tests/integration/test_sl_desk_latency_classes.py``) already uses, so the
@@ -38,21 +38,24 @@ from typing import Awaitable, Callable, TypeVar
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from app.services.summer_league.desk_tick.backbone import (
+from app.services.sources.summer_league.desk_tick.backbone import (
     BackboneTickResult,
     run_backbone_tick,
 )
-from app.services.summer_league.desk_tick.fast import FastTickResult, run_fast_tick
-from app.services.summer_league.desk_tick.projection import (
+from app.services.sources.summer_league.desk_tick.fast import (
+    FastTickResult,
+    run_fast_tick,
+)
+from app.services.sources.summer_league.desk_tick.projection import (
     ProjectionTickResult,
     run_projection_tick,
 )
-from app.services.summer_league.desk_tick.shared import (
+from app.services.sources.summer_league.desk_tick.shared import (
     NO_WRITER_LOCK,
     TickContext,
     WriterLockPolicy,
 )
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from tests.integration._desk_replay import (
     CAPTURE_REFERENCE_NOW,
     ReplaySession,

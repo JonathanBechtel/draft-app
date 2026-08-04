@@ -9,8 +9,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.cli import summer_league_ingest_runner as runner
-from app.schemas.summer_league import SummerLeagueCompetition
-from app.services.summer_league import metrics_rebuild_gate as metrics_gate
+from app.schemas.summer_league import SummerLeagueEdition
+from app.services.sources.summer_league import metrics_rebuild_gate as metrics_gate
 
 
 @dataclass
@@ -1389,8 +1389,8 @@ async def test_main_bad_year_returns_one_without_processing(
 
 def _make_competition(
     *, starts_on: date | None, ends_on: date | None, year: int = 2026
-) -> SummerLeagueCompetition:
-    return SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    return SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug="las-vegas",
@@ -1436,11 +1436,9 @@ def test_synthetic_schedule_dates_skips_inverted_range() -> None:
 
 
 def _patch_resolve_competitions(
-    monkeypatch: pytest.MonkeyPatch, competitions: list[SummerLeagueCompetition]
+    monkeypatch: pytest.MonkeyPatch, competitions: list[SummerLeagueEdition]
 ) -> None:
-    async def _fake_resolve(
-        _db: object, *, today: date
-    ) -> list[SummerLeagueCompetition]:
+    async def _fake_resolve(_db: object, *, today: date) -> list[SummerLeagueEdition]:
         return competitions
 
     monkeypatch.setattr(runner, "resolve_target_competitions", _fake_resolve)

@@ -14,11 +14,11 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.bracket import apply_game_rounds
+from app.services.sources.summer_league.bracket import apply_game_rounds
 from app.services.summer_league_team_service import get_venue_bracket
 
 _N = {"i": 0}
@@ -65,7 +65,7 @@ async def _game(
 
 async def _seed_vegas_bracket(db: AsyncSession, *, year: int = 2025) -> None:
     """Seed a Vegas competition with two semifinals and a final (unlabelled)."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug="las_vegas",

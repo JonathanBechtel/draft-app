@@ -4,6 +4,8 @@ Provides query functions for listing, filtering, and managing PlayerImageAsset r
 with their associated PlayerImageSnapshot and PlayerMaster data.
 """
 
+# discipline: file-size publisher stamps P2 version columns only; no new service logic
+
 from __future__ import annotations
 
 import base64
@@ -16,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.schemas.image_snapshots import (
+    IMAGE_PIPELINE_CALCULATION_VERSION,
     PendingImagePreview,
     PlayerImageAsset,
     PlayerImageSnapshot,
@@ -632,6 +635,8 @@ async def approve_preview(
             image_size=settings.image_gen_size,
             system_prompt=image_generation_service.get_system_prompt(),
             system_prompt_version="default",
+            registry_version="default",
+            calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
         )
         db.add(snapshot)
         await db.flush()

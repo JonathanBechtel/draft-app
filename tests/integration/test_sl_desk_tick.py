@@ -40,11 +40,11 @@ from app.schemas.event_desk import (
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -56,17 +56,17 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskStoryline,
     SummerLeagueDeskTriggerType,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
-from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.pipeline_telemetry import PipelineTelemetry
-from app.services.summer_league.raw_ingestion import GAME_ENDPOINTS
-from app.services.summer_league.write_lock import (
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
+from app.services.ingest.pipeline_telemetry import PipelineTelemetry
+from app.services.sources.summer_league.raw_ingestion import GAME_ENDPOINTS
+from app.services.ingest.write_lock import (
     SummerLeagueWriterLockTimeout,
     acquire_summer_league_writer_lock,
 )
 import app.cli.sl_desk_tick as desk_tick_module
-import app.services.summer_league.desk_tick.composite as desk_composite_module
-import app.services.summer_league.desk_tick.shared as desk_shared_module
+import app.services.sources.summer_league.desk_tick.composite as desk_composite_module
+import app.services.sources.summer_league.desk_tick.shared as desk_shared_module
 from app.cli.sl_desk_tick import run_desk_tick
 
 _FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "summer_league"
@@ -175,9 +175,9 @@ async def _seed_competition(
     venue_slug: str = "las_vegas",
     starts_on: date | None = None,
     ends_on: date | None = None,
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     idx = _next_idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"{venue_slug}-{idx}",
@@ -215,7 +215,7 @@ def _schedule_payload_with_game(
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     idx = _next_idx()
     assert competition.id is not None
@@ -233,7 +233,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -280,7 +280,7 @@ async def _seed_player(
 
 async def _roster_player(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     player: PlayerMaster,
 ) -> None:
@@ -288,7 +288,7 @@ async def _roster_player(
     assert competition.id is not None
     assert team.id is not None
     assert player.id is not None
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"src-{idx}",
         raw_player_name=player.display_name or "Test Player",
         normalized_name=(player.display_name or "test player").lower(),
@@ -312,7 +312,7 @@ async def _roster_player(
 async def _seed_season(
     db: AsyncSession,
     *,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     player: PlayerMaster,
     year: int,
     gmsc: float,
@@ -322,7 +322,7 @@ async def _seed_season(
     assert competition.id is not None
     assert player.id is not None
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=year,

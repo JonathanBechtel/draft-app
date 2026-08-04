@@ -3,21 +3,21 @@
 ``competition_capability_provides`` turns the availability flags normalization.py
 owns and sets (``pbp_available``, ``shotchart_available``) into the canonical ``provides`` set
 the shared capability model resolves ``requires`` against -- a thin, competition-shaped wrapper
-over ``app.services.summer_league.capabilities.pool_provides``.
+over ``app.services.sources.summer_league.capabilities.pool_provides``.
 """
 
 from __future__ import annotations
 
-from app.schemas.summer_league import SummerLeagueCompetition, SummerLeagueDataQuality
+from app.schemas.summer_league import SummerLeagueEdition, SummerLeagueDataQuality
 from app.services.stats.capabilities import is_computable
-from app.services.summer_league.capabilities import (
+from app.services.sources.summer_league.capabilities import (
     BOX_PROVIDES,
     TEAM_OPPONENT_BOX_PROVIDES,
     competition_capability_provides,
 )
 
 
-def _competition(**kw: object) -> SummerLeagueCompetition:
+def _competition(**kw: object) -> SummerLeagueEdition:
     base: dict[str, object] = dict(
         year=2026,
         league_id="10",
@@ -28,7 +28,7 @@ def _competition(**kw: object) -> SummerLeagueCompetition:
         shotchart_available=False,
     )
     base.update(kw)
-    return SummerLeagueCompetition(**base)  # type: ignore[arg-type]
+    return SummerLeagueEdition(**base)  # type: ignore[arg-type]
 
 
 def test_box_only_competition_cannot_compute_astd_pct() -> None:

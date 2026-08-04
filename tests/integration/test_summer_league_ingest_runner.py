@@ -3,7 +3,7 @@
 `app/cli/summer_league_ingest_runner.py` (the hourly Summer League ingestion
 cron) additively refreshes the active event's *forward* schedule
 (``scheduleleaguev2``, via
-``app.services.summer_league.scoreboard_ingest.run_scoreboard_ingest``) so
+``app.services.sources.summer_league.scoreboard_ingest.run_scoreboard_ingest``) so
 ``summer_league_games.tip_datetime`` stays fresh independent of the Summer
 League Desk tick's own lifecycle-gated step 0. These tests prove the two
 halves of that behavior against a real Postgres session:
@@ -38,34 +38,36 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.cli import summer_league_ingest_runner as runner
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueDataQuality,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayerGameLog,
     SummerLeagueResolutionStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.utils.network_guard import transaction_depth
 from app.schemas.summer_league_pipeline import SummerLeagueBatchPhase
 from app.services.player_mention_service import _normalized_name_key
-from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.batch_progress import (
+from app.services.sources.summer_league.audit import audit_summer_league_raw
+from app.services.ingest.batch_progress import (
     get_completed_batch_game_ids,
     invalidate_batch_progress,
 )
-from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.normalization import (
     normalize_competition_games,
     normalize_shot_events,
 )
-from app.services.summer_league.player_resolution import (
+from app.services.backbone.player_resolution import (
     apply_source_player_resolution_plan as _real_apply_source_player_resolution_plan,
 )
-from app.services.summer_league.raw_ingestion import dirty_game_ids_from_manifest
-from app.services.summer_league.write_lock import (
+from app.services.sources.summer_league.raw_ingestion import (
+    dirty_game_ids_from_manifest,
+)
+from app.services.ingest.write_lock import (
     try_acquire_summer_league_writer_lock,
 )
 
@@ -148,9 +150,9 @@ async def _seed_competition(
     venue_slug: str = "las_vegas",
     starts_on: date | None,
     ends_on: date | None,
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     idx = _next_idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"{venue_slug}-{idx}",
@@ -475,9 +477,9 @@ async def _seed_pending_source_player(
     league_id: str,
     person_id: str,
     raw_name: str,
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     """Seed one game-logged, still-unresolved source player for this venue/year."""
-    competition = SummerLeagueCompetition(
+    competition = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=f"lock-lifetime-{_next_idx()}",
@@ -511,7 +513,7 @@ async def _seed_pending_source_player(
     await db.flush()
     assert game.id is not None
 
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
         raw_player_name=raw_name,
         normalized_name=_normalized_name_key(raw_name),
@@ -593,7 +595,10 @@ async def test_run_venue_resolution_search_runs_without_lock_writes_hold_it(
             session_factory, test_schema
         )
         return await _real_apply_source_player_resolution_plan(
-            db_arg, sp, plan, **kwargs  # type: ignore[arg-type]
+            db_arg,
+            sp,  # type: ignore[arg-type]
+            plan,  # type: ignore[arg-type]
+            **kwargs,  # type: ignore[arg-type]
         )
 
     monkeypatch.setattr(runner, "backfill_summer_league_backbone", _fake_backbone)
@@ -601,7 +606,7 @@ async def test_run_venue_resolution_search_runs_without_lock_writes_hold_it(
     monkeypatch.setattr(runner, "normalize_shot_events", _fake_shot)
     monkeypatch.setattr(runner, "normalize_pbp_events", _fake_pbp)
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         _fake_candidate_search,
     )
     monkeypatch.setattr(
@@ -642,7 +647,9 @@ async def test_run_venue_resolution_search_runs_without_lock_writes_hold_it(
 # ---------------------------------------------------------------------------
 
 
-def _result_set(name: str, headers: list[str], rows: list[list[object]]) -> dict[str, object]:
+def _result_set(
+    name: str, headers: list[str], rows: list[list[object]]
+) -> dict[str, object]:
     return {"name": name, "headers": headers, "rowSet": rows}
 
 
@@ -690,10 +697,26 @@ def _write_resumability_fixture(raw_root: Path) -> None:
         game_dir = run_dir / "games" / game_id
         game_dir.mkdir(parents=True)
         team_rows.append(
-            [1610612753, "ORL", "Orlando Magic", game_id, "2024-07-12", "ORL vs. CLE", 100 + index]
+            [
+                1610612753,
+                "ORL",
+                "Orlando Magic",
+                game_id,
+                "2024-07-12",
+                "ORL vs. CLE",
+                100 + index,
+            ]
         )
         team_rows.append(
-            [1610612739, "CLE", "Cleveland Cavaliers", game_id, "2024-07-12", "CLE @ ORL", 90 + index]
+            [
+                1610612739,
+                "CLE",
+                "Cleveland Cavaliers",
+                game_id,
+                "2024-07-12",
+                "CLE @ ORL",
+                90 + index,
+            ]
         )
         game_dir.joinpath("boxscoretraditionalv2.json").write_text(
             json.dumps(
@@ -710,8 +733,22 @@ def _write_resumability_fixture(raw_root: Path) -> None:
                                 "PTS",
                             ],
                             [
-                                [game_id, 1610612753, "Magic", "ORL", "200:00", 100 + index],
-                                [game_id, 1610612739, "Cavaliers", "CLE", "200:00", 90 + index],
+                                [
+                                    game_id,
+                                    1610612753,
+                                    "Magic",
+                                    "ORL",
+                                    "200:00",
+                                    100 + index,
+                                ],
+                                [
+                                    game_id,
+                                    1610612739,
+                                    "Cavaliers",
+                                    "CLE",
+                                    "200:00",
+                                    90 + index,
+                                ],
                             ],
                         ),
                         _result_set("PlayerStats", [], []),
@@ -732,7 +769,9 @@ def _write_resumability_fixture(raw_root: Path) -> None:
         game_dir.joinpath("boxscorescoringv2.json").write_text(
             json.dumps({"resultSets": [_result_set("sqlPlayersScoring", [], [])]})
         )
-        game_dir.joinpath("playbyplayv2.json").write_text(json.dumps({"resultSets": []}))
+        game_dir.joinpath("playbyplayv2.json").write_text(
+            json.dumps({"resultSets": []})
+        )
         game_dir.joinpath("shotchartdetail.json").write_text(
             json.dumps(
                 {
@@ -838,7 +877,9 @@ async def test_run_batched_phase_resumes_only_incomplete_games_after_a_crash(
     # parameter -- point it at this test's fixture directory.
     monkeypatch.setattr(runner, "RAW_ROOT", tmp_path)
     _write_resumability_fixture(tmp_path)
-    await audit_summer_league_raw(db_session, raw_root=tmp_path, year=2024, league_id="15")
+    await audit_summer_league_raw(
+        db_session, raw_root=tmp_path, year=2024, league_id="15"
+    )
     await normalize_competition_games(
         db_session, year=2024, league_id="15", raw_root=tmp_path
     )
@@ -1014,12 +1055,7 @@ async def test_dirty_game_reprocessed_after_raw_shotchart_correction(
 
     # Simulate a corrected raw snapshot: the shot flips from made to missed.
     corrected_path = (
-        tmp_path
-        / "2024"
-        / "15"
-        / "games"
-        / corrected_game_id
-        / "shotchartdetail.json"
+        tmp_path / "2024" / "15" / "games" / corrected_game_id / "shotchartdetail.json"
     )
     corrected_payload = json.loads(corrected_path.read_text())
     row = corrected_payload["resultSets"][0]["rowSet"][0]

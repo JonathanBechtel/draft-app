@@ -16,7 +16,7 @@ from app.services.event_desk.render_snapshots import (
     RenderSnapshotWrite,
     upsert_render_snapshots,
 )
-from app.services.summer_league.desk_read import build_desk_render_variants
+from app.services.sources.summer_league.desk_read import build_desk_render_variants
 
 
 async def prepare_desk_render_snapshots(

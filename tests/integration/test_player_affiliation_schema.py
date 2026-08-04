@@ -107,6 +107,9 @@ async def test_player_affiliations_schema(
     assert "id" in cols
     assert "player_id" in cols
     assert "nba_team_id" in cols
+    # Generic org-model target added in phase 4 (#783, spec §5.1 D3). Retained
+    # alongside nba_team_id -- both are dual-read targets, neither is dropped.
+    assert "team_program_id" in cols
     assert "affiliation_type" in cols
     assert "status" in cols
 
@@ -148,6 +151,9 @@ async def test_assertion_columns(
         "supersedes_id",
         "superseded_at",
         "retracted_at",
+        # Nullable by design: a row targeting only nba_team_id leaves it NULL
+        # for now, and a non-NBA row leaves nba_team_id NULL instead (D3).
+        "team_program_id",
     ):
         assert await _is_nullable(
             async_engine, "player_affiliations", col, test_schema
@@ -166,6 +172,10 @@ async def test_player_affiliations_indexes(
     assert "ix_player_affiliations_status" in indexes
     assert "ix_player_affiliations_supersedes_id" in indexes
     assert "ix_player_affiliations_active" in indexes
+    # Phase-4 org-model target indexes (#783): the plain lookup index and the
+    # partial index backing "current affiliations for this program".
+    assert "ix_player_affiliations_team_program_id" in indexes
+    assert "ix_player_affiliations_active_team_program" in indexes
 
 
 # ---------------------------------------------------------------------------

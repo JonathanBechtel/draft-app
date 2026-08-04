@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.schemas.player_college_stats import PlayerCollegeStats
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
-from app.services.summer_league.cohort import summer_league_cohort
+from app.services.backbone.cohort import summer_league_cohort
 from app.utils.network_guard import guarded_httpx_event_hooks
 
 # discipline: file-size cross-cutting transport guard; no service logic added
@@ -511,7 +511,7 @@ async def run_college_stats_sweep(  # noqa: PLR0915
         only_missing: Only process players without existing
             ``source='sports_reference'`` stats.
         sl_cohort: If True, restrict the target set to the Summer League
-            rostered cohort (``app.services.summer_league.cohort``) instead
+            rostered cohort (``app.services.backbone.cohort``) instead
             of scanning all players. Cohort players without a ``school`` +
             BBRef id (e.g. non-NCAA/international players) are reported in
             ``SweepResult.no_source`` rather than attempted or failed.

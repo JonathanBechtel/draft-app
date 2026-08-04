@@ -35,10 +35,10 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.services.stats.formulas import efg_pct_ratio, ts_pct_ratio, tov_pct_ratio
@@ -95,7 +95,7 @@ _LINE_B = dict(
 
 async def _seed_two_game_logs(db: AsyncSession) -> tuple[int, int]:
     """Seed a player with two game logs; return their (id_a, id_b)."""
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",
@@ -121,7 +121,7 @@ async def _seed_two_game_logs(db: AsyncSession) -> tuple[int, int]:
     await db.flush()
     assert player.id is not None
 
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id="sp-sql-parity",
         raw_player_name=player.display_name or "P",
         normalized_name=(player.display_name or "p").lower(),

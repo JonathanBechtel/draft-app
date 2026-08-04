@@ -6,7 +6,7 @@ and #544's request-time state resolution (`_resolve_window_state`/`_effective_no
 `_freshness_for`) to close the loop: the hourly tick
 (`app/cli/sl_desk_tick.py::run_desk_tick`) materializes the COMPLETE Preview/Live/
 Recap x Tracker cohort/stat-view variant matrix as its final step
-(`app.services.summer_league.desk_read.build_desk_render_variants`), and the
+(`app.services.sources.summer_league.desk_read.build_desk_render_variants`), and the
 homepage reads exactly one matching snapshot at request time
 (`get_desk_view_from_snapshot`) instead of reassembling the page.
 
@@ -33,12 +33,12 @@ from app.schemas.event_desk_render_snapshot import EventDeskRenderSnapshot
 from app.schemas.player_affiliation import AffiliationStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeagueParticipation,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
 from app.schemas.summer_league_desk import (
@@ -46,10 +46,10 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
-from app.schemas.summer_league_metrics import SummerLeaguePlayerSeason
+from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.event_desk.registry import sync_summer_league_event
 from app.services.event_desk.render_snapshots import CURRENT_SCHEMA_VERSION
-from app.services.summer_league.desk_read import (
+from app.services.sources.summer_league.desk_read import (
     DESK_RENDER_DAILY_STATES,
     TRACKER_COHORTS,
     TRACKER_STAT_VIEWS,
@@ -57,7 +57,7 @@ from app.services.summer_league.desk_read import (
     get_desk_payload,
     get_desk_view_from_snapshot,
 )
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.perf._capture import count_queries
 
@@ -112,9 +112,9 @@ class _FakeSession:
 
 async def _seed_competition(
     db: AsyncSession, *, year: int, starts_on: date, ends_on: date
-) -> SummerLeagueCompetition:
+) -> SummerLeagueEdition:
     idx = _next_idx()
-    comp = SummerLeagueCompetition(
+    comp = SummerLeagueEdition(
         year=year,
         league_id="15",
         venue_slug=f"vegas-snap-{idx}",
@@ -129,7 +129,7 @@ async def _seed_competition(
 
 
 async def _seed_team(
-    db: AsyncSession, competition: SummerLeagueCompetition
+    db: AsyncSession, competition: SummerLeagueEdition
 ) -> SummerLeagueTeamEntry:
     idx = _next_idx()
     assert competition.id is not None
@@ -148,7 +148,7 @@ async def _seed_team(
 
 async def _seed_game(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     home: SummerLeagueTeamEntry,
     away: SummerLeagueTeamEntry,
     *,
@@ -179,7 +179,7 @@ async def _seed_game(
 
 async def _seed_roster_player(
     db: AsyncSession,
-    competition: SummerLeagueCompetition,
+    competition: SummerLeagueEdition,
     team: SummerLeagueTeamEntry,
     *,
     year: int,
@@ -203,7 +203,7 @@ async def _seed_roster_player(
     await db.flush()
     assert player.id is not None
 
-    source_player = SummerLeagueSourcePlayer(
+    source_player = SummerLeagueSourceRecord(
         nba_stats_person_id=f"snap-person-{idx}",
         raw_player_name=player.display_name or "Snap Rookie",
         normalized_name=(player.display_name or "snap rookie").lower(),
@@ -222,7 +222,7 @@ async def _seed_roster_player(
         )
     )
     db.add(
-        SummerLeaguePlayerSeason(
+        SummerLeagueDerivedAgg(
             competition_id=competition.id,
             player_id=player.id,
             year=year,
@@ -710,8 +710,8 @@ async def test_live_snapshot_refreshes_featured_duel_from_current_box_lines(
     sources = (
         (
             await db_session.execute(
-                select(SummerLeagueSourcePlayer).where(
-                    SummerLeagueSourcePlayer.canonical_player_id.in_(  # type: ignore[union-attr]
+                select(SummerLeagueSourceRecord).where(
+                    SummerLeagueSourceRecord.canonical_player_id.in_(  # type: ignore[union-attr]
                         [player_a.id, player_b.id]  # type: ignore[union-attr]
                     )
                 )

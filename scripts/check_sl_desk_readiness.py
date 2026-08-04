@@ -45,7 +45,7 @@ Two modes:
     Class Tracker cohort/stat-view variant matrix is a mandatory final step
     of every successful tick, so post-tick requires the complete expected
     matrix (see ``DESK_RENDER_DAILY_STATES`` x ``TRACKER_COHORTS`` x
-    ``TRACKER_STAT_VIEWS`` in ``app.services.summer_league.desk_read``, 3 x 6
+    ``TRACKER_STAT_VIEWS`` in ``app.services.sources.summer_league.desk_read``, 3 x 6
     x 4 = 72 variants today) to be present for the active event, each at the
     current ``schema_version`` -- zero snapshots, a partial matrix, or a
     stale ``schema_version`` on any present row all ``fail``.
@@ -93,7 +93,7 @@ from app.schemas.event_desk import (  # noqa: E402
     EventLifecyclePhase,
 )
 from app.schemas.event_desk_render_snapshot import EventDeskRenderSnapshot  # noqa: E402
-from app.schemas.summer_league import SummerLeagueCompetition  # noqa: E402
+from app.schemas.summer_league import SummerLeagueEdition  # noqa: E402
 from app.schemas.summer_league_pipeline import (  # noqa: E402
     SummerLeaguePipelineJob,
     SummerLeaguePipelineOutcome,
@@ -111,15 +111,15 @@ from app.services.event_desk.registry import (  # noqa: E402
     calendar_facts_for_competition_ids,
 )
 from app.services.event_desk.timeutils import to_eastern_date  # noqa: E402
-from app.services.summer_league.desk_read import (  # noqa: E402
+from app.services.sources.summer_league.desk_read import (  # noqa: E402
     DESK_RENDER_DAILY_STATES,
     TRACKER_COHORTS,
     TRACKER_STAT_VIEWS,
 )
-from app.services.summer_league.scoreboard_ingest import (  # noqa: E402
+from app.services.sources.summer_league.scoreboard_ingest import (  # noqa: E402
     EVENT_KEY_SUMMER_LEAGUE,
 )
-from app.services.summer_league.pipeline_state import get_pipeline_freshness  # noqa: E402
+from app.services.ingest.pipeline_state import get_pipeline_freshness  # noqa: E402
 from app.utils.db_async import SessionLocal, engine  # noqa: E402
 
 ReadinessMode = Literal["preflight", "post-tick"]
@@ -141,7 +141,7 @@ DEFAULT_STALENESS_HOURS = 2.0
 
 # The COMPLETE render-snapshot variant matrix a successful tick must materialize as of
 # #551 (commit 96c3ca9) -- reuses the exact same constants the materializer
-# (`app.services.summer_league.desk_read.build_desk_render_variants`) iterates over, so
+# (`app.services.sources.summer_league.desk_read.build_desk_render_variants`) iterates over, so
 # this checker can never drift from what a tick actually writes. 3 x 6 x 4 = 72 today.
 EXPECTED_RENDER_VARIANTS: frozenset[tuple[EventDailyState, str, str]] = frozenset(
     itertools.product(DESK_RENDER_DAILY_STATES, TRACKER_COHORTS, TRACKER_STAT_VIEWS)
@@ -183,8 +183,8 @@ async def _check_registration(
     db: AsyncSession, *, mode: ReadinessMode, today_year: int, event_key: str
 ) -> CheckResult:
     """Category 1 -- this year's competition(s) registered, plus (post-tick) a synced events row."""
-    comp_stmt = select(SummerLeagueCompetition).where(
-        SummerLeagueCompetition.year == today_year  # type: ignore[arg-type]
+    comp_stmt = select(SummerLeagueEdition).where(
+        SummerLeagueEdition.year == today_year  # type: ignore[arg-type]
     )
     competitions = (await db.execute(comp_stmt)).scalars().all()
     if not competitions:
@@ -572,8 +572,8 @@ async def _resolve_lifecycle(
         competitions = (
             (
                 await db.execute(
-                    select(SummerLeagueCompetition).where(
-                        SummerLeagueCompetition.id.in_(competition_ids)  # type: ignore[union-attr]
+                    select(SummerLeagueEdition).where(
+                        SummerLeagueEdition.id.in_(competition_ids)  # type: ignore[union-attr]
                     )
                 )
             )

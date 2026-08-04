@@ -38,24 +38,24 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
 )
 from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
-    SummerLeaguePlayerSeason,
+    SummerLeagueDerivedAgg,
 )
 from app.services.event_desk.timeutils import to_eastern_date
-from app.services.summer_league.metric_publish import (
+from app.services.sources.summer_league.metric_publish import (
     ArchivalPublication,
     publish_archival_metric_version,
 )
-from app.services.summer_league.metrics import (
+from app.services.sources.summer_league.metrics import (
     rebuild_staged,
     season_game_status_clause,
 )
-from app.services.summer_league.write_lock import (
+from app.services.ingest.write_lock import (
     acquire_summer_league_writer_lock_bounded,
 )
 from app.utils.db_async import SessionLocal, engine
@@ -169,7 +169,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _eligible_day_clauses() -> tuple[Any, ...]:
     """Return the shared filter for days that can form a valid daily close."""
-    competition_year: Any = getattr(SummerLeagueCompetition, "year")
+    competition_year: Any = getattr(SummerLeagueEdition, "year")
     game_date: Any = getattr(SummerLeagueGame, "game_date")
     player_id: Any = getattr(SummerLeaguePlayerGameLog, "player_id")
     minutes_seconds: Any = getattr(SummerLeaguePlayerGameLog, "minutes_seconds")
@@ -186,8 +186,8 @@ async def _load_targets(
     db: AsyncSession, *, year: int | None = None
 ) -> list[BackfillTarget]:
     """Return event days that have at least one resolved player game log."""
-    competition_year: Any = getattr(SummerLeagueCompetition, "year")
-    competition_id: Any = getattr(SummerLeagueCompetition, "id")
+    competition_year: Any = getattr(SummerLeagueEdition, "year")
+    competition_id: Any = getattr(SummerLeagueEdition, "id")
     game_date: Any = getattr(SummerLeagueGame, "game_date")
     query = (
         select(
@@ -197,7 +197,7 @@ async def _load_targets(
         )
         .join(
             SummerLeagueGame,
-            SummerLeagueGame.competition_id == SummerLeagueCompetition.id,
+            SummerLeagueGame.competition_id == SummerLeagueEdition.id,
         )
         .join(
             SummerLeaguePlayerGameLog,
@@ -206,8 +206,8 @@ async def _load_targets(
         .where(*_eligible_day_clauses())
         .distinct()
         .order_by(
-            SummerLeagueCompetition.year,
-            SummerLeagueCompetition.id,
+            SummerLeagueEdition.year,
+            SummerLeagueEdition.id,
             SummerLeagueGame.game_date,
         )
     )
@@ -251,15 +251,15 @@ async def _load_cumulative_player_counts(
     db: AsyncSession, *, year: int | None = None
 ) -> dict[tuple[int, date], int]:
     """Load the per-target season-row estimate in one pass over eligible logs."""
-    competition_year: Any = getattr(SummerLeagueCompetition, "year")
-    competition_id: Any = getattr(SummerLeagueCompetition, "id")
+    competition_year: Any = getattr(SummerLeagueEdition, "year")
+    competition_id: Any = getattr(SummerLeagueEdition, "id")
     game_date: Any = getattr(SummerLeagueGame, "game_date")
     player_id: Any = getattr(SummerLeaguePlayerGameLog, "player_id")
     query = (
         select(competition_id, game_date, player_id)
         .join(
             SummerLeagueGame,
-            SummerLeagueGame.competition_id == SummerLeagueCompetition.id,
+            SummerLeagueGame.competition_id == SummerLeagueEdition.id,
         )
         .join(
             SummerLeaguePlayerGameLog,
@@ -286,18 +286,18 @@ async def _has_complete_archival_close(
     """Return whether both projection families have a published daily close."""
     context_current: Any = getattr(SummerLeagueMetricContext, "is_current")
     context_published: Any = getattr(SummerLeagueMetricContext, "published_at")
-    season_current: Any = getattr(SummerLeaguePlayerSeason, "is_current")
-    season_published: Any = getattr(SummerLeaguePlayerSeason, "published_at")
+    season_current: Any = getattr(SummerLeagueDerivedAgg, "is_current")
+    season_published: Any = getattr(SummerLeagueDerivedAgg, "published_at")
     context_competition_id: Any = getattr(SummerLeagueMetricContext, "competition_id")
     context_effective_day: Any = getattr(SummerLeagueMetricContext, "effective_day")
     context_archival: Any = getattr(SummerLeagueMetricContext, "is_archival")
-    season_competition_id: Any = getattr(SummerLeaguePlayerSeason, "competition_id")
-    season_effective_day: Any = getattr(SummerLeaguePlayerSeason, "effective_day")
-    season_archival: Any = getattr(SummerLeaguePlayerSeason, "is_archival")
+    season_competition_id: Any = getattr(SummerLeagueDerivedAgg, "competition_id")
+    season_effective_day: Any = getattr(SummerLeagueDerivedAgg, "effective_day")
+    season_archival: Any = getattr(SummerLeagueDerivedAgg, "is_archival")
     season_competition_bands: Any = getattr(
-        SummerLeaguePlayerSeason, "trend_competition_bands"
+        SummerLeagueDerivedAgg, "trend_competition_bands"
     )
-    season_year_bands: Any = getattr(SummerLeaguePlayerSeason, "trend_season_bands")
+    season_year_bands: Any = getattr(SummerLeagueDerivedAgg, "trend_season_bands")
     context_count = await db.scalar(
         select(func.count())
         .select_from(SummerLeagueMetricContext)
@@ -311,7 +311,7 @@ async def _has_complete_archival_close(
     )
     season_count = await db.scalar(
         select(func.count())
-        .select_from(SummerLeaguePlayerSeason)
+        .select_from(SummerLeagueDerivedAgg)
         .where(
             season_competition_id == competition_id,
             season_effective_day == effective_day,

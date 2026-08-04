@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.services.summer_league import metric_publish_guards as guards
+from app.services.sources.summer_league import metric_publish_guards as guards
 
 
 def _grouped_scopes(

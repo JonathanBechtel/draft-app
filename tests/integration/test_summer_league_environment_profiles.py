@@ -26,18 +26,18 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeagueGameStatus,
     SummerLeaguePlayByPlayEvent,
     SummerLeaguePlayerGameLog,
     SummerLeagueParticipation,
-    SummerLeagueRawFile,
+    SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
-    SummerLeagueRawRun,
+    SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
     SummerLeagueShotEvent,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
@@ -48,8 +48,8 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentProfile,
     SummerLeagueEnvironmentSeasonMembership,
 )
-from app.services.summer_league.metrics import Box
-from app.services.summer_league.write_lock import acquire_summer_league_writer_lock
+from app.services.sources.summer_league.metrics import Box
+from app.services.ingest.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import CALCULATION_VERSION
 from app.services.summer_league_environment_service import (
     EnvironmentScope,
@@ -108,10 +108,12 @@ def _box_from(line: dict) -> Box:
     return box
 
 
-async def _raw_run_id(db: AsyncSession, *, year: int = 2024, league_id: str = "15") -> int:
-    """A minimal raw run row, satisfying SummerLeagueRawFile's required FK."""
+async def _raw_run_id(
+    db: AsyncSession, *, year: int = 2024, league_id: str = "15"
+) -> int:
+    """A minimal raw run row, satisfying SummerLeagueSourceDocument's required FK."""
     _SEQ["n"] += 1
-    raw_run = SummerLeagueRawRun(
+    raw_run = SummerLeagueIngestionRun(
         year=year,
         league_id=league_id,
         venue_slug="las_vegas",
@@ -142,7 +144,7 @@ async def _raw_file(
     run_id = await _raw_run_id(db, year=year, league_id=league_id)
     _SEQ["n"] += 1
     db.add(
-        SummerLeagueRawFile(
+        SummerLeagueSourceDocument(
             raw_run_id=run_id,
             year=year,
             league_id=league_id,
@@ -157,8 +159,8 @@ async def _raw_file(
 
 async def _competition(
     db: AsyncSession, *, year: int, venue: str, league_id: str
-) -> SummerLeagueCompetition:
-    comp = SummerLeagueCompetition(
+) -> SummerLeagueEdition:
+    comp = SummerLeagueEdition(
         year=year,
         league_id=league_id,
         venue_slug=venue,
@@ -188,7 +190,7 @@ async def _team(db: AsyncSession, comp_id: int, idx: int) -> SummerLeagueTeamEnt
 
 async def _source_player(
     db: AsyncSession, *, resolved: bool, player_id: int | None = None
-) -> SummerLeagueSourcePlayer:
+) -> SummerLeagueSourceRecord:
     _SEQ["n"] += 1
     canonical = player_id
     if resolved and canonical is None:
@@ -196,7 +198,7 @@ async def _source_player(
         db.add(player)
         await db.flush()
         canonical = player.id
-    sp = SummerLeagueSourcePlayer(
+    sp = SummerLeagueSourceRecord(
         nba_stats_person_id=f"sp-{_SEQ['n']}",
         raw_player_name=f"Player {_SEQ['n']}",
         normalized_name=f"player {_SEQ['n']}",
@@ -254,7 +256,7 @@ async def _player_log(
     comp_id: int,
     game_id: int,
     team_id: int,
-    source: SummerLeagueSourcePlayer,
+    source: SummerLeagueSourceRecord,
     minutes_seconds: int = 1500,
     pts: int = 12,
     starter_position: str | None = None,
@@ -391,9 +393,7 @@ async def test_competition_projection_matches_pooled_source(
     pooled_fga = n_games * (box_a.fga + box_b.fga)
     pooled_fta = n_games * (box_a.fta + box_b.fta)
     pooled_tov = n_games * (box_a.tov + box_b.tov)
-    expected_turnover_rate = pooled_tov / (
-        pooled_fga + 0.44 * pooled_fta + pooled_tov
-    )
+    expected_turnover_rate = pooled_tov / (pooled_fga + 0.44 * pooled_fta + pooled_tov)
     assert profile.turnover_rate == pytest.approx(expected_turnover_rate, abs=0.05)
     # Isolated by competition id: no season profile was built by a competition rebuild.
     season = await get_environment_profile(
@@ -412,7 +412,7 @@ async def test_profile_traces_to_raw_run_and_discloses_source_status(
     traceable to its contributing raw run, and discloses per-source parse/
     source status where the underlying raw data models it.
     """
-    raw_run = SummerLeagueRawRun(
+    raw_run = SummerLeagueIngestionRun(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",
@@ -426,7 +426,7 @@ async def test_profile_traces_to_raw_run_and_discloses_source_status(
     comp_id, roster = await _seed_competition(
         db_session, year=2025, venue="las_vegas", league_id="15"
     )
-    comp = await db_session.get(SummerLeagueCompetition, comp_id)
+    comp = await db_session.get(SummerLeagueEdition, comp_id)
     assert comp is not None
     comp.raw_run_id = raw_run.id
     await db_session.flush()
@@ -444,7 +444,7 @@ async def test_profile_traces_to_raw_run_and_discloses_source_status(
     )
     assert games
     db_session.add(
-        SummerLeagueRawFile(
+        SummerLeagueSourceDocument(
             raw_run_id=raw_run.id,
             year=2025,
             league_id="15",
@@ -514,20 +514,20 @@ async def test_shot_coverage_ignores_stale_run_failure(
     """A stale raw file left by an older, non-pinned scrape run must not
     uncertify a game whose *current* pinned raw run parsed successfully.
 
-    Without scoping by ``SummerLeagueCompetition.raw_run_id``, the worst-case
+    Without scoping by ``SummerLeagueEdition.raw_run_id``, the worst-case
     reduction across every raw file matching a game id -- regardless of which
     scrape manifest produced it -- would fold an unrelated older run's
     ``PARSE_FAILED`` row into this competition's certification, contradicting
     the exact-provenance guarantee ``raw_run_ids`` already makes (#641).
     """
-    stale_run = SummerLeagueRawRun(
+    stale_run = SummerLeagueIngestionRun(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",
         status=SummerLeagueRawRunStatus.COMPLETE,
         manifest_path="s3://bucket/2025/las_vegas/manifest-stale.json",
     )
-    current_run = SummerLeagueRawRun(
+    current_run = SummerLeagueIngestionRun(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",
@@ -541,7 +541,7 @@ async def test_shot_coverage_ignores_stale_run_failure(
     comp_id, _ = await _seed_competition(
         db_session, year=2025, venue="las_vegas", league_id="15", n_games=1
     )
-    comp = await db_session.get(SummerLeagueCompetition, comp_id)
+    comp = await db_session.get(SummerLeagueEdition, comp_id)
     assert comp is not None
     comp.raw_run_id = current_run.id
     await db_session.flush()
@@ -565,7 +565,7 @@ async def test_shot_coverage_ignores_stale_run_failure(
         )
     ).scalar_one()
     source = (
-        (await db_session.execute(select(SummerLeagueSourcePlayer).limit(1)))
+        (await db_session.execute(select(SummerLeagueSourceRecord).limit(1)))
         .scalars()
         .first()
     )
@@ -586,7 +586,7 @@ async def test_shot_coverage_ignores_stale_run_failure(
     )
     db_session.add_all(
         [
-            SummerLeagueRawFile(
+            SummerLeagueSourceDocument(
                 raw_run_id=stale_run.id,
                 year=2025,
                 league_id="15",
@@ -595,7 +595,7 @@ async def test_shot_coverage_ignores_stale_run_failure(
                 relative_path=f"{game.nba_stats_game_id}/shotchartdetail-stale.json",
                 parse_status=SummerLeagueRawFileStatus.PARSE_FAILED,
             ),
-            SummerLeagueRawFile(
+            SummerLeagueSourceDocument(
                 raw_run_id=current_run.id,
                 year=2025,
                 league_id="15",
@@ -631,14 +631,14 @@ async def test_shot_coverage_ignores_stale_run_success(
     falsely certify a game the current run never actually produced evidence
     for, contradicting the profile's own ``raw_run_ids`` provenance.
     """
-    stale_run = SummerLeagueRawRun(
+    stale_run = SummerLeagueIngestionRun(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",
         status=SummerLeagueRawRunStatus.COMPLETE,
         manifest_path="s3://bucket/2025/las_vegas/manifest-stale2.json",
     )
-    current_run = SummerLeagueRawRun(
+    current_run = SummerLeagueIngestionRun(
         year=2025,
         league_id="15",
         venue_slug="las_vegas",
@@ -652,7 +652,7 @@ async def test_shot_coverage_ignores_stale_run_success(
     comp_id, _ = await _seed_competition(
         db_session, year=2025, venue="las_vegas", league_id="15", n_games=1
     )
-    comp = await db_session.get(SummerLeagueCompetition, comp_id)
+    comp = await db_session.get(SummerLeagueEdition, comp_id)
     assert comp is not None
     comp.raw_run_id = current_run.id
     await db_session.flush()
@@ -676,7 +676,7 @@ async def test_shot_coverage_ignores_stale_run_success(
         )
     ).scalar_one()
     source = (
-        (await db_session.execute(select(SummerLeagueSourcePlayer).limit(1)))
+        (await db_session.execute(select(SummerLeagueSourceRecord).limit(1)))
         .scalars()
         .first()
     )
@@ -698,7 +698,7 @@ async def test_shot_coverage_ignores_stale_run_success(
     # Only the stale run has a shotchartdetail file for this game; the
     # pinned current run never fetched/parsed one.
     db_session.add(
-        SummerLeagueRawFile(
+        SummerLeagueSourceDocument(
             raw_run_id=stale_run.id,
             year=2025,
             league_id="15",
@@ -735,7 +735,7 @@ async def test_non_final_games_disclosed_in_scheduled_count(
     )
     comp = (
         await db_session.execute(
-            select(SummerLeagueCompetition).where(SummerLeagueCompetition.id == comp_id)
+            select(SummerLeagueEdition).where(SummerLeagueEdition.id == comp_id)
         )
     ).scalar_one()
     team_a = await _team(db_session, comp_id, 3)
@@ -872,7 +872,7 @@ async def test_partial_shot_coverage_nulls_shot_metric(
         )
     ).scalar_one()
     source = (
-        (await db_session.execute(select(SummerLeagueSourcePlayer).limit(1)))
+        (await db_session.execute(select(SummerLeagueSourceRecord).limit(1)))
         .scalars()
         .first()
     )
@@ -963,7 +963,7 @@ async def test_shot_parse_failure_uncertifies_game_despite_existing_rows(
         )
     ).scalar_one()
     source = (
-        (await db_session.execute(select(SummerLeagueSourcePlayer).limit(1)))
+        (await db_session.execute(select(SummerLeagueSourceRecord).limit(1)))
         .scalars()
         .first()
     )
@@ -1051,7 +1051,7 @@ async def test_unmapped_shot_zone_uncertifies_game(db_session: AsyncSession) -> 
         )
     ).scalar_one()
     source = (
-        (await db_session.execute(select(SummerLeagueSourcePlayer).limit(1)))
+        (await db_session.execute(select(SummerLeagueSourceRecord).limit(1)))
         .scalars()
         .first()
     )

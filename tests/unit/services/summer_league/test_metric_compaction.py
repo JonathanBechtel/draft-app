@@ -10,8 +10,8 @@ import pytest
 
 from app.cli import summer_league_metrics_compact
 from app.schemas.summer_league_metrics import SummerLeagueMetricContext
-from app.services.summer_league import metric_compaction
-from app.services.summer_league.write_lock import SummerLeagueWriterLockTimeout
+from app.services.sources.summer_league import metric_compaction
+from app.services.ingest.write_lock import SummerLeagueWriterLockTimeout
 
 
 def test_closed_day_cutoff_normalizes_aware_clock_to_utc() -> None:

@@ -7,7 +7,11 @@ from app.models.fields import (
     MetricSource,
     SimilarityDimension,
 )
-from app.schemas.metrics import MetricSnapshot, PlayerSimilarity
+from app.schemas.metrics import (
+    METRIC_SNAPSHOT_VERSION_TAG,
+    MetricSnapshot,
+    PlayerSimilarity,
+)
 from app.schemas.player_status import PlayerStatus
 from app.schemas.players_master import PlayerMaster
 from app.schemas.positions import Position
@@ -43,6 +47,8 @@ async def _create_snapshot(
         population_size=10,
         version=version,
         is_current=is_current,
+        registry_version=METRIC_SNAPSHOT_VERSION_TAG,
+        calculation_version=METRIC_SNAPSHOT_VERSION_TAG,
     )
     db_session.add(snapshot)
     await db_session.flush()

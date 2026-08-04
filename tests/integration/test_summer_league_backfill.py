@@ -12,18 +12,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
 from app.schemas.summer_league import (
-    SummerLeagueCompetition,
+    SummerLeagueEdition,
     SummerLeagueGame,
     SummerLeaguePlayerGameLog,
-    SummerLeagueSourcePlayer,
+    SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.services.summer_league.backfill import (
+from app.services.sources.summer_league.backfill import (
     SummerLeagueBackfillOptions,
     backfill_summer_league_backbone,
 )
-from app.services.summer_league.player_resolution import NBA_STATS_SYSTEM
+from app.services.backbone.player_resolution import NBA_STATS_SYSTEM
 
 
 def _result_set(
@@ -230,7 +230,7 @@ async def test_backfill_summer_league_backbone_is_idempotent(
         return []
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_candidates,
     )
 
@@ -268,11 +268,11 @@ async def test_backfill_summer_league_backbone_is_idempotent(
     assert first.resolution.unresolved_source_players == 1
     assert second.competition_games is not None
     assert second.competition_games.team_game_logs_upserted == 2
-    assert await _table_count(db_session, SummerLeagueCompetition) == 1
+    assert await _table_count(db_session, SummerLeagueEdition) == 1
     assert await _table_count(db_session, SummerLeagueTeamEntry) == 2
     assert await _table_count(db_session, SummerLeagueGame) == 1
     assert await _table_count(db_session, SummerLeagueTeamGameLog) == 2
-    assert await _table_count(db_session, SummerLeagueSourcePlayer) == 2
+    assert await _table_count(db_session, SummerLeagueSourceRecord) == 2
     assert await _table_count(db_session, SummerLeaguePlayerGameLog) == 2
     assert await _table_count(db_session, PlayerExternalId) == 1
     assert external_id.player_id == player.id
@@ -296,7 +296,7 @@ async def test_backfill_dry_run_rolls_back_database_changes(
         return []
 
     monkeypatch.setattr(
-        "app.services.summer_league.player_resolution.find_candidate_players",
+        "app.services.backbone.player_resolution.find_candidate_players",
         fake_candidates,
     )
 
@@ -314,6 +314,6 @@ async def test_backfill_dry_run_rolls_back_database_changes(
     assert report.unsupported_dry_run_stages == ()
     assert report.player_logs is not None
     assert report.player_logs.player_game_logs_upserted == 2
-    assert await _table_count(db_session, SummerLeagueCompetition) == 0
-    assert await _table_count(db_session, SummerLeagueSourcePlayer) == 0
+    assert await _table_count(db_session, SummerLeagueEdition) == 0
+    assert await _table_count(db_session, SummerLeagueSourceRecord) == 0
     assert await _table_count(db_session, SummerLeaguePlayerGameLog) == 0
