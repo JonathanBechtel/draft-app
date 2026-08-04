@@ -52,6 +52,21 @@ Three distinct version stamps travel with a profile -- never conflate them:
   version, bumped when *how* inputs are pooled/watermarked changes even
   without a metric-definition change.
 
+``SummerLeagueEnvironmentProfile`` is where this three-stamp shape (plus
+``is_current``) was first written, and ``app.schemas.base.DatedVersionMixin``
+(#785) copied it verbatim -- so this table inherits the mixin for those four
+columns rather than re-declaring them, a pure dedup with no schema change.
+The mixin's fifth column, ``as_of``, is deliberately *not* picked up here:
+this table already has ``source_watermark`` (below), which carries the exact
+same P4 "max source-row timestamp" semantics under a name that predates the
+mixin and is read/written across the Explorer service, templates, and
+fixtures. Adding a second, always-null ``as_of`` column would duplicate that
+meaning under a different name -- exactly what the mixin exists to prevent --
+so ``as_of`` is shadowed with ``ClassVar[None]`` to opt this table out of
+that one column without forcing a rename (DDL, live-reader risk) or a
+duplicate column. Documented exception, same spirit as the ``is_active`` /
+``is_current`` exception on ``SummerLeagueCohortBaseline``.
+
 The exact metric formulas, denominators, rounding, coverage rules, and
 event-time field-composition semantics live in
 :mod:`app.services.summer_league_environment_registry`, which is the single
@@ -61,7 +76,7 @@ shared definition consumed by aggregation (#617) and the Explorer (#607/#608).
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 
 from sqlalchemy import (
     CheckConstraint,
@@ -75,6 +90,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
+from app.schemas.base import DatedVersionMixin
+
 # Stable scope-kind tokens (never display labels).
 SCOPE_KIND_SEASON = "season_all_competitions"
 SCOPE_KIND_COMPETITION = "competition"
@@ -85,7 +102,7 @@ COVERAGE_PARTIAL = "partial"
 COVERAGE_UNAVAILABLE = "unavailable"
 
 
-class SummerLeagueEnvironmentProfile(SQLModel, table=True):  # type: ignore[call-arg]
+class SummerLeagueEnvironmentProfile(DatedVersionMixin, SQLModel, table=True):  # type: ignore[call-arg]
     """One versioned Competition Context profile for a season or competition scope.
 
     Typed numeric columns hold the sortable / filterable v1 metric values so
@@ -95,6 +112,14 @@ class SummerLeagueEnvironmentProfile(SQLModel, table=True):  # type: ignore[call
     *scalars* (counts and median age) are stored here; per-attribute coverage,
     per-metric coverage verdicts, season membership, and source provenance live
     in the child tables.
+
+    Inherits ``version`` / ``is_current`` / ``registry_version`` /
+    ``calculation_version`` from :class:`app.schemas.base.DatedVersionMixin` --
+    this is the table those columns were originally copied *from* (see module
+    docstring), so adoption is a pure dedup, no DDL. The mixin's ``as_of`` is
+    deliberately excluded (``ClassVar[None]`` below): ``source_watermark``
+    already carries that exact semantic under its pre-existing, widely-read
+    name. Documented exception (#785).
     """
 
     __tablename__ = "summer_league_environment_profiles"
@@ -173,40 +198,15 @@ class SummerLeagueEnvironmentProfile(SQLModel, table=True):  # type: ignore[call
         ),
     )
 
-    # Versioning / selection.
-    version: int = Field(
-        nullable=False,
-        description=(
-            "Publication version: a monotonic sequence number within a "
-            "scope_key, bumped every rebuild regardless of whether the "
-            "calculation logic or values actually changed. Not the same as "
-            "calculation_version or registry_version below."
-        ),
-    )
-    is_current: bool = Field(
-        default=False,
-        nullable=False,
-        description="Marks the single active profile for this scope",
-    )
-    registry_version: str = Field(
-        nullable=False,
-        description=(
-            "Metric-registry definition version this profile was built "
-            "under (formulas/denominators/rounding/coverage rules) -- see "
-            "app.services.summer_league_environment_registry.REGISTRY_VERSION"
-        ),
-    )
-    calculation_version: str = Field(
-        nullable=False,
-        description=(
-            "Aggregation/calculation-algorithm version this profile was "
-            "built under -- distinct from registry_version (metric "
-            "definitions) and from the publication `version` above (a "
-            "sequence number). Bumped when the aggregation pipeline logic "
-            "changes even without a metric-definition change -- see "
-            "app.services.summer_league_environment_registry.CALCULATION_VERSION"
-        ),
-    )
+    # Versioning / selection: version / is_current / registry_version /
+    # calculation_version come from DatedVersionMixin (see class docstring).
+    #
+    # The mixin's `as_of` is deliberately not part of this table: `source_watermark`
+    # below already carries that exact P4 semantic under its pre-existing name, and
+    # is actively read/written by the Explorer service, templates, and fixtures.
+    # Shadowing with ClassVar removes it from the mapped columns so adopting the
+    # mixin adds no new DB column here.
+    as_of: ClassVar[None] = None  # type: ignore[misc]
 
     # Identity & coverage (game grain).
     included_competitions: int = Field(default=1, nullable=False)

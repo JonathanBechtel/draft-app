@@ -92,6 +92,18 @@ class SummerLeagueCohortBaseline(SQLModel, table=True):  # type: ignore[call-arg
 
     Refreshed rarely (new-history ingest / window-rule change / manual) by Job A
     (``scripts/build_sl_cohort_baselines.py``); never rebuilt on the hourly tick.
+
+    Documented exception -- does not inherit ``app.schemas.base.DatedVersionMixin``
+    (#785): this table's shape only loosely matches the mixin (``baseline_version``
+    is a free-form ``str`` here, not the mixin's monotonic ``int`` ``version``; there
+    is no ``registry_version`` / ``calculation_version`` / ``as_of`` at all), and its
+    active-row flag is named ``is_active``, not the mixin's ``is_current``, with live
+    readers (see the partial unique index below) already depending on that name.
+    Renaming a physical column on an existing, actively-read table is exactly the
+    kind of live-reader DDL this phase's decisions avoid, and adopting three of five
+    mixin columns while leaving the other two hand-rolled and mismatched would be
+    worse than not adopting at all -- so this table keeps its pre-existing shape in
+    full, cross-referenced here rather than forced into partial mixin conformance.
     """
 
     __tablename__ = "summer_league_cohort_baselines"

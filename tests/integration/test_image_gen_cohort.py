@@ -16,7 +16,11 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.fields import CohortType
-from app.schemas.image_snapshots import PlayerImageAsset, PlayerImageSnapshot
+from app.schemas.image_snapshots import (
+    IMAGE_PIPELINE_CALCULATION_VERSION,
+    PlayerImageAsset,
+    PlayerImageSnapshot,
+)
 from app.schemas.summer_league import (
     SummerLeagueCompetition,
     SummerLeagueParticipation,
@@ -170,6 +174,8 @@ async def test_summer_league_batch_targets_only_missing_cohort_players(
         cohort=CohortType.global_scope,
         image_size="1K",
         system_prompt="test system prompt",
+        registry_version="test",
+        calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
     )
     db_session.add(existing_snapshot)
     await db_session.commit()
@@ -215,6 +221,8 @@ async def test_summer_league_batch_targets_only_missing_cohort_players(
         cohort=CohortType.global_scope,
         image_size="1K",
         system_prompt="test system prompt",
+        registry_version="test",
+        calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
     )
     db_session.add(build_snapshot)
     await db_session.commit()

@@ -26,7 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
 from app.models.fields import CohortType
-from app.schemas.image_snapshots import PlayerImageSnapshot
+from app.schemas.image_snapshots import (
+    IMAGE_PIPELINE_CALCULATION_VERSION,
+    PlayerImageSnapshot,
+)
 from app.schemas.player_college_stats import PlayerCollegeStats
 from app.schemas.players_master import PlayerMaster
 from app.services.image_generation import image_generation_service
@@ -485,6 +488,8 @@ async def _generate_portrait(db: AsyncSession, player: PlayerMaster) -> None:
         image_size=settings.image_gen_size,
         system_prompt=system_prompt,
         system_prompt_version="default",
+        registry_version="default",
+        calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
         notes=f"Auto-generated after enrichment for {player.display_name}",
         generated_at=now,
     )

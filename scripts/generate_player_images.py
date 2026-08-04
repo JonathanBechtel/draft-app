@@ -62,6 +62,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models.fields import CohortType
 from app.schemas.image_snapshots import (
+    IMAGE_PIPELINE_CALCULATION_VERSION,
     BatchJobState,
     ImageBatchJob,
     PlayerImageAsset,
@@ -537,6 +538,8 @@ async def batch_submit(args: argparse.Namespace) -> None:
             image_size=args.size,
             system_prompt=system_prompt,
             system_prompt_version=args.prompt_version,
+            registry_version=args.prompt_version,
+            calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
             notes=f"[BATCH] {args.notes}" if args.notes else "[BATCH]",
             generated_at=datetime.now(UTC).replace(tzinfo=None),
         )
@@ -877,6 +880,8 @@ async def main(args: argparse.Namespace) -> None:
             image_size=args.size,
             system_prompt=system_prompt,
             system_prompt_version=args.prompt_version,
+            registry_version=args.prompt_version,
+            calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
             notes=args.notes,
             generated_at=datetime.now(UTC).replace(tzinfo=None),
         )

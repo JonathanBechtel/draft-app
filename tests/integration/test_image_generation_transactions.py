@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.fields import CohortType
 from app.schemas.image_snapshots import (
+    IMAGE_PIPELINE_CALCULATION_VERSION,
     BatchJobState,
     ImageBatchJob,
     PlayerImageSnapshot,
@@ -66,6 +67,8 @@ async def test_retrieve_batch_results_persists_failure_metadata_before_raise(
         cohort=CohortType.current_draft,
         image_size="1K",
         system_prompt="test system prompt",
+        registry_version="test",
+        calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
     )
     db_session.add(snapshot)
     await db_session.commit()
@@ -147,6 +150,8 @@ async def test_submit_batch_job_does_not_require_clean_transaction(
         cohort=CohortType.current_draft,
         image_size="1K",
         system_prompt="test system prompt",
+        registry_version="test",
+        calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
     )
     db_session.add(snapshot)
     await db_session.commit()
@@ -235,6 +240,8 @@ async def test_retrieve_batch_results_ingests_successes_when_some_requests_error
         cohort=CohortType.current_draft,
         image_size="1K",
         system_prompt="test system prompt",
+        registry_version="test",
+        calculation_version=IMAGE_PIPELINE_CALCULATION_VERSION,
     )
     db_session.add(snapshot)
     await db_session.commit()
@@ -294,7 +301,10 @@ async def test_retrieve_batch_results_ingests_successes_when_some_requests_error
         _fake_extract_and_upload,
     )
 
-    success_count, failure_count = await image_generation_service.retrieve_batch_results(
+    (
+        success_count,
+        failure_count,
+    ) = await image_generation_service.retrieve_batch_results(
         db=db_session,
         job_record=job,
         players_by_id={player_ok.id: player_ok, player_err.id: player_err},

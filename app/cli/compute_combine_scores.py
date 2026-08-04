@@ -38,7 +38,12 @@ from app.models.position_taxonomy import (
     parents_for_scope,
     resolve_position_scope,
 )
-from app.schemas.metrics import MetricDefinition, MetricSnapshot, PlayerMetricValue
+from app.schemas.metrics import (
+    METRIC_SNAPSHOT_VERSION_TAG,
+    MetricDefinition,
+    MetricSnapshot,
+    PlayerMetricValue,
+)
 from app.schemas.seasons import Season
 from app.utils.db_async import SessionLocal, load_schema_modules
 
@@ -565,6 +570,8 @@ async def compute_scores_for_scope(
             notes="Combine score composite",
             version=version,
             is_current=False,
+            registry_version=METRIC_SNAPSHOT_VERSION_TAG,
+            calculation_version=METRIC_SNAPSHOT_VERSION_TAG,
             position_scope_parent=position_scope_parent,
             position_scope_fine=None,
         )
