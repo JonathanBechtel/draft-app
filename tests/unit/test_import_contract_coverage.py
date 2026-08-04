@@ -125,7 +125,13 @@ def test_every_summer_league_enumerating_contract_is_guarded() -> None:
         for contract in _contracts()
         if any(
             module.startswith(
-                ("app.services.summer_league", "app.schemas.summer_league")
+                (
+                    "app.services.summer_league",
+                    # Phase 4 moved the SL adapter here (#789); a contract that
+                    # enumerates only the new path must still be guarded.
+                    "app.services.sources.summer_league",
+                    "app.schemas.summer_league",
+                )
             )
             for module in contract.get("forbidden_modules", [])
         )

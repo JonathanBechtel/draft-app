@@ -15,7 +15,7 @@ These tests run against the live integration-test Postgres schema (via
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.organization import Organization, OrgKind, TeamProgram
@@ -58,9 +58,18 @@ async def test_non_nba_source_can_assert_an_affiliation(
 ) -> None:
     """A federation-owned program can be an affiliation target with nba_team_id NULL.
 
-    This is exit criterion 2 made mechanical: it fails if `team_program_id` is
-    ever removed from `PlayerAffiliation`, because there would be nothing for
-    a non-NBA-sourced assertion to target.
+    This is exit criterion 2 made mechanical. It is written to fail *semantically*
+    rather than merely crash:
+
+    * The stored value is read back with raw SQL, so the assertion is about what
+      is actually in the column -- not about an ORM attribute. SQLModel silently
+      discards unknown constructor kwargs, so a test that only round-trips
+      through the identity map would still pass if `team_program_id` were
+      dropped from the table.
+    * `expunge_all()` clears the identity map before the ORM re-read. The
+      integration `db_session` fixture sets `expire_on_commit=False`, so without
+      this the `select()` below returns the very object the test constructed and
+      proves nothing about persistence.
     """
     program = await _make_federation_program(db_session)
     program_id = program.id
@@ -76,6 +85,21 @@ async def test_non_nba_source_can_assert_an_affiliation(
     db_session.add(affiliation)
     await db_session.commit()
 
+    # Raw-SQL read: asserts the column itself holds the federation program id.
+    stored = (
+        await db_session.execute(
+            text(
+                "SELECT team_program_id, nba_team_id FROM player_affiliations "
+                "WHERE source = :source"
+            ),
+            {"source": "test_non_nba_federation_source"},
+        )
+    ).one()
+    assert stored.team_program_id == program_id
+    assert stored.nba_team_id is None
+
+    # ORM read from a cleared identity map, so this is a genuine re-read.
+    db_session.expunge_all()
     persisted = (
         await db_session.execute(
             select(PlayerAffiliation).where(

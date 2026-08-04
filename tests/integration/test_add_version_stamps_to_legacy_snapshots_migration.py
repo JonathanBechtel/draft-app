@@ -31,6 +31,7 @@ from typing import Any
 import pytest
 import sqlalchemy as sa
 from sqlalchemy import Connection, text
+from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.schemas.image_snapshots import IMAGE_PIPELINE_CALCULATION_VERSION
@@ -251,7 +252,10 @@ async def test_upgrade_backfills_pre_migration_rows_with_sentinel(
     # The server default is dropped after backfill: an insert that forgets the
     # now-required columns must fail loudly rather than silently land on the
     # sentinel again.
-    with pytest.raises(Exception):
+    # Specifically a NOT NULL violation -- a bare ``Exception`` would also be
+    # satisfied by a typo'd table or column name, which would say nothing about
+    # the migration.
+    with pytest.raises(IntegrityError, match="null value in column"):
         async with db_session.begin_nested():
             await db_session.execute(
                 text(
