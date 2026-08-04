@@ -283,7 +283,14 @@ class SummerLeagueTeamEntry(SQLModel, table=True):  # type: ignore[call-arg]
     # nulled -- reads resolve through
     # app.services.player_affiliation.resolve_team_target, which prefers this
     # column and falls back to nba_team_id.
-    team_program_id: Optional[int] = Field(default=None, foreign_key="team_programs.id")
+    #
+    # Soft reference (no DB-level FK): this table is created by the earlier
+    # b6c7d8e9f0a1 create_all() migration, which reflects the live model, so a
+    # hard FK here would forward-reference team_programs (created four
+    # migrations later in b8c9d0e1f2a3) and break upgrade-from-base. Same
+    # trade-off, same reason as participation_id on
+    # summer_league_player_game_logs (2f09df4af11c).
+    team_program_id: Optional[int] = Field(default=None)
     nba_stats_team_id: str = Field(nullable=False)
     raw_team_name: str = Field(nullable=False)
     raw_team_abbreviation: Optional[str] = Field(default=None)

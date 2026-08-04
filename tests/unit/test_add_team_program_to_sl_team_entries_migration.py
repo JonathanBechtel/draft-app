@@ -104,6 +104,10 @@ class _FakeOperations:
         """Return the bind used for catalog lookups."""
         return self.bind
 
+    def execute(self, *args: Any, **kwargs: Any) -> None:
+        """Record a raw-SQL execute (the legacy-FK convergence drop)."""
+        self.calls.append(("execute", args, kwargs, False))
+
     def add_column(self, *args: Any, **kwargs: Any) -> None:
         """Record an add-column operation."""
         self.calls.append(("add_column", args, kwargs, False))
@@ -174,12 +178,19 @@ def test_upgrade_on_normal_head_adds_column_and_index(
     migration.upgrade()
 
     call_names = [call[0] for call in fake_op.calls]
-    assert call_names == ["add_column", "create_index"]
-    add_column_args = fake_op.calls[0][1]
+    assert call_names == ["execute", "add_column", "create_index"]
+    # The legacy-FK convergence drop is idempotent and names the old constraint.
+    drop_sql = fake_op.calls[0][1][0]
+    assert "DROP CONSTRAINT IF EXISTS" in drop_sql
+    assert "summer_league_team_entries_team_program_id_fkey" in drop_sql
+    add_column_args = fake_op.calls[1][1]
     assert add_column_args[0] == "summer_league_team_entries"
     assert add_column_args[1].name == "team_program_id"
+    # Soft reference: no DB-level FK, so upgrade-from-base does not
+    # forward-reference team_programs via the earlier create_all() migration.
+    assert add_column_args[1].foreign_keys == set()
     # The index build ran inside the autocommit block, concurrently.
-    index_call = fake_op.calls[1]
+    index_call = fake_op.calls[2]
     assert index_call[2]["postgresql_concurrently"] is True
     assert index_call[3] is True
 
@@ -205,7 +216,8 @@ def test_upgrade_on_fresh_create_all_database_is_a_no_op(
 
     migration.upgrade()
 
-    assert fake_op.calls == []
+    # Only the idempotent legacy-FK convergence drop runs; no DDL is re-applied.
+    assert [call[0] for call in fake_op.calls] == ["execute"]
 
 
 def test_upgrade_replaces_invalid_index_left_by_interrupted_build(
@@ -220,8 +232,12 @@ def test_upgrade_replaces_invalid_index_left_by_interrupted_build(
     migration.upgrade()
 
     call_names = [call[0] for call in fake_op.calls]
-    assert call_names == ["drop_index", "create_index"]
-    assert all(call[3] is True for call in fake_op.calls)
+    assert call_names == ["execute", "drop_index", "create_index"]
+    # Both index operations run inside the autocommit block, as CONCURRENTLY
+    # requires. The legacy-FK convergence drop is ordinary transactional DDL.
+    assert all(
+        call[3] is True for call in fake_op.calls if call[0].endswith("_index")
+    )
 
 
 def test_downgrade_drops_index_then_column(monkeypatch: pytest.MonkeyPatch) -> None:

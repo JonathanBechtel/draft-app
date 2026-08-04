@@ -78,14 +78,29 @@ def _index_is_invalid(index_name: str) -> bool:
 
 
 def upgrade() -> None:
-    """Add the nullable ``team_program_id`` FK and its supporting index."""
+    """Add the nullable ``team_program_id`` column and its supporting index.
+
+    Soft reference, no DB-level FK: ``summer_league_team_entries`` is created by
+    the earlier ``b6c7d8e9f0a1`` ``create_all()`` migration, which reflects the
+    live model. A hard FK on this column would therefore be emitted at that
+    point in the chain and forward-reference ``team_programs``, which
+    ``b8c9d0e1f2a3`` does not create until four revisions later -- breaking
+    upgrade-from-base on a fresh database. Same trade-off, same reason as
+    ``participation_id`` on ``summer_league_player_game_logs`` (``2f09df4af11c``).
+    """
+    # Converge databases that ran an earlier revision of this migration, which
+    # did emit the FK. No-op everywhere else.
+    op.execute(
+        f"ALTER TABLE {TABLE_NAME} "
+        f"DROP CONSTRAINT IF EXISTS {TABLE_NAME}_{COLUMN_NAME}_fkey"
+    )
+
     if not _column_exists():
         op.add_column(
             TABLE_NAME,
             sa.Column(
                 COLUMN_NAME,
                 sa.Integer(),
-                sa.ForeignKey("team_programs.id"),
                 nullable=True,
             ),
         )
