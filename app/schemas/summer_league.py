@@ -255,6 +255,7 @@ class SummerLeagueTeamEntry(SQLModel, table=True):  # type: ignore[call-arg]
             name="uq_summer_league_team_entries_competition_source_team",
         ),
         Index("ix_summer_league_team_entries_nba_team_id", "nba_team_id"),
+        Index("ix_summer_league_team_entries_team_program_id", "team_program_id"),
         Index(
             "ix_summer_league_team_entries_competition_team_slug",
             "competition_id",
@@ -265,6 +266,12 @@ class SummerLeagueTeamEntry(SQLModel, table=True):  # type: ignore[call-arg]
     id: Optional[int] = Field(default=None, primary_key=True)
     competition_id: int = Field(foreign_key="summer_league_competitions.id")
     nba_team_id: Optional[int] = Field(default=None, foreign_key="nba_teams.id")
+    # Generic org-model target, additive alongside nba_team_id (journey-graph
+    # §7a, §13; phase-4 spec §5.1 decision D3). No row is ever repointed or
+    # nulled -- reads resolve through
+    # app.services.player_affiliation.resolve_team_target, which prefers this
+    # column and falls back to nba_team_id.
+    team_program_id: Optional[int] = Field(default=None, foreign_key="team_programs.id")
     nba_stats_team_id: str = Field(nullable=False)
     raw_team_name: str = Field(nullable=False)
     raw_team_abbreviation: Optional[str] = Field(default=None)
