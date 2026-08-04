@@ -10,7 +10,7 @@ import pytest
 
 from app.cli import summer_league_ingest_runner as runner
 from app.schemas.summer_league import SummerLeagueEdition
-from app.services.summer_league import metrics_rebuild_gate as metrics_gate
+from app.services.sources.summer_league import metrics_rebuild_gate as metrics_gate
 
 
 @dataclass
@@ -1438,9 +1438,7 @@ def test_synthetic_schedule_dates_skips_inverted_range() -> None:
 def _patch_resolve_competitions(
     monkeypatch: pytest.MonkeyPatch, competitions: list[SummerLeagueEdition]
 ) -> None:
-    async def _fake_resolve(
-        _db: object, *, today: date
-    ) -> list[SummerLeagueEdition]:
+    async def _fake_resolve(_db: object, *, today: date) -> list[SummerLeagueEdition]:
         return competitions
 
     monkeypatch.setattr(runner, "resolve_target_competitions", _fake_resolve)

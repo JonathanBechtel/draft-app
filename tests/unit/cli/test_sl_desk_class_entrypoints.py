@@ -28,13 +28,13 @@ import app.cli.sl_desk_projection_tick as projection_cli
 import app.cli.sl_desk_tick as composite_cli
 from app.cli._desk_class_runner import CompletionFlags, parse_now
 from app.schemas.event_desk import EventDailyState
-from app.services.summer_league.desk_tick.backbone import BackboneTickResult
-from app.services.summer_league.desk_tick.composite import DeskTickResult
-from app.services.summer_league.desk_tick.fast import FastTickResult
-from app.services.summer_league.desk_tick.projection import ProjectionTickResult
-from app.services.summer_league.desk_tick.shared import DeskLatencyClass
-from app.services.summer_league.live_ingestion import LiveIngestionReport
-from app.services.summer_league.scoreboard_ingest import ScoreboardIngestReport
+from app.services.sources.summer_league.desk_tick.backbone import BackboneTickResult
+from app.services.sources.summer_league.desk_tick.composite import DeskTickResult
+from app.services.sources.summer_league.desk_tick.fast import FastTickResult
+from app.services.sources.summer_league.desk_tick.projection import ProjectionTickResult
+from app.services.sources.summer_league.desk_tick.shared import DeskLatencyClass
+from app.services.sources.summer_league.live_ingestion import LiveIngestionReport
+from app.services.sources.summer_league.scoreboard_ingest import ScoreboardIngestReport
 
 _NOW = datetime(2026, 7, 10, 19, 30)
 
@@ -140,9 +140,9 @@ class TestCompletionFlags:
 
     def test_a_dormant_run_claims_nothing(self) -> None:
         """Off-window is a no-op; nothing may advance a freshness watermark."""
-        assert fast_cli._completion_flags(_fast_result(dormant=True)) == CompletionFlags(
-            source_refreshed=False, source_advanced=False
-        )
+        assert fast_cli._completion_flags(
+            _fast_result(dormant=True)
+        ) == CompletionFlags(source_refreshed=False, source_advanced=False)
         projection_flags = projection_cli._completion_flags(
             _projection_result(dormant=True)
         )

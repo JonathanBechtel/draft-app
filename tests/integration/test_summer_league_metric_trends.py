@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.summer_league import SummerLeagueEdition
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
-from app.services.summer_league.metric_trends import get_daily_trend
+from app.services.sources.summer_league.metric_trends import get_daily_trend
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     run_explorer_query,

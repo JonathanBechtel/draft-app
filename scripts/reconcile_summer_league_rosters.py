@@ -35,12 +35,12 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.schemas.summer_league import SummerLeagueEdition
-from app.services.summer_league.endpoints import (
+from app.services.sources.summer_league.endpoints import (
     SUPPORTED_SUMMER_LEAGUES,
     normalize_league_id,
     normalize_season,
 )
-from app.services.summer_league.roster_reconcile import (
+from app.services.sources.summer_league.roster_reconcile import (
     ReconcileEntry,
     RosterReconcileReport,
     reconcile_competition,

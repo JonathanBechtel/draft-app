@@ -23,9 +23,12 @@ import time
 from sqlalchemy import select
 
 from app.schemas.summer_league import SummerLeagueEdition
-from app.services.summer_league.bracket import apply_game_rounds, parse_schedule_rounds
-from app.services.summer_league.endpoints import build_schedule_params
-from app.services.summer_league.nba_stats_client import (
+from app.services.sources.summer_league.bracket import (
+    apply_game_rounds,
+    parse_schedule_rounds,
+)
+from app.services.sources.summer_league.endpoints import build_schedule_params
+from app.services.sources.summer_league.nba_stats_client import (
     NBAStatsAPIError,
     NBAStatsClient,
 )

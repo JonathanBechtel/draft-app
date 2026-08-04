@@ -1,6 +1,6 @@
 """Integration tests for the Competition Context refresh orchestration (#618).
 
-`app.services.summer_league.environment_refresh` wires the frozen #617
+`app.services.sources.summer_league.environment_refresh` wires the frozen #617
 aggregation contract into the production pipeline. These tests drive it
 against a real Postgres session:
 
@@ -31,7 +31,7 @@ from app.schemas.summer_league_pipeline import (
     SummerLeaguePipelineOutcome,
     SummerLeaguePipelineState,
 )
-from app.services.summer_league.environment_refresh import (
+from app.services.sources.summer_league.environment_refresh import (
     EnvironmentRollbackResult,
     refresh_environment_profiles_for_year,
     rollback_environment_profile,
@@ -127,7 +127,7 @@ async def test_refresh_failure_preserves_last_good_and_is_recorded(
     good_version = good.version
     await db_session.commit()
 
-    import app.services.summer_league.environment_refresh as refresh_mod
+    import app.services.sources.summer_league.environment_refresh as refresh_mod
 
     async def _boom(db: object, *, year: int) -> None:
         raise RuntimeError("forced aggregation failure")
@@ -165,7 +165,7 @@ async def test_recovery_after_failure_clears_failure_state(
     await _seed_competition(db_session, year=2023, venue="las_vegas", league_id="15")
     await db_session.commit()
 
-    import app.services.summer_league.environment_refresh as refresh_mod
+    import app.services.sources.summer_league.environment_refresh as refresh_mod
 
     async def _boom(db: object, *, year: int) -> None:
         raise RuntimeError("transient failure")

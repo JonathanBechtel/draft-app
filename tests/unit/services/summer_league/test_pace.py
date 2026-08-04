@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.summer_league.pace import player_possessions_from_rows
+from app.services.sources.summer_league.pace import player_possessions_from_rows
 from app.services.stats.inputs import BOX_INT_FIELDS, StatInputs
 
 

@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from app.services.summer_league.qa import (
+from app.services.sources.summer_league.qa import (
     SummerLeagueQAFinding,
     SummerLeagueQAReport,
     SummerLeagueQASnapshot,
@@ -27,7 +27,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league import qa as service
+from app.services.sources.summer_league import qa as service
 
 
 class _FakeScalarResult:
@@ -309,7 +309,9 @@ async def test_raw_audit_integrity_reports_run_and_file_findings(
     ) -> SummerLeagueIngestionRun:
         return raw_run
 
-    async def fake_raw_files(_db: object, raw_run_id: int) -> list[SummerLeagueSourceDocument]:
+    async def fake_raw_files(
+        _db: object, raw_run_id: int
+    ) -> list[SummerLeagueSourceDocument]:
         return raw_files
 
     monkeypatch.setattr(service, "_load_raw_run", fake_raw_run)
@@ -357,7 +359,9 @@ async def test_raw_audit_integrity_treats_optional_detail_gaps_as_warnings(
     ) -> SummerLeagueIngestionRun:
         return raw_run
 
-    async def fake_raw_files(_db: object, raw_run_id: int) -> list[SummerLeagueSourceDocument]:
+    async def fake_raw_files(
+        _db: object, raw_run_id: int
+    ) -> list[SummerLeagueSourceDocument]:
         return raw_files
 
     monkeypatch.setattr(service, "_load_raw_run", fake_raw_run)

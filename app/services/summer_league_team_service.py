@@ -29,7 +29,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.team_logos import franchise_logo_url
+from app.services.sources.summer_league.team_logos import franchise_logo_url
 from app.services.summer_league_games_service import _enum_str, _venue_label
 from app.services.summer_league_season_service import _iso
 

@@ -108,8 +108,8 @@ from app.services.stats.registry import (
     tov_pct_sql_text,
 )
 from app.services.stats.scaling import scale_python, scale_sql
-from app.services.summer_league.capabilities import row_provides, rows_provide
-from app.services.summer_league.metrics import game_score_from_row
+from app.services.sources.summer_league.capabilities import row_provides, rows_provide
+from app.services.sources.summer_league.metrics import game_score_from_row
 from app.services.summer_league_environment_registry import (
     PROFILE_STALE_AFTER_HOURS,
     CoverageSource,
@@ -2615,7 +2615,7 @@ def _astd_pct(r: Any) -> Optional[float]:
 
     Availability is derived from the T8 capability model (#728) -- the registry's
     ``astd_pct.requires`` (``ast_fgm``/``unast_fgm``) tested against this row's
-    provides (:func:`app.services.summer_league.capabilities.row_provides`) --
+    provides (:func:`app.services.sources.summer_league.capabilities.row_provides`) --
     rather than this function's own hand-rolled "is PBP data present" check, so a
     row from a competition that never had PBP normalized is structurally absent
     instead of merely dividing by zero.

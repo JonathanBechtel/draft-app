@@ -16,8 +16,8 @@ from app.services.event_desk.render_snapshots import upsert_render_snapshots
 from app.services.event_desk.snapshot_materialization import (
     prepare_desk_render_snapshots,
 )
-from app.services.summer_league.metric_publish import publish_metric_version
-from app.services.summer_league.metrics import (
+from app.services.sources.summer_league.metric_publish import publish_metric_version
+from app.services.sources.summer_league.metrics import (
     rebuild_staged,
     set_repeatable_read_snapshot,
 )

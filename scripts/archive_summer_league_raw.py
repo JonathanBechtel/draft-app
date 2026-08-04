@@ -16,7 +16,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from app.services.s3_client import S3Client
-from app.services.summer_league.archive import (
+from app.services.sources.summer_league.archive import (
     archive_summer_league_raw,
     parse_s3_archive_prefix,
     summarize_report,

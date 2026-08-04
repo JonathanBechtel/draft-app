@@ -37,7 +37,7 @@ class DeskFreshness:
     `state` is the honest verdict this stamp represents -- `"missing"` (no tick
     has ever run for this event), `"fresh"` (within the documented cadence), or
     `"stale"` (older than the documented cadence multiple; see
-    `app.services.summer_league.desk_read.FRESHNESS_STALE_AFTER`). Compose logic
+    `app.services.sources.summer_league.desk_read.FRESHNESS_STALE_AFTER`). Compose logic
     lives entirely in `desk_read._freshness_for` so this dataclass never has to
     be re-derived/guessed by a template: a render must NEVER say "as of now"
     when `last_tick_at` is `None`.
@@ -71,7 +71,7 @@ class DeskHeroLine:
     subject didn't play -- the template renders `None` as an em dash, NEVER a
     zero or a career/event total (behavior spec: "pretip/missing values use
     em dashes, never event totals or zeros"). `gmsc` is tonight's single-game
-    Hollinger Game Score (`app.services.summer_league.metrics.game_score_from_row`),
+    Hollinger Game Score (`app.services.sources.summer_league.metrics.game_score_from_row`),
     not the event-aggregate GmSc T2 grades carry.
     """
 

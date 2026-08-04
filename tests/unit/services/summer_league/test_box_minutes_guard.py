@@ -9,7 +9,7 @@ when no plausible source exists — never persist the corrupt number.
 
 from __future__ import annotations
 
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.normalization import (
     MAX_PLAUSIBLE_PLAYER_SECONDS,
     MAX_PLAUSIBLE_TEAM_MINUTES,
     ParsedPlayerBoxRow,
@@ -64,9 +64,7 @@ def test_corrupt_player_minutes_fall_back_to_advanced() -> None:
 
 def test_corrupt_player_minutes_null_without_plausible_source() -> None:
     """No advanced row (or an equally corrupt one) nulls the value out."""
-    no_advanced = _merge_player_box_rows(
-        _player_row(minutes_seconds=7793), None, None
-    )
+    no_advanced = _merge_player_box_rows(_player_row(minutes_seconds=7793), None, None)
     assert no_advanced.minutes_seconds is None
 
     both_corrupt = _merge_player_box_rows(

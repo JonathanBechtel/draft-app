@@ -48,7 +48,7 @@ from app.schemas.summer_league_environment import (
     SummerLeagueEnvironmentProfile,
     SummerLeagueEnvironmentSeasonMembership,
 )
-from app.services.summer_league.metrics import Box
+from app.services.sources.summer_league.metrics import Box
 from app.services.ingest.write_lock import acquire_summer_league_writer_lock
 from app.services.summer_league_environment_registry import CALCULATION_VERSION
 from app.services.summer_league_environment_service import (
@@ -108,7 +108,9 @@ def _box_from(line: dict) -> Box:
     return box
 
 
-async def _raw_run_id(db: AsyncSession, *, year: int = 2024, league_id: str = "15") -> int:
+async def _raw_run_id(
+    db: AsyncSession, *, year: int = 2024, league_id: str = "15"
+) -> int:
     """A minimal raw run row, satisfying SummerLeagueSourceDocument's required FK."""
     _SEQ["n"] += 1
     raw_run = SummerLeagueIngestionRun(
@@ -391,9 +393,7 @@ async def test_competition_projection_matches_pooled_source(
     pooled_fga = n_games * (box_a.fga + box_b.fga)
     pooled_fta = n_games * (box_a.fta + box_b.fta)
     pooled_tov = n_games * (box_a.tov + box_b.tov)
-    expected_turnover_rate = pooled_tov / (
-        pooled_fga + 0.44 * pooled_fta + pooled_tov
-    )
+    expected_turnover_rate = pooled_tov / (pooled_fga + 0.44 * pooled_fta + pooled_tov)
     assert profile.turnover_rate == pytest.approx(expected_turnover_rate, abs=0.05)
     # Isolated by competition id: no season profile was built by a competition rebuild.
     season = await get_environment_profile(

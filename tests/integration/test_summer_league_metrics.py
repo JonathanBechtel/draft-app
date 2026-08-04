@@ -27,7 +27,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricModel,
     SummerLeagueDerivedAgg,
 )
-from app.services.summer_league.metrics import rebuild
+from app.services.sources.summer_league.metrics import rebuild
 from tests.integration.conftest import make_player
 
 _N = {"i": 0}

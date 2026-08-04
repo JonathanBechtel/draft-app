@@ -1,7 +1,7 @@
 """Integration tests for the shared ``first_qualifying_games`` lookup (#539).
 
 Focuses on the two new/changed async functions in
-``app.services.summer_league.desk_fact_queries``: :func:`fetch_first_qualifying_games`
+``app.services.sources.summer_league.desk_fact_queries``: :func:`fetch_first_qualifying_games`
 (the ONE batched ``player_id -> first-qualifying-game`` query the storyline
 debut trigger and the fact-path debut status both read) and
 :func:`fetch_debut_status` (rewritten to derive from that same lookup).
@@ -25,7 +25,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.desk_fact_queries import (
+from app.services.sources.summer_league.desk_fact_queries import (
     fetch_debut_status,
     fetch_first_qualifying_games,
 )
@@ -221,7 +221,9 @@ async def test_fetch_first_qualifying_games_gates_below_floor_multi_game(
     player = await _seed_player(db_session, name="Thin")
     source = await _seed_source_player(db_session, player=player)
 
-    thin_game = await _seed_game(db_session, comp, home, away, game_date=date(2026, 7, 8))
+    thin_game = await _seed_game(
+        db_session, comp, home, away, game_date=date(2026, 7, 8)
+    )
     await _seed_game_log(
         db_session,
         competition=comp,
@@ -232,7 +234,9 @@ async def test_fetch_first_qualifying_games_gates_below_floor_multi_game(
         minutes_seconds=3 * 60,  # below the 10-minute per-game floor
         pts=20.0,
     )
-    ok_game = await _seed_game(db_session, comp, home, away, game_date=date(2026, 7, 10))
+    ok_game = await _seed_game(
+        db_session, comp, home, away, game_date=date(2026, 7, 10)
+    )
     await _seed_game_log(
         db_session,
         competition=comp,
@@ -261,7 +265,9 @@ async def test_fetch_first_qualifying_games_is_one_batched_query_regardless_of_p
     for i in range(5):
         player = await _seed_player(db_session, name=f"P{i}")
         source = await _seed_source_player(db_session, player=player)
-        game = await _seed_game(db_session, comp, home, away, game_date=date(2026, 7, 10))
+        game = await _seed_game(
+            db_session, comp, home, away, game_date=date(2026, 7, 10)
+        )
         await _seed_game_log(
             db_session,
             competition=comp,

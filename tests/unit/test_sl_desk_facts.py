@@ -13,7 +13,7 @@ import json
 import pytest
 
 from app.schemas.summer_league_desk import SummerLeagueDeskGrade
-from app.services.summer_league.desk_facts import (
+from app.services.sources.summer_league.desk_facts import (
     ClubMember,
     CohortPeer,
     Fact,
@@ -31,7 +31,7 @@ from app.services.summer_league.desk_facts import (
     detect_self_delta,
     detect_streak,
 )
-from app.services.summer_league.desk_grades import GradeRow
+from app.services.sources.summer_league.desk_grades import GradeRow
 
 SUBJECT = FactSubject(player_id=1, player_label="Test Prospect", competition_id=10)
 

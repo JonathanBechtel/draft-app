@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services.summer_league.qa import (
+from app.services.sources.summer_league.qa import (
     SummerLeagueQAFinding,
     SummerLeagueQAReport,
     SummerLeagueQASeverity,

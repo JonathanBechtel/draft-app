@@ -133,7 +133,7 @@ async def invalidate_batch_progress(
         phase: Which batched normalization phase to invalidate.
         game_ids: The specific game IDs to invalidate (e.g. this run's dirty
             set -- see
-            ``app.services.summer_league.raw_ingestion.dirty_game_ids_from_manifest``).
+            ``app.services.sources.summer_league.raw_ingestion.dirty_game_ids_from_manifest``).
             ``None`` deletes every row for this ``year``/``league_id``/
             ``phase`` outright -- the full-reconciliation/repair mode
             (``SL_INGEST_FULL_RECONCILE``). An empty iterable is a no-op,
@@ -167,7 +167,7 @@ async def count_pending_batch_games(
     raw fetch discovered (``discovered_game_ids``, e.g. a venue's
     ``game_ids_universe`` in ``app.cli.summer_league_ingest_runner``) that
     have not yet committed a batch for ``phase``. Modeled on
-    :func:`~app.services.summer_league.normalization.find_incomplete_team_box_game_ids`'s
+    :func:`~app.services.sources.summer_league.normalization.find_incomplete_team_box_game_ids`'s
     "a query that answers how many games still need another pass" shape, but
     scoped to batch-progress state rather than a new durable table -- a
     later operational-telemetry ticket surfaces this as a metric.

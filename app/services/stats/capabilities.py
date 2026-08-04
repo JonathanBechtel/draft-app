@@ -31,13 +31,14 @@ PBP-specific token names deliberately distinct from box field names -- ``astd_pc
 contains ``ast_fgm``/``unast_fgm``, never the box's plain ``ast``. A caller building a
 "box-only" ``provides`` set simply omits the PBP tokens; it does not need to enumerate which
 metric keys are "the PBP ones" by name (see
-``app.services.summer_league.capabilities`` for the Summer League adapter that builds
+``app.services.sources.summer_league.capabilities`` for the Summer League adapter that builds
 ``provides`` sets from the SL-specific availability flags).
 
 **What this module deliberately does not do.** It does not decide *which* inputs a source
 provides -- that mapping is source-specific and belongs in that source's own package (Summer
-League's lives under ``app.services.summer_league``, per import contract 3: nothing here may
-import ``app.services.summer_league*`` or ``app.schemas.summer_league*``). It also does not wire
+League's lives under ``app.services.sources.summer_league``, per import contract 3: nothing here
+may import ``app.services.sources.summer_league*``, the ``app.services.summer_league_*``
+read-side siblings, or ``app.schemas.summer_league*``). It also does not wire
 up ``environment_turnover_rate`` (the frozen exemption declared in
 :mod:`app.services.stats.registry`) as an alternate source for ``tov_pct`` or treat it specially
 in any way -- it is just another registered metric_key whose ``requires`` happens to resolve to

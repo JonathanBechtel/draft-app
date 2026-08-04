@@ -62,7 +62,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamGameLog,
 )
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
-from app.services.summer_league.metrics import compute, rebuild
+from app.services.sources.summer_league.metrics import compute, rebuild
 from app.services.summer_league_explorer_service import (
     ExplorerQuery,
     run_explorer_query,

@@ -43,7 +43,7 @@ from app.services.stats.formulas import (
     ts_pct_line,
 )
 from app.services.stats.registry import RollupClass, require_rollup_class
-from app.services.summer_league.capabilities import row_provides, rows_provide
+from app.services.sources.summer_league.capabilities import row_provides, rows_provide
 
 # Minimum total minutes in a competition before its rate composites are
 # trustworthy enough to surface. Small-sample pools blow PER/BPM up well past

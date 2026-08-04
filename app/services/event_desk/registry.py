@@ -36,7 +36,7 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueGameStatus,
 )
-from app.services.summer_league.scoreboard_ingest import (
+from app.services.sources.summer_league.scoreboard_ingest import (
     EVENT_KEY_SUMMER_LEAGUE,
     _POSTPONED_OR_CANCELED_MARKERS,
     resolve_target_competitions,
@@ -294,7 +294,7 @@ async def sync_summer_league_event(db: AsyncSession, today: date) -> Event:
     `summer_league_competitions` on every call (never read back from the prior row),
     so a newly-created competition mid-season (e.g. Vegas added after CA Classic +
     SLC already exist) is picked up automatically on the next tick.
-    :func:`~app.services.summer_league.scoreboard_ingest.resolve_target_competitions`
+    :func:`~app.services.sources.summer_league.scoreboard_ingest.resolve_target_competitions`
     (#515) reads this row back via its "prefer active events row" path once it exists.
 
     Args:
@@ -324,7 +324,7 @@ async def calendar_facts_for_competition_ids(
     The two queries under :meth:`_SummerLeagueCalendarProvider.resolve_calendar_facts`
     that actually depend on ``now``/``today`` -- split out (#548) so a caller
     that already has ``competition_ids`` in hand (e.g.
-    `app.services.summer_league.desk_read._resolve_window_state`, which reads
+    `app.services.sources.summer_league.desk_read._resolve_window_state`, which reads
     them straight off an already-fetched ``events`` row) can skip
     `resolve_target_competitions`'s own redundant ``events``+competitions
     re-fetch entirely -- 2 queries here instead of 4.

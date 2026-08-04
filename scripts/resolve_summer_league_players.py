@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv()
 
 from app.config import settings  # noqa: E402
-from app.services.summer_league.player_resolution import (  # noqa: E402
+from app.services.sources.summer_league.player_resolution import (  # noqa: E402
     SummerLeagueResolutionReport,
     resolve_summer_league_players,
 )

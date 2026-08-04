@@ -16,7 +16,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.bio_enrichment_targets import (
+from app.services.sources.summer_league.bio_enrichment_targets import (
     select_bio_enrichment_targets,
 )
 from tests.integration.conftest import make_player

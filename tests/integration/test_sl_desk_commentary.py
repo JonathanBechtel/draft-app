@@ -21,18 +21,18 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskPlayerGrade,
     SummerLeagueDeskSlate,
 )
-from app.services.summer_league.cohort_baselines import build_baselines
-from app.services.summer_league.desk_commentary import (
+from app.services.sources.summer_league.cohort_baselines import build_baselines
+from app.services.sources.summer_league.desk_commentary import (
     persist_grade_facts,
     persist_slate_facts,
 )
-from app.services.summer_league.desk_facts import (
+from app.services.sources.summer_league.desk_facts import (
     Fact,
     FactKind,
     FactProvenance,
     FactSubject,
 )
-from app.services.summer_league.desk_grades import grade_player_event
+from app.services.sources.summer_league.desk_grades import grade_player_event
 
 pytestmark = pytest.mark.asyncio
 

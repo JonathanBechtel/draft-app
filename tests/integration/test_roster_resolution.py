@@ -33,12 +33,12 @@ from app.schemas.summer_league import (
     SummerLeagueResolutionStatus,
     SummerLeagueSourceRecord,
 )
-from app.services.summer_league.player_resolution import resolve_source_player
-from app.services.summer_league.roster_ingest import (
+from app.services.sources.summer_league.player_resolution import resolve_source_player
+from app.services.sources.summer_league.roster_ingest import (
     CompetitionKey,
     load_roster_snapshot,
 )
-from app.services.summer_league.roster_parse import RosterEntry
+from app.services.sources.summer_league.roster_parse import RosterEntry
 
 # ---------------------------------------------------------------------------
 # Shared fixtures / helpers
@@ -61,7 +61,9 @@ def _make_player(display_name: str = "Test Player") -> PlayerMaster:
     )
 
 
-def _make_source_player(person_id: str, name: str = "Test Player") -> SummerLeagueSourceRecord:
+def _make_source_player(
+    person_id: str, name: str = "Test Player"
+) -> SummerLeagueSourceRecord:
     """Build an unsaved SummerLeagueSourceRecord for testing."""
     return SummerLeagueSourceRecord(
         nba_stats_person_id=person_id,
@@ -293,12 +295,16 @@ async def test_backfill_walks_supersedes_chain_for_cut_player(
 
     # Two assertions exist for the cut player: the superseded ANNOUNCED + the CUT.
     cut_player_affs = (
-        await db_session.execute(
-            select(PlayerAffiliation).where(
-                PlayerAffiliation.source_ref.like("%/PERSON_CUT_01")  # type: ignore[union-attr]
+        (
+            await db_session.execute(
+                select(PlayerAffiliation).where(
+                    PlayerAffiliation.source_ref.like("%/PERSON_CUT_01")  # type: ignore[union-attr]
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(cut_player_affs) == 2
     assert {a.status for a in cut_player_affs} == {
         AffiliationStatus.ANNOUNCED,

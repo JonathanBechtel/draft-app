@@ -12,7 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from app.services.summer_league.normalization import ParsedPBPEvent, parse_pbp_rows
+from app.services.sources.summer_league.normalization import (
+    ParsedPBPEvent,
+    parse_pbp_rows,
+)
 
 FIXTURE_PATH = (
     Path(__file__).parent.parent.parent.parent
@@ -118,11 +121,7 @@ def _write_pbp(tmp_path: Path, rows: list[list[object]]) -> Path:
     path = tmp_path / "playbyplayv2.json"
     path.write_text(
         json.dumps(
-            {
-                "resultSets": [
-                    {"name": "PlayByPlay", "headers": HEADERS, "rowSet": rows}
-                ]
-            }
+            {"resultSets": [{"name": "PlayByPlay", "headers": HEADERS, "rowSet": rows}]}
         )
     )
     return path
@@ -336,9 +335,27 @@ def test_parse_pbp_rows_multiple_events(tmp_path: Path) -> None:
     path = _write_pbp(
         tmp_path,
         [
-            _make_row(event_num=1, period=1, pctimestring="12:00", score=None, score_margin=None),
-            _make_row(event_num=2, period=1, pctimestring="11:45", score="3 - 0", score_margin="3"),
-            _make_row(event_num=3, period=2, pctimestring="12:00", score="3 - 0", score_margin="3"),
+            _make_row(
+                event_num=1,
+                period=1,
+                pctimestring="12:00",
+                score=None,
+                score_margin=None,
+            ),
+            _make_row(
+                event_num=2,
+                period=1,
+                pctimestring="11:45",
+                score="3 - 0",
+                score_margin="3",
+            ),
+            _make_row(
+                event_num=3,
+                period=2,
+                pctimestring="12:00",
+                score="3 - 0",
+                score_margin="3",
+            ),
         ],
     )
     rows = parse_pbp_rows(path)

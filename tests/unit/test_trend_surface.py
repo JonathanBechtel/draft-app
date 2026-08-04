@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.models.summer_league_trends import TrendCohortBand, TrendPoint
-from app.services.summer_league.metric_trends import (
+from app.services.sources.summer_league.metric_trends import (
     resolve_scope_label,
     trend_points_to_context,
 )

@@ -3,7 +3,7 @@
 These are the shapes every formula in :mod:`app.services.stats.formulas` is built
 on:
 
-* :class:`StatInputs` (formerly ``Box`` in ``app.services.summer_league.metrics``)
+* :class:`StatInputs` (formerly ``Box`` in ``app.services.sources.summer_league.metrics``)
   -- a summed box line (counting stats + minutes), with :meth:`StatInputs.add_row`
   accumulating any duck-typed row that exposes the same field names and
   :meth:`StatInputs.poss` estimating BBRef possessions against an opponent box.

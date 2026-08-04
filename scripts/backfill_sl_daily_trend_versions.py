@@ -47,11 +47,11 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueDerivedAgg,
 )
 from app.services.event_desk.timeutils import to_eastern_date
-from app.services.summer_league.metric_publish import (
+from app.services.sources.summer_league.metric_publish import (
     ArchivalPublication,
     publish_archival_metric_version,
 )
-from app.services.summer_league.metrics import (
+from app.services.sources.summer_league.metrics import (
     rebuild_staged,
     season_game_status_clause,
 )

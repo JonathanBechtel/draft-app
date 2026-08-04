@@ -17,7 +17,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskCohortKind,
     SummerLeagueDeskGrain,
 )
-from app.services.summer_league.cohort_baselines import (
+from app.services.sources.summer_league.cohort_baselines import (
     DEFAULT_GAME_MIN_MINUTES,
     DEFAULT_MIN_MINUTES,
     EventAggregate,
@@ -33,8 +33,8 @@ from app.services.summer_league.cohort_baselines import (
     slot_bounds_for,
     slot_window,
 )
-from app.services.summer_league.desk_grades import percentile_of_value
-from app.services.summer_league.metrics import game_score_line
+from app.services.sources.summer_league.desk_grades import percentile_of_value
+from app.services.sources.summer_league.metrics import game_score_line
 
 
 # --------------------------------------------------------------------------- #
@@ -330,7 +330,18 @@ def test_qualifying_game_values_computes_gmsc_via_game_score_from_row() -> None:
     out = qualifying_game_values([row], min_minutes=10.0)
     assert len(out) == 1
     expected = game_score_line(
-        pts=20, fgm=8, fga=15, ftm=4, fta=5, oreb=1, dreb=4, ast=3, stl=2, blk=1, tov=2, pf=3
+        pts=20,
+        fgm=8,
+        fga=15,
+        ftm=4,
+        fta=5,
+        oreb=1,
+        dreb=4,
+        ast=3,
+        stl=2,
+        blk=1,
+        tov=2,
+        pf=3,
     )
     assert out[0].gmsc == round(expected, 2)
 
@@ -421,7 +432,10 @@ def test_first_qualifying_games_gates_below_floor_even_if_chronologically_first(
     """A thin game that's chronologically first is skipped for the next qualifying one."""
     rows = [
         (_dated_row(1, 100, 3 * 60, pts=40.0), date(2024, 7, 1)),  # 3 min -- dropped
-        (_dated_row(1, 101, 15 * 60, pts=12.0), date(2024, 7, 5)),  # 15 min -- qualifies
+        (
+            _dated_row(1, 101, 15 * 60, pts=12.0),
+            date(2024, 7, 5),
+        ),  # 15 min -- qualifies
     ]
     result = first_qualifying_games(rows, min_minutes=10.0)
     assert result[1].game_id == 101
@@ -478,6 +492,17 @@ def test_first_qualifying_games_computes_gmsc_via_game_score_from_row() -> None:
     )
     result = first_qualifying_games([(row, date(2024, 7, 10))], min_minutes=10.0)
     expected = game_score_line(
-        pts=20, fgm=8, fga=15, ftm=4, fta=5, oreb=1, dreb=4, ast=3, stl=2, blk=1, tov=2, pf=3
+        pts=20,
+        fgm=8,
+        fga=15,
+        ftm=4,
+        fta=5,
+        oreb=1,
+        dreb=4,
+        ast=3,
+        stl=2,
+        blk=1,
+        tov=2,
+        pf=3,
     )
     assert result[1].gmsc == round(expected, 2)

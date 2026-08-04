@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.normalization import (
     BULK_UPSERT_CHUNK_SIZE,
     ParsedPlayerGamelogRow,
     _bulk_upsert_pbp_events,

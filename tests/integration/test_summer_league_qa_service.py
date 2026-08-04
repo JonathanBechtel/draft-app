@@ -30,12 +30,12 @@ from app.schemas.summer_league import (
     SummerLeagueTeamGameLog,
 )
 from app.services.player_mention_service import _normalized_name_key
-from app.services.summer_league.qa import (
+from app.services.sources.summer_league.qa import (
     SummerLeagueQASeverity,
     SummerLeagueSlice,
     run_summer_league_backbone_qa,
 )
-from app.services.summer_league.roster_reconcile import ROSTER_SOURCE
+from app.services.sources.summer_league.roster_reconcile import ROSTER_SOURCE
 
 
 def _raw_file(

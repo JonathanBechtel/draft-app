@@ -23,7 +23,7 @@ from app.schemas.summer_league import (
     SummerLeagueResolutionStatus,
     SummerLeagueSourceRecord,
 )
-from app.services.summer_league.player_resolution import (
+from app.services.sources.summer_league.player_resolution import (
     NBA_STATS_SYSTEM,
     backfill_nba_stats_external_ids,
 )

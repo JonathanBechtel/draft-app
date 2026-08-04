@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.summer_league.metrics import compute_shot_diet
+from app.services.sources.summer_league.metrics import compute_shot_diet
 
 
 def test_compute_shot_diet_all_zones() -> None:

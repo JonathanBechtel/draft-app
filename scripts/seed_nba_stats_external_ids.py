@@ -34,7 +34,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.services.summer_league.player_resolution import (
+from app.services.sources.summer_league.player_resolution import (
     ExternalIdBackfillReport,
     backfill_nba_stats_external_ids,
 )

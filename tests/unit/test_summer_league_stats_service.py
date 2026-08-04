@@ -200,7 +200,7 @@ def test_all_dnp_returns_none() -> None:
 
 def test_season_gmsc_is_per_game_average_game_score() -> None:
     """Season GmSc is the per-game-average Hollinger Game Score over the span."""
-    from app.services.summer_league.metrics import Box, game_score
+    from app.services.sources.summer_league.metrics import Box, game_score
 
     rows = [
         _row(

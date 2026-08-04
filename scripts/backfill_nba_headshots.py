@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.services.summer_league.headshots import (
+from app.services.sources.summer_league.headshots import (
     HeadshotBackfillReport,
     backfill_nba_headshots,
 )

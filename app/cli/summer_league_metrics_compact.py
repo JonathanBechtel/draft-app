@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.services.summer_league.metric_compaction import compact_metric_versions
+from app.services.sources.summer_league.metric_compaction import compact_metric_versions
 from app.services.ingest.write_lock import SummerLeagueWriterLockTimeout
 from app.utils.db_async import SessionLocal, engine
 

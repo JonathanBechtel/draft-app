@@ -1404,9 +1404,7 @@ async def test_snapshot_freshness_uses_oldest_current_watermark(
 ) -> None:
     """A pooled career result never overstates currency from a newer row."""
     await _seed_grain(db_session)
-    seasons = (
-        (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
-    )
+    seasons = (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
     newest = datetime(2026, 8, 1, 12, 0)
     oldest = newest - timedelta(days=3)
     seasons[0].as_of = newest
@@ -1424,9 +1422,7 @@ async def test_snapshot_freshness_is_unknown_when_any_watermark_is_missing(
 ) -> None:
     """A dated row cannot mask degraded currency elsewhere in the scope."""
     await _seed_grain(db_session)
-    seasons = (
-        (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
-    )
+    seasons = (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
     seasons[0].as_of = datetime(2026, 8, 1, 12, 0)
     seasons[1].as_of = None
     await db_session.flush()
@@ -1453,9 +1449,7 @@ async def test_per_competition_freshness_is_stable_across_pages(
 ) -> None:
     """Pagination cannot hide an older watermark elsewhere in the same scope."""
     await _seed_grain(db_session)
-    seasons = (
-        (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
-    )
+    seasons = (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
     newest = datetime(2026, 8, 1, 12, 0)
     oldest = newest - timedelta(days=3)
     seasons[0].as_of = newest
@@ -5167,7 +5161,7 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeagueShotEvent,
 )
-from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP
+from app.services.sources.summer_league.metrics import MIN_COMPLETE_TEAM_MP
 from app.services.summer_league_environment_service import (
     competition_scope_key,
     rebuild_environment_profiles,

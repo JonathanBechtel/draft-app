@@ -13,7 +13,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeagueDerivedAgg,
 )
-from app.services.summer_league.metric_compaction import compact_metric_versions
+from app.services.sources.summer_league.metric_compaction import compact_metric_versions
 from tests.integration.conftest import make_player
 
 

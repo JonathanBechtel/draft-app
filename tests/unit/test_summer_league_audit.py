@@ -9,7 +9,7 @@ from app.schemas.summer_league import (
     SummerLeagueRawFileStatus,
     SummerLeagueRawRunStatus,
 )
-from app.services.summer_league.audit import (
+from app.services.sources.summer_league.audit import (
     audit_raw_run,
     build_expected_file_descriptors,
     discover_manifest_paths,

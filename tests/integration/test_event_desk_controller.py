@@ -30,7 +30,7 @@ from app.services.event_desk.registry import (
     GameStatus,
     calendar_facts_for_competition_ids,
 )
-from app.services.summer_league.scoreboard_ingest import EVENT_KEY_SUMMER_LEAGUE
+from app.services.sources.summer_league.scoreboard_ingest import EVENT_KEY_SUMMER_LEAGUE
 
 _YEAR = 2026
 

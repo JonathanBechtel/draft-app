@@ -19,7 +19,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 
-from app.services.summer_league.cohort_baselines import (
+from app.services.sources.summer_league.cohort_baselines import (
     DEFAULT_GAME_MIN_MINUTES,
     DEFAULT_MIN_MINUTES,
     DEFAULT_SEASON_RANGE,

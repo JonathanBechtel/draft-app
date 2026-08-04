@@ -27,7 +27,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskGrain,
 )
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
-from app.services.summer_league.cohort_baselines import build_baselines
+from app.services.sources.summer_league.cohort_baselines import build_baselines
 
 pytestmark = pytest.mark.asyncio
 
@@ -553,12 +553,22 @@ async def test_build_baselines_game_grain_pools_individual_games(
 
     # Event grain still needs at least one qualifying blended-season row.
     await _seed_season(
-        db_session, competition=comp, player=player_a, year=2024, gmsc=20.0,
-        minutes=100.0, gp=5,
+        db_session,
+        competition=comp,
+        player=player_a,
+        year=2024,
+        gmsc=20.0,
+        minutes=100.0,
+        gp=5,
     )
     await _seed_season(
-        db_session, competition=comp, player=player_b, year=2024, gmsc=8.0,
-        minutes=100.0, gp=5,
+        db_session,
+        competition=comp,
+        player=player_b,
+        year=2024,
+        gmsc=8.0,
+        minutes=100.0,
+        gp=5,
     )
 
     source_a = await _seed_source_player(db_session, player=player_a)
@@ -567,22 +577,37 @@ async def test_build_baselines_game_grain_pools_individual_games(
     for pts in (10.0, 20.0, 30.0):
         game = await _seed_game(db_session, comp, home, away)
         await _seed_game_log(
-            db_session, competition=comp, game=game, team=home,
-            source_player=source_a, player=player_a,
-            minutes_seconds=25 * 60, pts=pts,
+            db_session,
+            competition=comp,
+            game=game,
+            team=home,
+            source_player=source_a,
+            player=player_a,
+            minutes_seconds=25 * 60,
+            pts=pts,
         )
 
     thin_game = await _seed_game(db_session, comp, home, away)
     await _seed_game_log(
-        db_session, competition=comp, game=thin_game, team=home,
-        source_player=source_b, player=player_b,
-        minutes_seconds=3 * 60, pts=99.0,  # under the per-game floor -- dropped
+        db_session,
+        competition=comp,
+        game=thin_game,
+        team=home,
+        source_player=source_b,
+        player=player_b,
+        minutes_seconds=3 * 60,
+        pts=99.0,  # under the per-game floor -- dropped
     )
     ok_game = await _seed_game(db_session, comp, home, away)
     await _seed_game_log(
-        db_session, competition=comp, game=ok_game, team=home,
-        source_player=source_b, player=player_b,
-        minutes_seconds=15 * 60, pts=8.0,
+        db_session,
+        competition=comp,
+        game=ok_game,
+        team=home,
+        source_player=source_b,
+        player=player_b,
+        minutes_seconds=15 * 60,
+        pts=8.0,
     )
 
     version = await build_baselines(

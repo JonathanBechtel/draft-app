@@ -14,7 +14,7 @@ Aggregation honors the frozen implementation contract
   counted for schedule disclosure only.
 * Every rate recomputes from **pooled numerators and denominators**; a season
   profile pools every normalized competition in its year (§2/§4). Possessions
-  reuse the opponent-adjusted :class:`app.services.summer_league.metrics.Box`
+  reuse the opponent-adjusted :class:`app.services.sources.summer_league.metrics.Box`
   possession estimate — never a competing formula (§4).
 * Each metric is independently certified ``complete`` / ``partial`` /
   ``unavailable`` from audited input coverage; a partial metric is published as
@@ -79,7 +79,7 @@ from app.schemas.summer_league import (
     SummerLeagueRawRunStatus,
 )
 from app.services.stats.percentiles import percentile as _percentile
-from app.services.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
+from app.services.sources.summer_league.metrics import MIN_COMPLETE_TEAM_MP, Box
 
 # discipline: file-size formula audit keeps this legacy aggregation module reviewable.
 from app.services.stats.formulas import pace_per_48, points_per_100
@@ -107,7 +107,7 @@ CLOSE_GAME_MARGIN = 5
 RIM_ZONE = "Restricted Area"
 BACKCOURT_ZONE = "Backcourt"
 # The full NBA SHOT_ZONE_BASIC taxonomy this pipeline understands -- mirrors
-# app.services.summer_league.metrics._ZONE_TO_BUCKET plus its excluded
+# app.services.sources.summer_league.metrics._ZONE_TO_BUCKET plus its excluded
 # Backcourt zone. A shot row whose zone is null or outside this set is
 # "unmapped": a parse/taxonomy gap, not a legitimate backcourt heave, and it
 # invalidates that game's shot certification rather than silently dropping
@@ -904,7 +904,7 @@ async def _load_competition_inputs(
     Issues a fixed, small number of set-based grouped queries (never one per
     competition or player) and assembles per-competition accumulators in memory,
     mirroring the offline materialization boundary in
-    :mod:`app.services.summer_league.metrics`.
+    :mod:`app.services.sources.summer_league.metrics`.
     """
     inputs: dict[int, _CompetitionInputs] = {
         int(c.id): _CompetitionInputs(  # type: ignore[arg-type]
@@ -1295,7 +1295,7 @@ def _worse_status(current: Optional[str], candidate: str, rank: dict[str, int]) 
 
 
 # SummerLeagueSourceDocument.endpoint -> the Competition Context source kind it
-# feeds (single source of truth mirroring app.services.summer_league.
+# feeds (single source of truth mirroring app.services.sources.summer_league.
 # raw_ingestion.GAME_ENDPOINTS' box/shot/pbp split).
 _BOX_RAW_ENDPOINTS = (
     "boxscoretraditionalv2",

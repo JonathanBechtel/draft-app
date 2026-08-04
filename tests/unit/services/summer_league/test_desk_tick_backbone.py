@@ -9,8 +9,11 @@ import pytest
 
 from app.schemas.event_desk import EventDailyState
 from app.schemas.summer_league import SummerLeagueEdition
-from app.services.summer_league.desk_tick import backbone
-from app.services.summer_league.desk_tick.shared import NO_WRITER_LOCK, TickContext
+from app.services.sources.summer_league.desk_tick import backbone
+from app.services.sources.summer_league.desk_tick.shared import (
+    NO_WRITER_LOCK,
+    TickContext,
+)
 
 
 @pytest.mark.asyncio

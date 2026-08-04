@@ -37,7 +37,7 @@ from app.services.event_desk.render_snapshots import (
     get_render_snapshot,
     upsert_render_snapshots,
 )
-from app.services.summer_league.desk_read import DeskView
+from app.services.sources.summer_league.desk_read import DeskView
 from tests.integration.perf._capture import count_queries
 
 _N = {"i": 0}
@@ -69,7 +69,9 @@ def _freshness(label: str = "as of 3:00pm ET") -> DeskFreshness:
     )
 
 
-def _preview_view(headline: str = "Two lottery picks share the floor tonight.") -> DeskView:
+def _preview_view(
+    headline: str = "Two lottery picks share the floor tonight.",
+) -> DeskView:
     hero = DeskHero(
         kind="marquee",
         game_id=9,
@@ -155,7 +157,9 @@ def _recap_view() -> DeskView:
 
 
 @pytest.mark.asyncio
-async def test_variant_uniqueness_rejects_duplicate_key(db_session: AsyncSession) -> None:
+async def test_variant_uniqueness_rejects_duplicate_key(
+    db_session: AsyncSession,
+) -> None:
     """Two rows with the same (event, daily_state, cohort, stat_view) key violate uniqueness."""
     event = _make_event()
     db_session.add(event)
@@ -189,7 +193,9 @@ async def test_variant_uniqueness_rejects_duplicate_key(db_session: AsyncSession
 
 
 @pytest.mark.asyncio
-async def test_different_daily_state_is_a_distinct_row(db_session: AsyncSession) -> None:
+async def test_different_daily_state_is_a_distinct_row(
+    db_session: AsyncSession,
+) -> None:
     """The same event/cohort/stat_view but a different daily_state is a separate row."""
     event = _make_event()
     db_session.add(event)

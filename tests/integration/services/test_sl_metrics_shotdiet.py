@@ -34,7 +34,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamGameLog,
 )
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
-from app.services.summer_league.metrics import rebuild
+from app.services.sources.summer_league.metrics import rebuild
 
 
 # ---------------------------------------------------------------------------
@@ -242,7 +242,9 @@ def _shot_event(
 
 
 @pytest.mark.asyncio
-async def test_shot_diet_columns_populate_after_rebuild(db_session: AsyncSession) -> None:
+async def test_shot_diet_columns_populate_after_rebuild(
+    db_session: AsyncSession,
+) -> None:
     """rebuild() populates rim/mid/three/corner3 rates when shot data exists.
 
     Seeds:
@@ -285,9 +287,7 @@ async def test_shot_diet_columns_populate_after_rebuild(db_session: AsyncSession
         )
     )
     db_session.add(
-        _team_game_log(
-            competition_id=comp.id, team_entry_id=team.id, game_id=game.id
-        )
+        _team_game_log(competition_id=comp.id, team_entry_id=team.id, game_id=game.id)
     )
     db_session.add(
         _team_game_log(
@@ -375,9 +375,7 @@ async def test_shot_diet_null_when_no_shot_data(db_session: AsyncSession) -> Non
         )
     )
     db_session.add(
-        _team_game_log(
-            competition_id=comp.id, team_entry_id=team.id, game_id=game.id
-        )
+        _team_game_log(competition_id=comp.id, team_entry_id=team.id, game_id=game.id)
     )
     db_session.add(
         _team_game_log(
@@ -536,12 +534,16 @@ async def test_shot_diet_per_competition_not_merged(db_session: AsyncSession) ->
     await db_session.flush()
 
     seasons = (
-        await db_session.execute(
-            select(SummerLeagueDerivedAgg).where(
-                SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
+        (
+            await db_session.execute(
+                select(SummerLeagueDerivedAgg).where(
+                    SummerLeagueDerivedAgg.player_id == player.id  # type: ignore[arg-type]
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     assert len(seasons) == 2
     by_comp = {s.competition_id: s for s in seasons}
@@ -596,9 +598,7 @@ async def test_backcourt_shots_excluded_from_diet(db_session: AsyncSession) -> N
         )
     )
     db_session.add(
-        _team_game_log(
-            competition_id=comp.id, team_entry_id=team.id, game_id=game.id
-        )
+        _team_game_log(competition_id=comp.id, team_entry_id=team.id, game_id=game.id)
     )
     db_session.add(
         _team_game_log(

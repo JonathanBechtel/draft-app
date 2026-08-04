@@ -4,7 +4,7 @@ The backbone: normalize audited raw box scores, then rebuild the metrics that
 normalization invalidated. Runs on an hours/off-peak cadence, has **no latency
 budget**, and is the one class that still takes the shared Summer League writer
 lock -- it writes broad canonical state and must stay serialized against the
-full ingestion runner. See `app.services.summer_league.desk_tick.backbone` and
+full ingestion runner. See `app.services.sources.summer_league.desk_tick.backbone` and
 `docs/plans/summer-league-desk-simplification-spec.md` §2.
 
 **Its cost is now structurally invisible to the other two classes.** The fast
@@ -36,8 +36,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv()
 
-from app.services.summer_league.desk_read import _effective_now  # noqa: E402
-from app.services.summer_league.desk_tick.backbone import (  # noqa: E402
+from app.services.sources.summer_league.desk_read import _effective_now  # noqa: E402
+from app.services.sources.summer_league.desk_tick.backbone import (  # noqa: E402
     BackboneTickResult,
     run_backbone_tick,
 )
@@ -46,7 +46,7 @@ from app.cli._desk_class_runner import (  # noqa: E402
     parse_now,
     run_class_entrypoint,
 )
-from app.services.summer_league.desk_tick.shared import (  # noqa: E402
+from app.services.sources.summer_league.desk_tick.shared import (  # noqa: E402
     DEFAULT_RAW_ROOT,
     DEFAULT_WRITER_LOCK_MAX_WAIT_SECONDS,
     DeskLatencyClass,

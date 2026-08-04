@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.summer_league.metrics import Box
+from app.services.sources.summer_league.metrics import Box
 from app.services.summer_league_games_service import (
     _box_line,
     _fg_str,
@@ -19,18 +19,46 @@ from app.services.summer_league_games_service import (
 def _team_box() -> Box:
     """A plausible full-game team box (240 player-minutes)."""
     return Box(
-        mp=240.0, fgm=40, fga=85, fg3m=10, fg3a=30, ftm=10, fta=15,
-        oreb=12, dreb=28, reb=40, ast=22, stl=8, blk=4, tov=14, pf=18,
-        pts=100, gp=1,
+        mp=240.0,
+        fgm=40,
+        fga=85,
+        fg3m=10,
+        fg3a=30,
+        ftm=10,
+        fta=15,
+        oreb=12,
+        dreb=28,
+        reb=40,
+        ast=22,
+        stl=8,
+        blk=4,
+        tov=14,
+        pf=18,
+        pts=100,
+        gp=1,
     )
 
 
 def _opp_box() -> Box:
     """A plausible opposing team box."""
     return Box(
-        mp=240.0, fgm=36, fga=80, fg3m=8, fg3a=25, ftm=12, fta=18,
-        oreb=10, dreb=30, reb=40, ast=20, stl=6, blk=3, tov=16, pf=20,
-        pts=92, gp=1,
+        mp=240.0,
+        fgm=36,
+        fga=80,
+        fg3m=8,
+        fg3a=25,
+        ftm=12,
+        fta=18,
+        oreb=10,
+        dreb=30,
+        reb=40,
+        ast=20,
+        stl=6,
+        blk=3,
+        tov=16,
+        pf=20,
+        pts=92,
+        gp=1,
     )
 
 

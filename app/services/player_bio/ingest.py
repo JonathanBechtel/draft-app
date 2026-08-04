@@ -42,7 +42,7 @@ from app.services.player_identity_guard import (
     build_variant_identity_index,
     resolve_variant_identity_match,
 )
-from app.services.summer_league.bio_enrichment_targets import (
+from app.services.sources.summer_league.bio_enrichment_targets import (
     select_bio_enrichment_targets,
 )
 from app.utils.db_async import SessionLocal

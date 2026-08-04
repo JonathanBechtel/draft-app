@@ -22,8 +22,8 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
 )
 from app.services.player_mention_service import _normalized_name_key
-from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league.normalization import (
     normalize_competition_games,
     normalize_player_game_logs,
 )

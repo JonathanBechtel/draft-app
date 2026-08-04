@@ -3,7 +3,7 @@
 The live poller. Runs every few minutes, is expected to finish in seconds, and
 **takes no writer lock at all**, so it cannot be starved by the backbone no
 matter how long a venue ingest runs. See
-`app.services.summer_league.desk_tick.fast` for what it does and why, and
+`app.services.sources.summer_league.desk_tick.fast` for what it does and why, and
 `docs/plans/summer-league-desk-simplification-spec.md` §2 for the partition.
 
 This is the entrypoint whose reliability *is* the ticket's acceptance signal:
@@ -35,17 +35,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv()
 
-from app.services.summer_league.desk_read import _effective_now  # noqa: E402
+from app.services.sources.summer_league.desk_read import _effective_now  # noqa: E402
 from app.cli._desk_class_runner import (  # noqa: E402
     CompletionFlags,
     parse_now,
     run_class_entrypoint,
 )
-from app.services.summer_league.desk_tick.fast import (  # noqa: E402
+from app.services.sources.summer_league.desk_tick.fast import (  # noqa: E402
     FastTickResult,
     run_fast_tick,
 )
-from app.services.summer_league.desk_tick.shared import (  # noqa: E402
+from app.services.sources.summer_league.desk_tick.shared import (  # noqa: E402
     DEFAULT_RAW_ROOT,
     NO_WRITER_LOCK,
     DeskLatencyClass,

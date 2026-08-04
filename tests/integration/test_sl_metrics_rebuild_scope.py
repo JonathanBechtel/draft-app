@@ -1,6 +1,6 @@
 """Integration tests for the scoped Summer League metrics rebuild (#523).
 
-`app.services.summer_league.metrics.rebuild` appends an inactive dated
+`app.services.sources.summer_league.metrics.rebuild` appends an inactive dated
 projection and flips the selected scopes current after the build. That keeps
 history for the offline job while making the hourly desk tick safe to refresh
 only the competition(s) it normalized this hour.
@@ -53,12 +53,12 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricModel,
     SummerLeagueDerivedAgg,
 )
-from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league import metrics
-from app.services.summer_league.metrics import game_score_line, rebuild
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league import metrics
+from app.services.sources.summer_league.metrics import game_score_line, rebuild
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from app.services.stats.registry import METRIC_REGISTRY_VERSION
-from app.services.summer_league.metric_publish import publish_metric_version
+from app.services.sources.summer_league.metric_publish import publish_metric_version
 from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.conftest import make_player
 
@@ -746,9 +746,7 @@ async def test_unscoped_rebuild_retains_projection_history(
     assert first["seasons"] == second["seasons"] == 24
     assert first["contexts"] == second["contexts"] == 2
 
-    seasons = (
-        (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
-    )
+    seasons = (await db_session.execute(select(SummerLeagueDerivedAgg))).scalars().all()
     current_seasons = [season for season in seasons if season.is_current]
     assert len(seasons) == 48
     assert len(current_seasons) == 24

@@ -33,18 +33,18 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from app.services.summer_league.endpoints import (
+from app.services.sources.summer_league.endpoints import (
     SUPPORTED_SUMMER_LEAGUES,
     normalize_league_id,
     normalize_season,
 )
-from app.services.summer_league.raw_store import SummerLeagueRawStore
-from app.services.summer_league.roster_ingest import (
+from app.services.sources.summer_league.raw_store import SummerLeagueRawStore
+from app.services.sources.summer_league.roster_ingest import (
     CompetitionKey,
     RosterDiffReport,
     load_roster_snapshot,
 )
-from app.services.summer_league.roster_parse import RosterEntry
+from app.services.sources.summer_league.roster_parse import RosterEntry
 from app.utils.db_async import _prepare_asyncpg_connection, load_schema_modules
 
 load_dotenv()

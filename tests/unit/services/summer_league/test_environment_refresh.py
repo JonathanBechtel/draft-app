@@ -1,6 +1,6 @@
 """Unit tests for the Competition Context incremental-refresh orchestration (#618).
 
-`app.services.summer_league.environment_refresh` wires the frozen #617
+`app.services.sources.summer_league.environment_refresh` wires the frozen #617
 aggregation contract into the production pipeline. These tests avoid the
 database entirely (per repo convention for `tests/unit/`): the module-level
 `rebuild_environment_profiles`, `complete_pipeline`, and
@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.services import summer_league_environment_registry as registry_mod
-from app.services.summer_league import environment_refresh as refresh_mod
+from app.services.sources.summer_league import environment_refresh as refresh_mod
 from app.services.ingest.pipeline_telemetry import PipelineTelemetry
 from app.services.summer_league_environment_service import EnvironmentRebuildResult
 

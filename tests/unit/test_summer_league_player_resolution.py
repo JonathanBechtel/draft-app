@@ -14,8 +14,8 @@ from app.schemas.summer_league import (
     SummerLeagueReviewStatus,
     SummerLeagueSourceRecord,
 )
-from app.services.summer_league import player_resolution as service
-from app.services.summer_league.player_resolution import (
+from app.services.sources.summer_league import player_resolution as service
+from app.services.sources.summer_league.player_resolution import (
     SummerLeagueResolutionCandidate,
     SummerLeagueResolutionPlan,
     SummerLeagueResolutionResult,

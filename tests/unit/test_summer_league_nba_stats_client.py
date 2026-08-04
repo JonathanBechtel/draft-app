@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from app.services.summer_league.endpoints import (
+from app.services.sources.summer_league.endpoints import (
     SUPPORTED_SUMMER_LEAGUES,
     build_boxscore_params,
     build_leaguegamelog_params,
@@ -15,7 +15,7 @@ from app.services.summer_league.endpoints import (
     normalize_league_id,
     normalize_season,
 )
-from app.services.summer_league.nba_stats_client import (
+from app.services.sources.summer_league.nba_stats_client import (
     NBA_API_ROOT,
     NBAStatsAPIError,
     NBAStatsClient,
@@ -105,9 +105,7 @@ def test_normalize_season_requires_four_digit_year() -> None:
 
 def test_build_leaguegamelog_params_includes_required_fields() -> None:
     """The leaguegamelog endpoint requires all core query params."""
-    params = build_leaguegamelog_params(
-        league_id="15", season=2024, player_or_team="T"
-    )
+    params = build_leaguegamelog_params(league_id="15", season=2024, player_or_team="T")
 
     assert params == {
         "Counter": "1000",
@@ -234,9 +232,7 @@ def test_fetch_json_calls_endpoint_and_returns_payload() -> None:
     payload = client.fetch_json("/leaguegamelog", {"LeagueID": "15"})
 
     assert payload == {"resultSets": []}
-    assert session.calls == [
-        (f"{NBA_API_ROOT}/leaguegamelog", {"LeagueID": "15"})
-    ]
+    assert session.calls == [(f"{NBA_API_ROOT}/leaguegamelog", {"LeagueID": "15"})]
 
 
 def test_fetch_json_raises_on_http_errors() -> None:

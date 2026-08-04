@@ -15,7 +15,7 @@ from app.schemas.summer_league import (
     SummerLeagueIngestionRun,
     SummerLeagueRawRunStatus,
 )
-from app.services.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league.audit import audit_summer_league_raw
 
 
 def _payload(row_count: int, *, game_ids: list[str] | None = None) -> dict[str, object]:

@@ -16,7 +16,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.metrics_input import (
+from app.services.sources.summer_league.metrics_input import (
     calculate_metrics_input_watermark,
 )
 from tests.integration.conftest import make_player

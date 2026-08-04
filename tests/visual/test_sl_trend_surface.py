@@ -23,7 +23,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from playwright.sync_api import Page, expect
 
 from app.models.summer_league_trends import TrendCohortBand, TrendPoint
-from app.services.summer_league.metric_trends import trend_points_to_context
+from app.services.sources.summer_league.metric_trends import trend_points_to_context
 from app.templating import register_template_filters
 
 TEMPLATES_DIR = Path(__file__).resolve().parents[2] / "app" / "templates"
@@ -111,7 +111,9 @@ def _mount(page: Page, base_url: str, payload: dict) -> None:
 class TestSlTrendSurfaceVisuals:
     """Capture the desktop, mobile, event, share, and one-point states."""
 
-    def test_desktop_chart_and_tap_tooltip(self, page: Page, base_url: str, screenshot) -> None:
+    def test_desktop_chart_and_tap_tooltip(
+        self, page: Page, base_url: str, screenshot
+    ) -> None:
         """Desktop chart renders all lanes and exposes point status text."""
         _mount(page, base_url, _payload())
         expect(page.locator(".trend-card__line")).to_have_count(3)
@@ -127,46 +129,64 @@ class TestSlTrendSurfaceVisuals:
         expect(as_of).to_have_text("2026-07-13 12:00 UTC")
         assert as_of.get_attribute("datetime") == "2026-07-13T12:00:00"
 
-    def test_card_never_renders_the_internal_scope_key(self, page: Page, base_url: str) -> None:
+    def test_card_never_renders_the_internal_scope_key(
+        self, page: Page, base_url: str
+    ) -> None:
         """No reader-facing text or markup attribute carries the scope key."""
         _mount(page, base_url, _payload())
         assert SCOPE_KEY not in page.locator(".trend-card").inner_text()
         expect(page.locator("[data-trend-scope]")).to_have_count(0)
         expect(page.locator(".trend-card__eyebrow")).to_have_text(SCOPE_LABEL)
 
-    def test_mobile_card_has_no_horizontal_scroll(self, mobile_page: Page, base_url: str, screenshot) -> None:
+    def test_mobile_card_has_no_horizontal_scroll(
+        self, mobile_page: Page, base_url: str, screenshot
+    ) -> None:
         """390px layout keeps the chart inside the viewport."""
         mobile_page.set_viewport_size({"width": 390, "height": 844})
         _mount(mobile_page, base_url, _payload())
         expect(mobile_page.locator(".trend-card")).to_be_visible()
-        assert mobile_page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+        assert mobile_page.evaluate(
+            "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+        )
         screenshot.capture_element(".trend-card", "sl_trend_mobile")
 
-    def test_light_card_holds_under_an_os_dark_preference(self, page: Page, base_url: str, screenshot) -> None:
+    def test_light_card_holds_under_an_os_dark_preference(
+        self, page: Page, base_url: str, screenshot
+    ) -> None:
         """DraftGuru is light-only: an OS-dark reader sees the same legible card."""
         page.emulate_media(color_scheme="dark")
         _mount(page, base_url, _payload())
         expect(page.locator(".trend-card__line")).to_have_count(3)
-        assert page.locator(".trend-card").evaluate(
-            "element => getComputedStyle(element).backgroundColor"
-        ) == "rgb(255, 255, 255)"
+        assert (
+            page.locator(".trend-card").evaluate(
+                "element => getComputedStyle(element).backgroundColor"
+            )
+            == "rgb(255, 255, 255)"
+        )
         expect(page.locator(".trend-card__meta")).to_be_visible()
         screenshot.capture_element(".trend-card", "sl_trend_os_dark")
 
-    def test_event_scope_is_shareless(self, page: Page, base_url: str, screenshot) -> None:
+    def test_event_scope_is_shareless(
+        self, page: Page, base_url: str, screenshot
+    ) -> None:
         """Competition/cohort cards render without a player-only share action."""
         _mount(page, base_url, _payload(player_id=None))
         expect(page.locator("[data-trend-share]")).to_have_count(0)
         expect(page.locator(".trend-card__eyebrow")).to_contain_text(SCOPE_LABEL)
         screenshot.capture_element(".trend-card", "sl_trend_event_scope")
 
-    def test_share_posts_sl_trend_component(self, page: Page, base_url: str, screenshot) -> None:
+    def test_share_posts_sl_trend_component(
+        self, page: Page, base_url: str, screenshot
+    ) -> None:
         """Player share action posts the scope and metric contract."""
+
         def fulfill(route) -> None:
             route.fulfill(
                 status=200,
                 content_type="application/json",
-                body=json.dumps({"url": "data:image/png;base64,AA==", "filename": "trend.png"}),
+                body=json.dumps(
+                    {"url": "data:image/png;base64,AA==", "filename": "trend.png"}
+                ),
             )
 
         page.route("**/api/export/image", fulfill)
@@ -179,9 +199,13 @@ class TestSlTrendSurfaceVisuals:
         assert request_payload["context"]["scope_key"] == SCOPE_KEY
         screenshot.capture_element(".trend-card", "sl_trend_share_card")
 
-    def test_failed_share_export_is_visible_not_only_logged(self, page: Page, base_url: str, screenshot) -> None:
+    def test_failed_share_export_is_visible_not_only_logged(
+        self, page: Page, base_url: str, screenshot
+    ) -> None:
         """A rejected export tells the reader instead of failing silently."""
-        page.route("**/api/export/image", lambda route: route.fulfill(status=500, body="nope"))
+        page.route(
+            "**/api/export/image", lambda route: route.fulfill(status=500, body="nope")
+        )
         _mount(page, base_url, _payload())
         page.locator("[data-trend-share]").click()
         expect(page.locator("[data-trend-share]")).to_have_text(
@@ -204,9 +228,13 @@ class TestSlTrendSurfaceVisuals:
         page.locator(".trend-card__point").nth(1).press(" ")
         expect(page.locator("[data-trend-tooltip]")).to_contain_text("GMSC")
 
-    def test_single_point_state_is_explicit(self, page: Page, base_url: str, screenshot) -> None:
+    def test_single_point_state_is_explicit(
+        self, page: Page, base_url: str, screenshot
+    ) -> None:
         """One published day remains visible and is labeled honestly."""
         _mount(page, base_url, _payload(single_point=True))
-        expect(page.locator("[data-trend-single]")).to_contain_text("Single-point state")
+        expect(page.locator("[data-trend-single]")).to_contain_text(
+            "Single-point state"
+        )
         expect(page.locator(".trend-card__point")).to_have_count(3)
         screenshot.capture_element(".trend-card", "sl_trend_single_point")

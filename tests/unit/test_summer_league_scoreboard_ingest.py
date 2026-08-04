@@ -30,7 +30,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 from app.schemas.summer_league import SummerLeagueGameStatus
-from app.services.summer_league.scoreboard_ingest import (
+from app.services.sources.summer_league.scoreboard_ingest import (
     _parse_game_date,
     _score_or_none,
     _team_id_or_none,
@@ -112,7 +112,7 @@ def test_map_game_status_postponed_text_beats_a_live_numeric_code() -> None:
 
 
 def test_map_game_status_canceled_text_maps_to_canceled_not_postponed() -> None:
-    """"Cancel" text maps to the distinct CANCELED status, not POSTPONED."""
+    """ "Cancel" text maps to the distinct CANCELED status, not POSTPONED."""
     assert map_game_status(1, "Game Canceled") == SummerLeagueGameStatus.CANCELED
     assert map_game_status(None, "cancelled") == SummerLeagueGameStatus.CANCELED
 

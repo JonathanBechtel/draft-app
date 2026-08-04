@@ -27,8 +27,8 @@ from app.schemas.summer_league import (
     SummerLeagueTeamGameLog,
 )
 from app.services.player_mention_service import _normalized_name_key
-from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.qa import (
+from app.services.sources.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league.qa import (
     SummerLeagueSlice,
     run_summer_league_backbone_qa,
 )

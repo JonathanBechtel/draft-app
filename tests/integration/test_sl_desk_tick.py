@@ -57,16 +57,16 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskTriggerType,
 )
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from app.services.ingest.pipeline_telemetry import PipelineTelemetry
-from app.services.summer_league.raw_ingestion import GAME_ENDPOINTS
+from app.services.sources.summer_league.raw_ingestion import GAME_ENDPOINTS
 from app.services.ingest.write_lock import (
     SummerLeagueWriterLockTimeout,
     acquire_summer_league_writer_lock,
 )
 import app.cli.sl_desk_tick as desk_tick_module
-import app.services.summer_league.desk_tick.composite as desk_composite_module
-import app.services.summer_league.desk_tick.shared as desk_shared_module
+import app.services.sources.summer_league.desk_tick.composite as desk_composite_module
+import app.services.sources.summer_league.desk_tick.shared as desk_shared_module
 from app.cli.sl_desk_tick import run_desk_tick
 
 _FIXTURE_ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "summer_league"

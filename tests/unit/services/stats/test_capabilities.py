@@ -33,7 +33,7 @@ from app.services.stats.registry import METRICS_BY_KEY, get_metric
 
 # The exact set of raw tokens a box-only source provides -- every StatInputs counting/rate
 # field the registry's box-derived metrics name in their requires, per
-# app.services.summer_league.capabilities.BOX_PROVIDES (duplicated here as a plain literal so
+# app.services.sources.summer_league.capabilities.BOX_PROVIDES (duplicated here as a plain literal so
 # this test does not depend on the Summer League adapter -- the capability model itself must
 # stand on its own).
 _BOX_ONLY_PROVIDES: frozenset[str] = frozenset(
@@ -56,7 +56,9 @@ _BOX_ONLY_PROVIDES: frozenset[str] = frozenset(
         "mp",
     }
 )
-_ADV_CONTEXT_PROVIDES: frozenset[str] = frozenset({"team_box", "opponent_box", "pool_context"})
+_ADV_CONTEXT_PROVIDES: frozenset[str] = frozenset(
+    {"team_box", "opponent_box", "pool_context"}
+)
 _PBP_PROVIDES: frozenset[str] = frozenset({"ast_fgm", "unast_fgm"})
 
 
@@ -71,14 +73,14 @@ def test_box_only_source_has_no_pbp_derived_metrics_computable() -> None:
     astd_pct's requires are ast_fgm/unast_fgm -- PBP tokens deliberately distinct from the
     box's plain 'ast' -- so a box-only provides set must never satisfy them.
     """
-    computable = computable_metrics(
-        _BOX_ONLY_PROVIDES | _ADV_CONTEXT_PROVIDES
-    )
+    computable = computable_metrics(_BOX_ONLY_PROVIDES | _ADV_CONTEXT_PROVIDES)
     assert "astd_pct" not in computable
     assert not is_computable("astd_pct", _BOX_ONLY_PROVIDES | _ADV_CONTEXT_PROVIDES)
 
 
-def test_box_only_source_computes_every_non_pbp_metric_with_satisfied_requires() -> None:
+def test_box_only_source_computes_every_non_pbp_metric_with_satisfied_requires() -> (
+    None
+):
     """Box + team/opponent/pool-context inputs make every other declared metric computable.
 
     astd_pct is the registry's only PBP-derived entry today; every other metric's
@@ -124,7 +126,9 @@ def test_ws40_resolves_transitively_to_raw_inputs_not_the_literal_ws_key() -> No
     the exact trap the #728 comment warns a naive implementation would fall into.
     """
     resolved = resolve_requires("ws40")
-    assert "ws" not in resolved  # the metric_key itself must not leak into the resolved set
+    assert (
+        "ws" not in resolved
+    )  # the metric_key itself must not leak into the resolved set
     assert "mp" in resolved  # ws40's own direct requires
     # ws's own requires (raw box + team/opponent/pool-context tokens) must be present.
     for token in get_metric("ws").requires:
@@ -249,7 +253,7 @@ def test_module_has_no_summer_league_imports() -> None:
     """The capability derivation must not import Summer League (import contract 3).
 
     Parses the module's own AST rather than substring-scanning the file text, because the
-    module's docstring legitimately *names* app.services.summer_league.capabilities in
+    module's docstring legitimately *names* app.services.sources.summer_league.capabilities in
     prose (documenting where the SL-specific mapping lives) without importing it.
     """
     import app.services.stats.capabilities as cap_module
@@ -264,5 +268,5 @@ def test_module_has_no_summer_league_imports() -> None:
             imported_modules.append(node.module)
 
     for module in imported_modules:
-        assert not module.startswith("app.services.summer_league"), module
+        assert not module.startswith("app.services.sources.summer_league"), module
         assert not module.startswith("app.schemas.summer_league"), module

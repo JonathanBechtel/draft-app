@@ -34,7 +34,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamGameLog,
 )
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
-from app.services.summer_league.metrics import rebuild
+from app.services.sources.summer_league.metrics import rebuild
 from app.services.summer_league_stats_service import get_player_shotchart_context
 
 
@@ -666,7 +666,9 @@ async def test_shotchart_context_exposes_assisted_fg_pct(
                     player_id=player.id,
                     nba_stats_person_id=sp.nba_stats_person_id,
                     nba_stats_game_id="1522400210",
-                    nba_stats_game_event_id=ev_i + 1 + (1000 if player is player_b else 0),
+                    nba_stats_game_event_id=ev_i
+                    + 1
+                    + (1000 if player is player_b else 0),
                     shot_zone_basic="Restricted Area",
                     shot_zone_area="Center(C)",
                     shot_zone_range="Less Than 8 ft.",

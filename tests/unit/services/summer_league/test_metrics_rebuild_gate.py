@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.services.summer_league import metrics_rebuild_gate
+from app.services.sources.summer_league import metrics_rebuild_gate
 
 
 @pytest.mark.asyncio

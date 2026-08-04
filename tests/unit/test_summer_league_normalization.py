@@ -18,8 +18,8 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.services.summer_league import normalization as service
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league import normalization as service
+from app.services.sources.summer_league.normalization import (
     ParsedTeamBoxRow,
     ParsedTeamGamelogRow,
     _team_box_row_from_gamelog,
@@ -433,7 +433,9 @@ async def test_normalize_competition_games_adds_gamelog_fallback_team_logs(
 
             return _Result()
 
-    async def fake_get_raw_run(*_args: object, **_kwargs: object) -> SummerLeagueIngestionRun:
+    async def fake_get_raw_run(
+        *_args: object, **_kwargs: object
+    ) -> SummerLeagueIngestionRun:
         return raw_run
 
     async def fake_get_raw_files(

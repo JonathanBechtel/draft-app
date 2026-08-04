@@ -75,7 +75,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Restrict the target set to the Summer League rostered cohort "
-            "(app.services.summer_league.cohort) instead of all players. "
+            "(app.services.sources.summer_league.cohort) instead of all players. "
             "Cohort players missing a school + BBRef id (e.g. non-NCAA/"
             "international) are reported as no-source, not failed."
         ),

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.config import settings
-from app.services.summer_league.desk_read import _effective_now
+from app.services.sources.summer_league.desk_read import _effective_now
 
 
 def test_effective_now_passthrough_when_no_override(

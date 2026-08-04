@@ -21,7 +21,7 @@ place that arithmetic is stated; every call site delegates here.
 * ``totals`` -- ``value``, unscaled.
 
 **Summer League pace is possessions per 48 minutes, not 40** (see
-``app.services.summer_league.constants.MINUTES_PER_GAME``) -- the 48 is baked into the
+``app.services.sources.summer_league.constants.MINUTES_PER_GAME``) -- the 48 is baked into the
 ``288000.0`` numerator (``100 * 60 * 48``), even though Summer League games run 40 minutes.
 "Fixing" it to 40, or dropping the ``per_game`` ``* 1.0``, silently breaks the Explorer's
 sort order.
@@ -35,7 +35,8 @@ per_100") still apply their own ``NULLS LAST``/``COALESCE`` on top; see
 
 This module lives in the shared engine package (``app/services/stats/``) and is therefore
 bound by import contract 3 in ``pyproject.toml``: it may not import anything under
-``app.services.summer_league*`` or ``app.schemas.summer_league*``.
+``app.services.sources.summer_league*``, the ``app.services.summer_league_*`` read-side
+siblings, or ``app.schemas.summer_league*``.
 """
 
 from __future__ import annotations

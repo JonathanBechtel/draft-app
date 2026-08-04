@@ -1,7 +1,7 @@
 """Integration tests for targeted live raw refresh selection (ticket #531).
 
 Launch-readiness plan step 2 ("Targeted live box-score refresh"):
-``app.services.summer_league.live_ingestion`` selects active/recently-final
+``app.services.sources.summer_league.live_ingestion`` selects active/recently-final
 ``summer_league_games`` rows within an active time window and force-refreshes
 only those games' raw NBA Stats endpoints.
 
@@ -37,13 +37,13 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.live_ingestion import (
+from app.services.sources.summer_league.live_ingestion import (
     run_live_ingestion,
     select_active_window_games,
 )
-from app.services.summer_league.raw_ingestion import GAME_ENDPOINTS
-from app.services.summer_league.raw_store import SummerLeagueRawStore
-from app.services.summer_league.scoreboard_ingest import (
+from app.services.sources.summer_league.raw_ingestion import GAME_ENDPOINTS
+from app.services.sources.summer_league.raw_store import SummerLeagueRawStore
+from app.services.sources.summer_league.scoreboard_ingest import (
     ScoreboardGame,
     parse_scoreboard_games,
     upsert_scoreboard_games,
@@ -89,9 +89,7 @@ async def _competition(
     return comp
 
 
-async def _seed_real_games(
-    db: AsyncSession, competition: SummerLeagueEdition
-) -> None:
+async def _seed_real_games(db: AsyncSession, competition: SummerLeagueEdition) -> None:
     """Seed summer_league_games from the real captured 2026 live-capture fixture."""
     payload = _load_fixture(_REAL_LIVE_FIXTURE)
     games = parse_scoreboard_games(payload, target_dates=None)

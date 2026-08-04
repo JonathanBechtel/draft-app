@@ -49,7 +49,7 @@ from app.schemas.summer_league_desk import (
 )
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.event_desk.timeutils import to_eastern_date
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from app.cli.sl_desk_tick import run_desk_tick
 from tests.integration.perf._capture import count_queries
 from tests.integration.perf.budgets import DESK_TICK_DURATION_BUDGET_MS

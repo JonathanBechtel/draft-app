@@ -38,7 +38,7 @@ from typing import Optional, TypeVar
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.summer_league.desk_tick.shared import DeskLatencyClass
+from app.services.sources.summer_league.desk_tick.shared import DeskLatencyClass
 from app.services.ingest.pipeline_state import (
     complete_pipeline,
     record_pipeline_failure,

@@ -4,7 +4,7 @@ The projection builder. Runs ~hourly, is expected to finish in under a minute,
 and **takes no writer lock**: it is a pure reader of canonical data plus a
 writer of the Desk projection tables it exclusively owns (T2 grades, T3/T4
 storylines and slates, ``event_desk_state``, render snapshots). See
-`app.services.summer_league.desk_tick.projection` and
+`app.services.sources.summer_league.desk_tick.projection` and
 `docs/plans/summer-league-desk-simplification-spec.md` §2.
 
 Hourly is the intended promise and is not in question (spec "Product
@@ -34,17 +34,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv()
 
-from app.services.summer_league.desk_read import _effective_now  # noqa: E402
+from app.services.sources.summer_league.desk_read import _effective_now  # noqa: E402
 from app.cli._desk_class_runner import (  # noqa: E402
     CompletionFlags,
     parse_now,
     run_class_entrypoint,
 )
-from app.services.summer_league.desk_tick.projection import (  # noqa: E402
+from app.services.sources.summer_league.desk_tick.projection import (  # noqa: E402
     ProjectionTickResult,
     run_projection_tick,
 )
-from app.services.summer_league.desk_tick.shared import (  # noqa: E402
+from app.services.sources.summer_league.desk_tick.shared import (  # noqa: E402
     NO_WRITER_LOCK,
     DeskLatencyClass,
     TickContext,

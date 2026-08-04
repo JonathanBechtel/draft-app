@@ -18,7 +18,7 @@ from app.schemas.summer_league import (
     SummerLeagueGame,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.bracket import apply_game_rounds
+from app.services.sources.summer_league.bracket import apply_game_rounds
 from app.services.summer_league_team_service import get_venue_bracket
 
 _N = {"i": 0}

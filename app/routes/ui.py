@@ -79,7 +79,7 @@ from app.services.player_service import (
 from app.services.event_desk.timeutils import to_eastern_date
 from app.services.school_logo_service import get_logo_url_for_school
 from app.services.event_desk.payload import DeskTrackerSection
-from app.services.summer_league.desk_read import (
+from app.services.sources.summer_league.desk_read import (
     DEFAULT_TRACKER_COHORT,
     DEFAULT_TRACKER_STAT_VIEW,
     TRACKER_COHORTS,
@@ -92,7 +92,7 @@ from app.services.summer_league_stats_service import (
     get_summer_league_profile_by_player_id,
     summer_league_to_context,
 )
-from app.services.summer_league.metric_trends import build_player_trend_context
+from app.services.sources.summer_league.metric_trends import build_player_trend_context
 from app.utils.db_async import get_session
 from app.utils.sparkline import build_sparkline_path, sparkline_direction
 from app.utils.images import (

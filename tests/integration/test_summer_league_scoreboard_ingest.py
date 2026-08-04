@@ -42,8 +42,8 @@ from app.schemas.summer_league import (
     SummerLeagueGameStatus,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.nba_stats_client import NBAStatsClient
-from app.services.summer_league.scoreboard_ingest import (
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.scoreboard_ingest import (
     resolve_target_competitions,
     run_scoreboard_ingest,
 )

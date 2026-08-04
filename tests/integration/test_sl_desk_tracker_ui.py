@@ -2,7 +2,7 @@
 
 Covers the ticket's Definition of Done: six cohort toggles (with the
 within-round `draft_pick` boundary translated correctly -- see
-`app.services.summer_league.cohort_baselines`'s module docstring for the
+`app.services.sources.summer_league.cohort_baselines`'s module docstring for the
 "draft_pick is WITHIN-ROUND" gotcha this repo hinges on), the Box/Per-36/
 Per-100/Advanced stat-view rescale (counting stats scale, shooting
 percentages stay invariant, PER/BPM/WS82 em-dash when a pool isn't
@@ -50,7 +50,7 @@ from app.services.event_desk.render_snapshots import (
     upsert_render_snapshots,
 )
 from app.services.event_desk.timeutils import to_eastern_date
-from app.services.summer_league.desk_read import (
+from app.services.sources.summer_league.desk_read import (
     TRACKER_CAP,
     build_desk_render_variants,
     get_desk_payload,
@@ -548,7 +548,7 @@ async def test_advanced_view_bpm_null_when_not_adv_eligible(
     await _roster_player(db_session, competition, team, eligible)
 
     # Ineligible pool: per/bpm/ws82/usg_pct etc. are None, matching how
-    # `app.services.summer_league.metrics` writes a non-adv_eligible pool.
+    # `app.services.sources.summer_league.metrics` writes a non-adv_eligible pool.
     await _seed_season(
         db_session,
         competition=competition,
@@ -655,9 +655,7 @@ async def test_cohort_over_30_caps_at_30_by_gmsc_and_flags_truncated(
 # time-independent state -- Live/Recap resolve from game *status*, not the
 # wall clock) via an all-FINAL slate.
 # --------------------------------------------------------------------------- #
-async def _seed_recap_window(
-    db: AsyncSession, *, now: datetime
-) -> SummerLeagueEdition:
+async def _seed_recap_window(db: AsyncSession, *, now: datetime) -> SummerLeagueEdition:
     """An active SL event with an all-FINAL slate -- forces Recap deterministically."""
     today = to_eastern_date(now)
     competition = await _seed_competition(db, year=today.year)
@@ -768,7 +766,7 @@ async def test_cohort_and_statview_toggles_round_trip_via_query_params(
     # so match by inner text rather than the exact old bare `<th>` tag);
     # box-family headers are not.
     assert 'data-sort-key="per"' in html
-    assert '>PER</th>' in html
+    assert ">PER</th>" in html
     assert 'data-sort-key="bpm">BPM</th>' in html
     assert 'data-sort-key="ws82">WS/82</th>' in html
     assert ">PTS</th>" not in html
@@ -821,7 +819,7 @@ async def test_tracker_fragment_route_matches_full_page_for_same_variant(
 
     # Same variant's column set and row present.
     assert 'data-sort-key="per"' in html
-    assert '>PER</th>' in html
+    assert ">PER</th>" in html
     assert 'data-sort-key="bpm">BPM</th>' in html
     assert 'data-sort-key="ws82">WS/82</th>' in html
     assert ">PTS</th>" not in html

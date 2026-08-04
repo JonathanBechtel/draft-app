@@ -44,7 +44,7 @@ from app.services.share_cards.render_models import (
     WinnerSide,
 )
 from app.services.similarity_service import get_similar_players
-from app.services.summer_league.metric_trends import (
+from app.services.sources.summer_league.metric_trends import (
     get_daily_trend,
     latest_trend_watermark,
     resolve_scope_label,

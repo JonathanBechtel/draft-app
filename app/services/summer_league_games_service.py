@@ -28,7 +28,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
-from app.services.summer_league.metrics import (
+from app.services.sources.summer_league.metrics import (
     Box,
     game_advanced_line,
     game_score_from_row,

@@ -32,7 +32,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamGameLog,
 )
 from app.services.stats.scaling import scale_python
-from app.services.summer_league.pace import (
+from app.services.sources.summer_league.pace import (
     aggregate_leader_rows,
     team_box_columns,
 )

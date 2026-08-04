@@ -39,7 +39,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskTriggerType,
 )
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
-from app.services.summer_league.desk_storylines import compute_desk_storylines
+from app.services.sources.summer_league.desk_storylines import compute_desk_storylines
 
 pytestmark = pytest.mark.asyncio
 

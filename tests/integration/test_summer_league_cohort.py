@@ -13,7 +13,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.cohort import summer_league_cohort
+from app.services.sources.summer_league.cohort import summer_league_cohort
 from tests.integration.conftest import make_player
 
 _N = {"i": 0}

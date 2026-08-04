@@ -22,7 +22,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 load_dotenv()
 
 from app.config import settings  # noqa: E402
-from app.services.summer_league.audit import (  # noqa: E402
+from app.services.sources.summer_league.audit import (  # noqa: E402
     audit_summer_league_raw,
     summarize_audit_report,
     write_audit_report,

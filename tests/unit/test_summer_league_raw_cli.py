@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from app.services.summer_league.manifest import SummerLeagueRawManifest
-from app.services.summer_league.raw_ingestion import RawIngestionOptions
+from app.services.sources.summer_league.manifest import SummerLeagueRawManifest
+from app.services.sources.summer_league.raw_ingestion import RawIngestionOptions
 from scripts import fetch_summer_league_raw
 
 
@@ -145,7 +145,9 @@ def test_main_passes_cli_options_to_ingestor(
     assert all(option.force is True for option in ingestor.options)
     assert all(option.dry_run is True for option in ingestor.options)
     assert all(option.delay_seconds == 0.2 for option in ingestor.options)
-    assert all(option.skip_endpoints == ("playbyplayv2",) for option in ingestor.options)
+    assert all(
+        option.skip_endpoints == ("playbyplayv2",) for option in ingestor.options
+    )
     assert "2024 15 (las_vegas): games=2" in captured.out
     assert "2024 13 (california_classic): games=2" in captured.out
 
@@ -158,9 +160,7 @@ def test_main_returns_zero_for_partial_failure(
     factory = FakeFactory(FakeIngestor(failures={"13"}))
     monkeypatch.setattr(fetch_summer_league_raw, "build_ingestor", factory)
 
-    exit_code = fetch_summer_league_raw.main(
-        ["--year", "2024", "--league-id", "15,13"]
-    )
+    exit_code = fetch_summer_league_raw.main(["--year", "2024", "--league-id", "15,13"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -176,9 +176,7 @@ def test_main_returns_one_when_all_requested_runs_fail(
     factory = FakeFactory(FakeIngestor(failures={"15", "13"}))
     monkeypatch.setattr(fetch_summer_league_raw, "build_ingestor", factory)
 
-    exit_code = fetch_summer_league_raw.main(
-        ["--year", "2024", "--league-id", "15,13"]
-    )
+    exit_code = fetch_summer_league_raw.main(["--year", "2024", "--league-id", "15,13"])
 
     captured = capsys.readouterr()
     assert exit_code == 1

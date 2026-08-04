@@ -148,7 +148,7 @@ class SummerLeagueBatchProgress(SQLModel, table=True):  # type: ignore[call-arg]
     corrected PBP/shot-chart snapshot, or an explicit repair run), its row
     must be deleted first via
     ``app.services.ingest.batch_progress.invalidate_batch_progress``
-    -- see ``app.services.summer_league.raw_ingestion.dirty_game_ids_from_manifest``
+    -- see ``app.services.sources.summer_league.raw_ingestion.dirty_game_ids_from_manifest``
     and ``app.cli.summer_league_ingest_runner``'s dirty-detection wiring --
     or that game would otherwise be silently skipped forever.
     """

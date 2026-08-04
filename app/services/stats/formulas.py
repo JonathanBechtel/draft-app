@@ -513,7 +513,7 @@ def compute_metrics(ps: PlayerSeason, ctx: PoolContext, ws_ppw_coeff: float) -> 
 
     PER is left un-standardized (``ps.aper``); the caller standardizes per pool.
     BPM/OBPM/DBPM/VORP are filled later by the SL-native fit
-    (``app.services.summer_league.metrics.apply_sl_bpm``) -- that fit is
+    (``app.services.sources.summer_league.metrics.apply_sl_bpm``) -- that fit is
     calibrated against real Summer League plus-minus and stays with its
     orchestration, not in this source-agnostic engine.
     """

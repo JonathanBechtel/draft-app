@@ -10,7 +10,7 @@ import pytest
 
 from app.cli import summer_league_metrics_compact
 from app.schemas.summer_league_metrics import SummerLeagueMetricContext
-from app.services.summer_league import metric_compaction
+from app.services.sources.summer_league import metric_compaction
 from app.services.ingest.write_lock import SummerLeagueWriterLockTimeout
 
 

@@ -32,10 +32,10 @@ from app.schemas.summer_league import (
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
 from app.services.stats.capabilities import is_computable
 from app.services.stats.formulas import astd_pct_ratio, ts_pct_ratio
-from app.services.summer_league.capabilities import row_provides
-from app.services.summer_league.constants import MINUTES_PER_GAME
-from app.services.summer_league.metrics import game_score_from_row
-from app.services.summer_league.pace import (
+from app.services.sources.summer_league.capabilities import row_provides
+from app.services.sources.summer_league.constants import MINUTES_PER_GAME
+from app.services.sources.summer_league.metrics import game_score_from_row
+from app.services.sources.summer_league.pace import (
     player_possessions_from_rows,
     team_box_columns,
 )

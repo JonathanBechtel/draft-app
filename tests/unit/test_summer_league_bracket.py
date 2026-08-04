@@ -6,7 +6,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from app.services.summer_league.bracket import parse_schedule_rounds
+from app.services.sources.summer_league.bracket import parse_schedule_rounds
 
 _FIXTURE = (
     Path(__file__).resolve().parents[1]

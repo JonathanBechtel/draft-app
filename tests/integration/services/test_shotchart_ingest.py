@@ -29,8 +29,8 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
 )
 from app.services.player_mention_service import _normalized_name_key
-from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league.normalization import (
     normalize_competition_games,
     normalize_shot_events,
 )
@@ -178,10 +178,24 @@ def _write_season_skeleton(raw_root: Path) -> Path:
                 "resultSets": [
                     _result_set(
                         "TeamStats",
-                        ["GAME_ID", "TEAM_ID", "TEAM_NAME", "TEAM_ABBREVIATION", "MIN", "PTS"],
+                        [
+                            "GAME_ID",
+                            "TEAM_ID",
+                            "TEAM_NAME",
+                            "TEAM_ABBREVIATION",
+                            "MIN",
+                            "PTS",
+                        ],
                         [
                             ["1522400001", 1610612753, "Magic", "ORL", "200:00", 106],
-                            ["1522400001", 1610612739, "Cavaliers", "CLE", "200:00", 79],
+                            [
+                                "1522400001",
+                                1610612739,
+                                "Cavaliers",
+                                "CLE",
+                                "200:00",
+                                79,
+                            ],
                         ],
                     ),
                     _result_set("PlayerStats", [], []),
@@ -190,7 +204,14 @@ def _write_season_skeleton(raw_root: Path) -> Path:
         )
     )
     game_dir.joinpath("boxscoreadvancedv2.json").write_text(
-        json.dumps({"resultSets": [_result_set("PlayerStats", [], []), _result_set("TeamStats", [], [])]})
+        json.dumps(
+            {
+                "resultSets": [
+                    _result_set("PlayerStats", [], []),
+                    _result_set("TeamStats", [], []),
+                ]
+            }
+        )
     )
     game_dir.joinpath("boxscorescoringv2.json").write_text(
         json.dumps({"resultSets": [_result_set("sqlPlayersScoring", [], [])]})
@@ -335,7 +356,9 @@ def _write_two_game_season_skeleton(raw_root: Path) -> tuple[Path, Path]:
         game_dir.joinpath("boxscorescoringv2.json").write_text(
             json.dumps({"resultSets": [_result_set("sqlPlayersScoring", [], [])]})
         )
-        game_dir.joinpath("playbyplayv2.json").write_text(json.dumps({"resultSets": []}))
+        game_dir.joinpath("playbyplayv2.json").write_text(
+            json.dumps({"resultSets": []})
+        )
 
     return game_dir_1, game_dir_2
 
@@ -441,11 +464,11 @@ async def test_normalize_shot_events_unresolved_player_has_null_player_id(
         )
     )
     await _setup_competition(db_session, tmp_path)
-    await normalize_shot_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
+    await normalize_shot_events(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
 
-    shot = (
-        await db_session.execute(select(SummerLeagueShotEvent))
-    ).scalar_one()
+    shot = (await db_session.execute(select(SummerLeagueShotEvent))).scalar_one()
     source = (
         await db_session.execute(
             select(SummerLeagueSourceRecord).where(
@@ -489,9 +512,7 @@ async def test_normalize_shot_events_resolved_player_sets_player_id(
     await _setup_competition(db_session, tmp_path)
 
     # Pre-create the source player with a canonical link
-    player = PlayerMaster(
-        display_name="Resolved Prospect", slug="resolved-prospect"
-    )
+    player = PlayerMaster(display_name="Resolved Prospect", slug="resolved-prospect")
     db_session.add(player)
     await db_session.flush()
     assert player.id is not None
@@ -510,16 +531,18 @@ async def test_normalize_shot_events_resolved_player_sets_player_id(
     )
     await db_session.flush()
 
-    await normalize_shot_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
+    await normalize_shot_events(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
 
-    shot = (
-        await db_session.execute(select(SummerLeagueShotEvent))
-    ).scalar_one()
+    shot = (await db_session.execute(select(SummerLeagueShotEvent))).scalar_one()
 
     assert shot.player_id == player.id
 
 
-def _write_season_log_player(game_dir: Path, headers: list[str], rows: list[list[object]]) -> None:
+def _write_season_log_player(
+    game_dir: Path, headers: list[str], rows: list[list[object]]
+) -> None:
     """Overwrite the season leaguegamelog_player.json with real player lines."""
     run_dir = game_dir.parent.parent  # .../<year>/<league>
     run_dir.joinpath("leaguegamelog_player.json").write_text(
@@ -610,7 +633,9 @@ async def test_normalize_shot_events_legacy_id_crosswalks_to_canonical(
     )
     await db_session.flush()
 
-    await normalize_shot_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
+    await normalize_shot_events(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
 
     shots = (await db_session.execute(select(SummerLeagueShotEvent))).scalars().all()
     canonical_source = (
@@ -685,7 +710,9 @@ async def test_normalize_shot_events_unmatched_legacy_id_stays_unresolved(
         )
     )
     await _setup_competition(db_session, tmp_path)
-    await normalize_shot_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
+    await normalize_shot_events(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
 
     shots = (await db_session.execute(select(SummerLeagueShotEvent))).scalars().all()
     assert len(shots) == 2
@@ -706,13 +733,7 @@ async def test_normalize_shot_events_empty_file_leaves_flag_false(
     """
     game_dir = _write_season_skeleton(tmp_path)
     game_dir.joinpath("shotchartdetail.json").write_text(
-        json.dumps(
-            {
-                "resultSets": [
-                    _result_set("Shot_Chart_Detail", SHOT_HEADERS, [])
-                ]
-            }
-        )
+        json.dumps({"resultSets": [_result_set("Shot_Chart_Detail", SHOT_HEADERS, [])]})
     )
     await _setup_competition(db_session, tmp_path)
     report = await normalize_shot_events(
@@ -753,11 +774,11 @@ async def test_normalize_shot_events_sets_available_when_rows_exist(
         )
     )
     await _setup_competition(db_session, tmp_path)
-    await normalize_shot_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
+    await normalize_shot_events(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
 
-    competition = (
-        await db_session.execute(select(SummerLeagueEdition))
-    ).scalar_one()
+    competition = (await db_session.execute(select(SummerLeagueEdition))).scalar_one()
     assert competition.shotchart_available is True
 
 
@@ -784,7 +805,9 @@ async def test_normalize_shot_events_updates_raw_file_parse_status(
         )
     )
     await _setup_competition(db_session, tmp_path)
-    await normalize_shot_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
+    await normalize_shot_events(
+        db_session, year=2024, league_id="15", raw_root=tmp_path
+    )
 
     raw_file = (
         await db_session.execute(
@@ -896,7 +919,11 @@ async def test_normalize_shot_events_batch_call_never_downgrades_availability_fl
                     _result_set(
                         "Shot_Chart_Detail",
                         SHOT_HEADERS,
-                        [_shot_row(event_id=1, player_id=1640001, player_name="Player A")],
+                        [
+                            _shot_row(
+                                event_id=1, player_id=1640001, player_name="Player A"
+                            )
+                        ],
                     )
                 ]
             }

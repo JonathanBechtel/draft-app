@@ -46,7 +46,7 @@ from app.schemas.summer_league_desk import (
     SummerLeagueDeskSlate,
 )
 from app.schemas.summer_league_metrics import SummerLeagueDerivedAgg
-from app.services.summer_league.nba_stats_client import NBAStatsClient
+from app.services.sources.summer_league.nba_stats_client import NBAStatsClient
 from app.cli.sl_desk_tick import run_desk_tick
 
 pytestmark = pytest.mark.asyncio

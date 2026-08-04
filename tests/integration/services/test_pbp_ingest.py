@@ -29,8 +29,8 @@ from app.schemas.summer_league import (
     SummerLeagueSourceDocument,
     SummerLeagueRawFileStatus,
 )
-from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league.normalization import (
     normalize_competition_games,
     normalize_pbp_events,
 )
@@ -235,9 +235,7 @@ def _write_season_skeleton(raw_root: Path) -> Path:
     game_dir.joinpath("boxscorescoringv2.json").write_text(
         json.dumps({"resultSets": [_result_set("sqlPlayersScoring", [], [])]})
     )
-    game_dir.joinpath("shotchartdetail.json").write_text(
-        json.dumps({"resultSets": []})
-    )
+    game_dir.joinpath("shotchartdetail.json").write_text(json.dumps({"resultSets": []}))
     return game_dir
 
 
@@ -470,9 +468,7 @@ async def test_normalize_pbp_events_no_pbp_file_yields_zero_events(
         db_session, year=2024, league_id="15", raw_root=tmp_path
     )
 
-    competition = (
-        await db_session.execute(select(SummerLeagueEdition))
-    ).scalar_one()
+    competition = (await db_session.execute(select(SummerLeagueEdition))).scalar_one()
     event_count = await db_session.scalar(
         select(func.count()).select_from(SummerLeaguePlayByPlayEvent)
     )
@@ -496,13 +492,7 @@ async def test_normalize_pbp_events_empty_file_leaves_flag_false(
     """
     game_dir = _write_season_skeleton(tmp_path)
     game_dir.joinpath("playbyplayv2.json").write_text(
-        json.dumps(
-            {
-                "resultSets": [
-                    _result_set("PlayByPlay", PBP_HEADERS, [])
-                ]
-            }
-        )
+        json.dumps({"resultSets": [_result_set("PlayByPlay", PBP_HEADERS, [])]})
     )
     await _setup_competition(db_session, tmp_path)
 
@@ -510,9 +500,7 @@ async def test_normalize_pbp_events_empty_file_leaves_flag_false(
         db_session, year=2024, league_id="15", raw_root=tmp_path
     )
 
-    competition = (
-        await db_session.execute(select(SummerLeagueEdition))
-    ).scalar_one()
+    competition = (await db_session.execute(select(SummerLeagueEdition))).scalar_one()
     event_count = await db_session.scalar(
         select(func.count()).select_from(SummerLeaguePlayByPlayEvent)
     )
@@ -546,13 +534,9 @@ async def test_normalize_pbp_events_sets_available_when_rows_exist(
     )
     await _setup_competition(db_session, tmp_path)
 
-    await normalize_pbp_events(
-        db_session, year=2024, league_id="15", raw_root=tmp_path
-    )
+    await normalize_pbp_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
 
-    competition = (
-        await db_session.execute(select(SummerLeagueEdition))
-    ).scalar_one()
+    competition = (await db_session.execute(select(SummerLeagueEdition))).scalar_one()
     assert competition.pbp_available is True
 
 
@@ -577,9 +561,7 @@ async def test_normalize_pbp_events_updates_raw_file_parse_status(
         )
     )
     await _setup_competition(db_session, tmp_path)
-    await normalize_pbp_events(
-        db_session, year=2024, league_id="15", raw_root=tmp_path
-    )
+    await normalize_pbp_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
 
     raw_file = (
         await db_session.execute(
@@ -626,9 +608,7 @@ async def test_normalize_pbp_events_field_values_persisted(
         )
     )
     await _setup_competition(db_session, tmp_path)
-    await normalize_pbp_events(
-        db_session, year=2024, league_id="15", raw_root=tmp_path
-    )
+    await normalize_pbp_events(db_session, year=2024, league_id="15", raw_root=tmp_path)
 
     event = (
         await db_session.execute(

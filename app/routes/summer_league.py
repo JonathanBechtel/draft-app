@@ -53,7 +53,7 @@ from app.services.summer_league_environment_service import (
     get_current_profile_by_scope_key,
     season_scope_key,
 )
-from app.services.summer_league.metric_trends import build_trend_context
+from app.services.sources.summer_league.metric_trends import build_trend_context
 from app.services.summer_league_franchise_service import get_franchise_history
 from app.services.summer_league_leaders_service import get_leaders
 from app.services.summer_league_season_service import (

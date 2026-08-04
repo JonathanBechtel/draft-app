@@ -23,7 +23,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricModel,
     SummerLeagueDerivedAgg,
 )
-from app.services.summer_league.metric_publish import (
+from app.services.sources.summer_league.metric_publish import (
     publish_archival_metric_version,
 )
 from app.services.ingest.write_lock import _SUMMER_LEAGUE_WRITER_LOCK_KEY
@@ -170,7 +170,6 @@ async def _seed_event_day(
             )
         )
     return competition_id, first_player_id
-
 
 
 @pytest.mark.asyncio

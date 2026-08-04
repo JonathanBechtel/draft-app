@@ -57,7 +57,7 @@ from app.schemas.summer_league_pipeline import (
     SummerLeaguePipelineState,
 )
 from app.services.event_desk.render_snapshots import CURRENT_SCHEMA_VERSION
-from app.services.summer_league.scoreboard_ingest import EVENT_KEY_SUMMER_LEAGUE
+from app.services.sources.summer_league.scoreboard_ingest import EVENT_KEY_SUMMER_LEAGUE
 from scripts.check_sl_desk_readiness import (
     EXPECTED_RENDER_VARIANTS,
     REQUIRED_BASELINE_GRAINS,

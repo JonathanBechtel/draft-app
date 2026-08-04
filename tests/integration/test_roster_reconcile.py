@@ -45,7 +45,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
-from app.services.summer_league.roster_reconcile import (
+from app.services.sources.summer_league.roster_reconcile import (
     ROSTER_SOURCE,
     reconcile_competition,
 )

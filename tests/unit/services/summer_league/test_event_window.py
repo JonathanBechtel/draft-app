@@ -7,7 +7,7 @@ from datetime import date, datetime, timezone
 import pytest
 
 from app.schemas.summer_league import SummerLeagueEdition
-from app.services.summer_league import event_window
+from app.services.sources.summer_league import event_window
 
 
 def _competition() -> SummerLeagueEdition:

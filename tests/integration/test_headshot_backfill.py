@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_external_ids import PlayerExternalId
 from app.schemas.players_master import PlayerMaster
-from app.services.summer_league.headshots import (
+from app.services.sources.summer_league.headshots import (
     NBA_STATS_SYSTEM,
     backfill_nba_headshots,
     nba_headshot_url,

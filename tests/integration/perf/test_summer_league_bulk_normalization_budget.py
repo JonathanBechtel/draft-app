@@ -28,8 +28,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from app.services.summer_league.audit import audit_summer_league_raw
-from app.services.summer_league.normalization import (
+from app.services.sources.summer_league.audit import audit_summer_league_raw
+from app.services.sources.summer_league.normalization import (
     BULK_UPSERT_CHUNK_SIZE,
     normalize_competition_games,
     normalize_pbp_events,

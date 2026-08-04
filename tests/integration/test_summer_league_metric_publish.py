@@ -14,7 +14,7 @@ from app.schemas.summer_league_metrics import (
     SummerLeagueMetricContext,
     SummerLeagueDerivedAgg,
 )
-from app.services.summer_league.metric_publish import publish_metric_version
+from app.services.sources.summer_league.metric_publish import publish_metric_version
 from tests.integration.conftest import make_player
 
 

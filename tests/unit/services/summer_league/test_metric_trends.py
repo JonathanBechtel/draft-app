@@ -10,7 +10,7 @@ import pytest
 
 from app.domain.temporal import Watermark
 from app.models.summer_league_trends import TrendCohortBand, TrendPoint
-from app.services.summer_league.metric_trends import (
+from app.services.sources.summer_league.metric_trends import (
     _effective_day_expression,
     get_daily_trend,
     latest_trend_watermark,

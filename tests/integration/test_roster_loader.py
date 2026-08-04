@@ -38,15 +38,15 @@ from app.schemas.summer_league import (
     SummerLeagueParticipation,
     SummerLeagueSourceRecord,
 )
-from app.services.summer_league.roster_ingest import (
+from app.services.sources.summer_league.roster_ingest import (
     CompetitionKey,
     _upsert_roster_competition,
     _upsert_roster_source_player,
     _upsert_roster_team_entry,
     load_roster_snapshot,
 )
-from app.services.summer_league.roster_changes import changed_source_player_ids
-from app.services.summer_league.roster_parse import RosterEntry
+from app.services.sources.summer_league.roster_changes import changed_source_player_ids
+from app.services.sources.summer_league.roster_parse import RosterEntry
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -582,7 +582,7 @@ async def test_unchanged_refreshes_metadata(db_session: AsyncSession) -> None:
     - No new affiliation or participation rows after the second load.
     - participation.jersey_number == "10" after the reload.
     """
-    from app.services.summer_league.roster_parse import RosterEntry
+    from app.services.sources.summer_league.roster_parse import RosterEntry
 
     def _entry_jersey(jersey: str) -> RosterEntry:
         return RosterEntry(
