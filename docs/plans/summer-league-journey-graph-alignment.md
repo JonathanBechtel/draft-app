@@ -125,6 +125,12 @@ source is blocked from asserting an affiliation any more.**
   `summer_league_franchise_service.py`) still read `nba_team_id` directly. The dual-read helper
   exists and is exercised by tests, but nothing in production rendering calls it yet.
 
+The **write** side is closed, however: the roster-ingest supersede chain
+(`roster_ingest.py` — CUT reactivation, box-score healing, and `_cut_player`) carries
+`team_program_id` forward alongside `nba_team_id`, so a future backfill is not silently re-nulled
+row by row by the next roster pull. Guarded by
+`tests/integration/test_roster_loader.py::test_cut_carries_team_program_target_forward`.
+
 The order of operations executed, matching the plan below:
 
 1. Introduce `organization` (with `org_kind` per §13.3) → `team_program` → retarget `team_entry`.

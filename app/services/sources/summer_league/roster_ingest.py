@@ -375,6 +375,12 @@ async def _announce_player(
                 nba_team_id=(
                     prior_affiliation.nba_team_id if prior_affiliation else None
                 ),
+                # Both dual-read targets (spec §5.1 D3) travel together down a
+                # supersede chain: carrying one but not the other would silently
+                # un-resolve a backfilled row on the next roster pull.
+                team_program_id=(
+                    prior_affiliation.team_program_id if prior_affiliation else None
+                ),
                 affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
                 status=AffiliationStatus.ANNOUNCED,
                 recorded_at=recorded_at,
@@ -467,6 +473,8 @@ async def _heal_box_score_first_affiliation(
     new_affiliation = PlayerAffiliation(
         player_id=prior_affiliation.player_id,
         nba_team_id=prior_affiliation.nba_team_id,
+        # Dual-read targets travel together down a supersede chain (spec §5.1 D3).
+        team_program_id=prior_affiliation.team_program_id,
         affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
         status=AffiliationStatus.ANNOUNCED,
         recorded_at=recorded_at,
@@ -505,6 +513,10 @@ async def _cut_player(
     cut_affiliation = PlayerAffiliation(
         player_id=prior_affiliation.player_id if prior_affiliation else None,
         nba_team_id=prior_affiliation.nba_team_id if prior_affiliation else None,
+        # Dual-read targets travel together down a supersede chain (spec §5.1 D3).
+        team_program_id=(
+            prior_affiliation.team_program_id if prior_affiliation else None
+        ),
         affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
         status=AffiliationStatus.CUT,
         recorded_at=recorded_at,
