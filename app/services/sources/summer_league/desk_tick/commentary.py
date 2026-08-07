@@ -8,7 +8,7 @@ the same batched reads, persisting through the same bulk upserts.
 
 The CRITICAL constraint this module inherits: every context read is issued
 ONCE for the whole competition/roster per run, never once per player. See
-`app/services/summer_league/desk_fact_queries.py` for exactly how each query
+`app/services/sources/summer_league/desk_fact_queries.py` for exactly how each query
 is batched, and `tests/integration/perf/test_desk_tick_query_growth.py` for
 the behavioral guard that none of it scales with roster size.
 """

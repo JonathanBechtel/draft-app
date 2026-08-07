@@ -53,6 +53,15 @@ repos:
         language: system
         pass_filenames: false
         files: ^app/.*\.py$
+      - id: stale-service-paths
+        name: Ban stale app/services/summer_league paths outside docs/plans/
+        # A property of the whole tree, like stat-constants: the script walks
+        # git ls-files itself and refuses to pass on an empty scan. Mirrored
+        # exactly in `make lint.stale-paths` and CI so all three agree.
+        entry: python scripts/check_stale_service_paths.py
+        language: system
+        pass_filenames: false
+        files: ^.*\.(py|toml|md)$
       - id: migration-safety
         name: Require concurrent, autocommit-wrapped index builds in new migrations
         # Diff-scoped: 36 existing revisions build indexes non-concurrently and have

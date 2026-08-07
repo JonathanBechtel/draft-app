@@ -6,8 +6,10 @@ Persists rows into a disposable database and asserts:
 - FK enforcement: a team_program cannot reference a nonexistent organization, and an
   organization_relationship cannot reference nonexistent organizations.
 - Unique-slug behavior on organizations and team_programs.
-- Uniqueness of (from_organization_id, to_organization_id, relationship_type) on
-  organization_relationships.
+- Current-edge uniqueness on organization_relationships: at most one *open*
+  (from_organization_id, to_organization_id, relationship_type) assertion. The
+  history/resume behavior this replaced a blanket unique constraint with lives in
+  test_organization_relationship_intervals.py (ticket #798).
 
 These tests run against the live integration-test Postgres schema (via db_session from
 conftest), so they require TEST_DATABASE_URL and PYTEST_ALLOW_DB=1.
@@ -155,7 +157,13 @@ async def test_organization_relationship_requires_existing_organizations(
 
 @pytest.mark.asyncio
 async def test_organization_relationship_uniqueness(db_session: AsyncSession) -> None:
-    """(from_organization_id, to_organization_id, relationship_type) is unique."""
+    """(from, to, type) is unique among *open, uncorrected* assertions (#798).
+
+    Both rows below leave effective_end/superseded_at/retracted_at NULL, so they
+    both fall inside uq_organization_relationships_current's predicate and the
+    duplicate is still rejected -- the protection the original blanket constraint
+    provided for the undated case is retained.
+    """
     org_a = await _make_organization(db_session, slug="rel-uniq-a")
     org_b = await _make_organization(db_session, slug="rel-uniq-b")
     await db_session.commit()

@@ -7,6 +7,15 @@ cross-year Summer League résumé. ``{team}`` is the canonical ``nba_teams.slug`
 A franchise fields at most one entry per competition (the split/select squads
 that play two rosters in one event are unmapped and excluded), so per-entry
 records sum cleanly into an all-time record with no double counting.
+
+Dual-read team targets (#795)
+-----------------------------
+This is the first production read path to resolve its team target through
+``app.services.player_affiliation`` instead of reading the legacy
+``nba_team_id`` column directly. It is deliberately the narrowest surface that
+filters on that target -- a franchise-scoped page, not a hot index -- so the
+journey-graph dual-read pattern meets a real query, and a real query plan,
+before Wave C generalizes it (phase-4 spec §5.1 D3, §8 item 4).
 """
 
 from __future__ import annotations
@@ -25,6 +34,10 @@ from app.schemas.summer_league import (
     SummerLeaguePlayerGameLog,
     SummerLeagueTeamEntry,
 )
+from app.services.backbone.team_program_resolution import (
+    resolve_franchise_team_program_id,
+)
+from app.services.player_affiliation import resolve_team_target_filter
 from app.services.sources.summer_league.team_logos import franchise_logo_url
 from app.services.summer_league_games_service import _enum_str, _venue_label
 
@@ -134,6 +147,15 @@ async def get_franchise_history(
     if franchise is None:
         return None
 
+    # Dual-read (#795). The franchise's generic-org-model target, resolved off
+    # the same T3 natural key ingest writes with, so the two sides cannot
+    # disagree. `None` here is ordinary, not an error: it means the org model
+    # has no program for this franchise yet, and the clause below degenerates
+    # to exactly the legacy `nba_team_id` filter this page has always used.
+    franchise_program_id = await resolve_franchise_team_program_id(
+        db, nba_team_slug=franchise.slug
+    )
+
     te = SummerLeagueTeamEntry
     comp = SummerLeagueEdition
     entry_rows = (
@@ -148,7 +170,19 @@ async def get_franchise_history(
             )  # type: ignore[call-overload, misc]
             .select_from(te)
             .join(comp, comp.id == te.competition_id)
-            .where(te.nba_team_id == franchise.id)  # type: ignore[arg-type]
+            # Selects exactly the entries `resolve_team_target` assigns to this
+            # franchise -- program target first, legacy `nba_team_id` only for
+            # entries with no program yet. Never open-code this as
+            # `team_program_id = :p OR nba_team_id = :n`: that also claims
+            # entries already retargeted to another program, which would show
+            # the same team-season under two franchises.
+            .where(
+                resolve_team_target_filter(
+                    te,
+                    team_program_id=franchise_program_id,
+                    nba_team_id=franchise.id,
+                )
+            )
             .order_by(comp.year.desc(), comp.venue_slug)  # type: ignore[attr-defined]
         )
     ).all()

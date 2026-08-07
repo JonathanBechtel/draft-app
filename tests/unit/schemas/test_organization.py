@@ -4,10 +4,15 @@ Verifies:
 - OrgKind and OrgRelationshipType are exactly the closed §13.3 sets (fails if a value
   is added without a decision).
 - Each table exposes the expected name, named constraints/indexes, and enum type.
+- organization_relationships carries the ticket-#798 shape: no blanket
+  (from, to, type) unique constraint, a partial unique index scoped to the single
+  *open* current edge, and PlayerAffiliation's four bitemporal stamps.
 - Model construction populates default timestamps without a DB round-trip.
 """
 
 from __future__ import annotations
+
+from sqlalchemy import UniqueConstraint
 
 from app.schemas.organization import (
     OrgKind,
@@ -79,15 +84,11 @@ def test_organization_relationship_table_contract() -> None:
     table = OrganizationRelationship.__table__  # type: ignore[attr-defined]
 
     assert table.name == "organization_relationships"
-    assert {
-        constraint.name
-        for constraint in table.constraints
-        if constraint.name is not None
-    } >= {"uq_organization_relationships_from_to_type"}
     assert {index.name for index in table.indexes} >= {
         "ix_organization_relationships_from_organization_id",
         "ix_organization_relationships_to_organization_id",
         "ix_organization_relationships_relationship_type",
+        "ix_organization_relationships_supersedes_id",
     }
     assert (
         table.c.relationship_type.type.name == "organization_relationship_type_enum"
@@ -100,6 +101,73 @@ def test_organization_relationship_table_contract() -> None:
     }
     assert from_fk_targets == {"organizations"}
     assert to_fk_targets == {"organizations"}
+
+
+def test_organization_relationship_has_no_blanket_unique_constraint() -> None:
+    """The (from, to, type)-forever constraint is gone (ticket #798, design B).
+
+    Its presence is what made a resumed relationship unrecordable, so this
+    asserts the *absence* directly rather than trusting the replacement index to
+    imply it.
+    """
+    table = OrganizationRelationship.__table__  # type: ignore[attr-defined]
+
+    constraint_names = {
+        constraint.name
+        for constraint in table.constraints
+        if constraint.name is not None
+    }
+    assert "uq_organization_relationships_from_to_type" not in constraint_names
+    # No unique *constraint* of any name covers the bare triple either.
+    for constraint in table.constraints:
+        if isinstance(constraint, UniqueConstraint):
+            assert {column.name for column in constraint.columns} != {
+                "from_organization_id",
+                "to_organization_id",
+                "relationship_type",
+            }
+
+
+def test_organization_relationship_current_partial_unique_index() -> None:
+    """Uniqueness is scoped to the single open, non-superseded, non-retracted edge.
+
+    The ``effective_end IS NULL`` term in the predicate is the load-bearing part:
+    without it a closed historical interval would collide with a live one, which
+    is the exact defect ticket #798 fixes. Asserted on the rendered predicate so
+    a silent narrowing of the WHERE clause fails here.
+    """
+    table = OrganizationRelationship.__table__  # type: ignore[attr-defined]
+
+    index = next(
+        candidate
+        for candidate in table.indexes
+        if candidate.name == "uq_organization_relationships_current"
+    )
+    assert index.unique is True
+    assert [column.name for column in index.columns] == [
+        "from_organization_id",
+        "to_organization_id",
+        "relationship_type",
+    ]
+    predicate = str(index.dialect_options["postgresql"]["where"])
+    assert "superseded_at IS NULL" in predicate
+    assert "retracted_at IS NULL" in predicate
+    assert "effective_end IS NULL" in predicate
+
+
+def test_organization_relationship_bitemporal_columns() -> None:
+    """The four PlayerAffiliation-mirroring stamps exist with the right nullability."""
+    table = OrganizationRelationship.__table__  # type: ignore[attr-defined]
+
+    assert table.c.recorded_at.nullable is False
+    for column_name in ("supersedes_id", "superseded_at", "retracted_at"):
+        assert table.c[column_name].nullable is True
+
+    # supersedes_id points back at this same table -- the correction trail.
+    supersedes_targets = {
+        fk.column.table.name for fk in table.c.supersedes_id.foreign_keys
+    }
+    assert supersedes_targets == {"organization_relationships"}
 
 
 def test_model_construction_defaults() -> None:
@@ -126,5 +194,9 @@ def test_model_construction_defaults() -> None:
     assert relationship.id is None
     assert relationship.effective_start is None
     assert relationship.effective_end is None
+    assert relationship.supersedes_id is None
+    assert relationship.superseded_at is None
+    assert relationship.retracted_at is None
+    assert relationship.recorded_at is not None
     assert relationship.created_at is not None
     assert relationship.updated_at is not None

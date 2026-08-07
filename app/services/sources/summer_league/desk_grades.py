@@ -18,7 +18,7 @@ step 2).
   leaderboard population, plus that same module's ``TARGET_BOARD_ROWS`` (10)
   as the floor for a cohort baseline being too thin to trust at all.
 * ``SummerLeagueDerivedAgg.gmsc`` — already computed from
-  ``game_score_line()`` (`app/services/summer_league/metrics.py`) when the
+  ``game_score_line()`` (`app/services/sources/summer_league/metrics.py`) when the
   materialized per-(player, competition) row is built; grading reads that
   column via the same blend path #502 uses rather than recomputing GmSc from
   raw box logs.

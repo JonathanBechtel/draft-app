@@ -6,7 +6,7 @@ the repo forbids ``app/services/`` from calling ``commit()``/``rollback()``
 (``scripts/check_request_transaction_policy.py``: services are request-bounded
 code). That rule is worth keeping at full strength, so transaction control
 stays on the CLI side of the line -- the latency classes under
-``app/services/summer_league/desk_tick/`` declare *where* a transaction may be
+``app/services/sources/summer_league/desk_tick/`` declare *where* a transaction may be
 released via ``TickContext.transaction_boundary``, and this module decides
 *how*.
 

@@ -34,7 +34,7 @@ def _d(num: float, den: float) -> float:
 
 # The counting-stat fields a box line accumulates via `StatInputs.add_row`, and
 # the fields the Summer League loader/persistence layer sums or stores by the
-# same names (`app/services/summer_league/metrics.py` re-exports this tuple as
+# same names (`app/services/sources/summer_league/metrics.py` re-exports this tuple as
 # `_BOX_INT_FIELDS`).
 BOX_INT_FIELDS = (
     "fgm",

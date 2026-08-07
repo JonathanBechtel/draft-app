@@ -34,7 +34,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
 )
 
-# Affiliation source stamped by the roster loader (app/services/summer_league/roster_ingest.py).
+# Affiliation source stamped by the roster loader (app/services/sources/summer_league/roster_ingest.py).
 ROSTER_SOURCE = "nba_summer_league_roster"
 
 _T = TypeVar("_T")

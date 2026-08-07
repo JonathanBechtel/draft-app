@@ -36,6 +36,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
+from app.services.backbone.team_program_resolution import resolve_team_targets
 from app.services.player_mention_service import _normalized_name_key
 from app.services.sources.summer_league.roster_parse import RosterEntry
 
@@ -84,12 +85,18 @@ class RosterDiffReport:
         added: Total players newly added across all teams.
         unchanged: Total players unchanged across all teams.
         cut: Total players cut across all teams.
+        team_entries_created_unresolved: New team entries this run whose
+            franchise resolved to no target at all (#796 drift signal). A
+            positive count for a known NBA franchise abbreviation means the
+            T3 org-model population hasn't run yet; a positive count for a
+            genuinely non-NBA/select squad is expected and not a problem.
     """
 
     per_team: dict[str, TeamDiff] = field(default_factory=dict)
     added: int = 0
     unchanged: int = 0
     cut: int = 0
+    team_entries_created_unresolved: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -175,11 +182,16 @@ async def _upsert_roster_team_entry(
     db: AsyncSession,
     competition_id: int,
     nba_stats_team_id: str,
-) -> SummerLeagueTeamEntry:
+) -> tuple[SummerLeagueTeamEntry, bool]:
     """Get or create a ``SummerLeagueTeamEntry`` keyed on (competition, team_id).
 
     The ``raw_team_name`` is seeded from the NBA Stats team ID as a placeholder
     and is enriched by the normalization pipeline once box-score data arrives.
+
+    On create, both ``nba_team_id`` and ``team_program_id`` are resolved via
+    :func:`resolve_team_targets` (#796). On update, only a currently-``NULL``
+    target is filled -- a target that is already set is never overwritten
+    (spec §5.1 decision D3: no row is ever repointed or nulled).
 
     Args:
         db: Async database session.
@@ -187,7 +199,10 @@ async def _upsert_roster_team_entry(
         nba_stats_team_id: NBA Stats team identifier string.
 
     Returns:
-        The existing or newly-created ``SummerLeagueTeamEntry`` row.
+        ``(team_entry, created_unresolved)`` where ``created_unresolved`` is
+        ``True`` only when this call created a brand-new row and resolution
+        found no franchise target for it at all -- the drift signal a silent
+        NULL previously left undetected.
     """
     result = await db.execute(
         select(SummerLeagueTeamEntry).where(
@@ -196,6 +211,7 @@ async def _upsert_roster_team_entry(
         )
     )
     row = result.scalar_one_or_none()
+    created = row is None
     if row is None:
         row = SummerLeagueTeamEntry(
             competition_id=competition_id,
@@ -205,7 +221,20 @@ async def _upsert_roster_team_entry(
         )
         db.add(row)
     row.updated_at = _utc_now()
-    return row
+
+    if row.nba_team_id is None or row.team_program_id is None:
+        resolved_nba_team_id, resolved_team_program_id = await resolve_team_targets(
+            db, nba_stats_team_id=nba_stats_team_id
+        )
+        if row.nba_team_id is None:
+            row.nba_team_id = resolved_nba_team_id
+        if row.team_program_id is None:
+            row.team_program_id = resolved_team_program_id
+
+    created_unresolved = (
+        created and row.nba_team_id is None and row.team_program_id is None
+    )
+    return row, created_unresolved
 
 
 async def _upsert_roster_source_player(
@@ -324,7 +353,7 @@ async def _supersede_affiliation(
 async def _announce_player(
     db: AsyncSession,
     competition_id: int,
-    team_entry_id: int,
+    team_entry: SummerLeagueTeamEntry,
     source_player: SummerLeagueSourceRecord,
     entry: RosterEntry,
     recorded_at: datetime,
@@ -337,10 +366,17 @@ async def _announce_player(
     preserves the append-only contract while preventing a duplicate
     participation row that would collide on the stint uniqueness constraint.
 
+    A brand-new assertion (no reactivation) copies its ``nba_team_id`` /
+    ``team_program_id`` straight from ``team_entry`` -- the team entry is
+    already resolved (on create) by ``_upsert_roster_team_entry`` (#796), so
+    reading its targets here keeps a single resolution path instead of
+    re-deriving one. An unresolved team entry (both targets ``None``)
+    produces an affiliation with both targets ``None`` -- never a guess.
+
     Args:
         db: Async database session.
         competition_id: PK of the parent competition.
-        team_entry_id: PK of the team entry.
+        team_entry: The resolved (or newly-created) team entry row.
         source_player: The resolved (or newly-created) source-player row.
         entry: Parsed roster entry supplying bio and position fields.
         recorded_at: Timestamp to stamp on the new assertion.
@@ -348,6 +384,7 @@ async def _announce_player(
     Returns:
         The newly-created or reactivated ``SummerLeagueParticipation`` row.
     """
+    team_entry_id: int = team_entry.id  # type: ignore[assignment]
     source_player_id: int = source_player.id  # type: ignore[assignment]
 
     # Check for any existing participation (including CUT) before inserting.
@@ -372,16 +409,38 @@ async def _announce_player(
             prior_id: Optional[int] = existing.affiliation_id
             prior_affiliation = await _fetch_affiliation(db, prior_id)
 
+            # Both dual-read targets (spec §5.1 D3) travel together down a
+            # supersede chain: carrying one but not the other would silently
+            # un-resolve a backfilled row on the next roster pull. Inherit
+            # whatever the prior assertion carried, and fall back to the team
+            # entry for anything it did not.
+            #
+            # The fallback is not cosmetic. Every historical affiliation has
+            # both targets NULL, so a previously-CUT player reappearing would
+            # inherit NULL from that prior row and create a *fresh* unresolved
+            # assertion -- re-opening, one row at a time, exactly the
+            # ingest-writes-nothing gap #794/#796 closed at the sibling
+            # creation site below. `team_entry` is already resolved and is by
+            # construction the same team this participation is keyed to, so
+            # its targets are the correct ones. Only NULLs are filled: a prior
+            # value is never repointed (D3).
+            prior_nba_team_id = (
+                prior_affiliation.nba_team_id if prior_affiliation else None
+            )
+            prior_team_program_id = (
+                prior_affiliation.team_program_id if prior_affiliation else None
+            )
             new_affiliation = PlayerAffiliation(
                 player_id=prior_affiliation.player_id if prior_affiliation else None,
                 nba_team_id=(
-                    prior_affiliation.nba_team_id if prior_affiliation else None
+                    prior_nba_team_id
+                    if prior_nba_team_id is not None
+                    else team_entry.nba_team_id
                 ),
-                # Both dual-read targets (spec §5.1 D3) travel together down a
-                # supersede chain: carrying one but not the other would silently
-                # un-resolve a backfilled row on the next roster pull.
                 team_program_id=(
-                    prior_affiliation.team_program_id if prior_affiliation else None
+                    prior_team_program_id
+                    if prior_team_program_id is not None
+                    else team_entry.team_program_id
                 ),
                 affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
                 status=AffiliationStatus.ANNOUNCED,
@@ -407,7 +466,8 @@ async def _announce_player(
 
     affiliation = PlayerAffiliation(
         player_id=source_player.canonical_player_id,
-        nba_team_id=None,  # resolved later (T4 ticket)
+        nba_team_id=team_entry.nba_team_id,
+        team_program_id=team_entry.team_program_id,
         affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
         status=AffiliationStatus.ANNOUNCED,
         recorded_at=recorded_at,
@@ -582,10 +642,13 @@ async def load_roster_snapshot(
 
     # 3. Upsert team entries and flush to get their PKs.
     team_rows: dict[str, SummerLeagueTeamEntry] = {}
+    team_entries_created_unresolved = 0
     for nba_stats_team_id in by_team:
-        team_row = await _upsert_roster_team_entry(
+        team_row, created_unresolved = await _upsert_roster_team_entry(
             db, competition_id, nba_stats_team_id
         )
+        if created_unresolved:
+            team_entries_created_unresolved += 1
         team_rows[nba_stats_team_id] = team_row
     await db.flush()
 
@@ -612,7 +675,9 @@ async def load_roster_snapshot(
     ]
 
     # 4. Process each team.
-    report = RosterDiffReport()
+    report = RosterDiffReport(
+        team_entries_created_unresolved=team_entries_created_unresolved
+    )
 
     for nba_stats_team_id, team_entries in by_team.items():
         team_entry = team_rows[nba_stats_team_id]
@@ -655,7 +720,7 @@ async def load_roster_snapshot(
             )
             await db.flush()
             await _announce_player(
-                db, competition_id, team_entry_id, source_player, entry, recorded_at
+                db, competition_id, team_entry, source_player, entry, recorded_at
             )
             team_diff.added += 1
 

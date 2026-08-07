@@ -29,6 +29,7 @@ from sqlalchemy import (
     Enum as SAEnum,
     Index,
     UniqueConstraint,
+    text,
 )
 from sqlmodel import Field, SQLModel
 
@@ -112,22 +113,78 @@ class TeamProgram(SQLModel, table=True):  # type: ignore[call-arg]
 
 
 class OrganizationRelationship(SQLModel, table=True):  # type: ignore[call-arg]
-    """A typed edge between two organizations (journey-graph §7a).
+    """An append-only, bitemporal typed edge between two organizations (journey-graph §7a).
 
     E.g. a national federation OWNS the org fielding its national team program, or a
     feeder club is ACADEMY_OF a parent club. Per decision D2
-    (docs/plans/summer-league-phase4-journey-graph-conversion-spec.md §5.1), rows
-    ship with this table only where a real relationship is known -- this ticket
-    creates the table, it does not populate it.
+    (docs/plans/summer-league-phase4-journey-graph-conversion-spec.md §5.1), rows land
+    only where a real relationship is known.
+
+    Design rationale (ticket #798) -- please do not re-litigate
+    ----------------------------------------------------------
+    As originally shipped (#781) this table carried
+    ``UniqueConstraint(from_organization_id, to_organization_id, relationship_type)``:
+    one row per triple, *forever*. Combined with ``effective_start`` / ``effective_end``
+    that was self-contradictory -- the columns model a time-bounded edge, but the
+    constraint forbids the second interval. A club that was ``ACADEMY_OF`` a parent,
+    separated, and later re-affiliated could only be recorded by mutating the first
+    interval away or by widening the span into a claim that is false for the years in
+    between. Both destroy history, contradicting P2 of
+    ``docs/plans/north-star-architecture.md``.
+
+    Two designs were on the table (#798). **Design B was chosen: mirror the sibling
+    ``PlayerAffiliation`` (app/schemas/player_affiliation.py).** The blanket unique
+    constraint is gone, and the bitemporal stamps (``recorded_at`` / ``supersedes_id``
+    / ``superseded_at`` / ``retracted_at``) arrive with the same meanings they carry
+    there: ``effective_*`` is when the edge was true in the world, ``recorded_at`` is
+    when DraftGuru learned it, and a correction *supersedes* a prior assertion instead
+    of mutating it.
+
+    Why B and not A (adding ``effective_start`` to the unique constraint): this is a hub
+    table that will receive assertions from multiple independent sources once spoke #2
+    lands. An edge asserted by FIBA and later corrected needs a correction trail, which
+    a time-scoped unique constraint cannot express -- under A the only way to fix a
+    wrong assertion is to overwrite it, losing the record that we ever believed it.
+    Design A is also *weaker* on its own terms: it happily admits two rows with
+    different starts and open-ended ends, i.e. overlapping intervals for the same edge,
+    which is a different silent wrong. Backbone consistency decides the rest -- the
+    supersession shape is what this codebase already uses for exactly this problem, and
+    "encode principles as types" (north-star build practices) says the correct shape
+    should be the default rather than something each reader re-derives.
+
+    One deliberate refinement of the ticket's sketch: the partial unique index is scoped
+    ``WHERE superseded_at IS NULL AND retracted_at IS NULL AND effective_end IS NULL``.
+    The ``effective_end IS NULL`` term is load-bearing. Without it, a *closed* historical
+    interval (ended in 2010) and a live one (resumed in 2015) would collide, and the only
+    escape would be to mark the closed interval ``superseded`` -- but supersession means
+    "we were wrong", not "it ended", and conflating the two is precisely the history loss
+    this ticket exists to remove. With it, the index says the true invariant: **at most
+    one open-ended current edge per (from, to, type)**, and any number of closed
+    historical intervals. That keeps the duplicate protection the old constraint gave for
+    the common undated/open case, while permitting an unlimited resume history.
+
+    Known limit: nothing here forbids two *closed* intervals that overlap. Enforcing that
+    needs ``EXCLUDE USING gist`` over a ``daterange``, which requires the ``btree_gist``
+    extension; it is deliberately deferred until a source actually produces dated org
+    edges (none does today -- see #805). Interval sanity is an ingest-time concern until
+    then.
     """
 
     __tablename__ = "organization_relationships"
     __table_args__ = (
-        UniqueConstraint(
+        # NOTE: no blanket UniqueConstraint on (from, to, type) -- see the class
+        # docstring. Uniqueness applies only to the *current open* assertion.
+        Index(
+            "uq_organization_relationships_current",
             "from_organization_id",
             "to_organization_id",
             "relationship_type",
-            name="uq_organization_relationships_from_to_type",
+            unique=True,
+            postgresql_where=text(
+                "superseded_at IS NULL "
+                "AND retracted_at IS NULL "
+                "AND effective_end IS NULL"
+            ),
         ),
         Index(
             "ix_organization_relationships_from_organization_id",
@@ -140,6 +197,10 @@ class OrganizationRelationship(SQLModel, table=True):  # type: ignore[call-arg]
         Index(
             "ix_organization_relationships_relationship_type",
             "relationship_type",
+        ),
+        Index(
+            "ix_organization_relationships_supersedes_id",
+            "supersedes_id",
         ),
     )
 
@@ -155,7 +216,20 @@ class OrganizationRelationship(SQLModel, table=True):  # type: ignore[call-arg]
             nullable=False,
         )
     )
+
+    # Bitemporal stamps, identical in meaning to PlayerAffiliation's (journey-graph
+    # §5b): effective_* = when the edge was true in the world; recorded_at = when
+    # DraftGuru learned it; supersedes_id/superseded_at/retracted_at = the correction
+    # trail. A resumed relationship is a *new row* with its own effective_start, not a
+    # supersession of the closed one.
     effective_start: Optional[date] = Field(default=None)
     effective_end: Optional[date] = Field(default=None)
+    recorded_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
+    supersedes_id: Optional[int] = Field(
+        default=None, foreign_key="organization_relationships.id"
+    )
+    superseded_at: Optional[datetime] = Field(default=None)
+    retracted_at: Optional[datetime] = Field(default=None)
+
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)

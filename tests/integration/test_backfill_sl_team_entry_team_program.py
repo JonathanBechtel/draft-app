@@ -23,12 +23,16 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.schemas.nba_teams import NbaTeam
 from app.schemas.organization import Organization, OrgKind, TeamProgram
 from app.schemas.summer_league import SummerLeagueEdition, SummerLeagueTeamEntry
+from app.services.backbone.team_program_resolution import AmbiguousTeamProgramError
 from app.services.player_affiliation import (
     NbaTeamRef,
     TeamProgramRef,
     resolve_team_target,
 )
-from scripts.backfill_sl_team_entry_team_program import run_backfill
+from scripts.backfill_sl_team_entry_team_program import (
+    format_report_lines,
+    run_backfill,
+)
 from scripts.populate_org_model_from_nba_teams import run_population
 
 
@@ -105,6 +109,12 @@ async def test_backfill_resolves_existing_team_entry_to_the_same_franchise(
     assert report.updated == 1
     assert report.unresolvable == 0
 
+    # expunge_all() first: the fixture sets expire_on_commit=False, so an ORM
+    # re-read can be answered from the identity map. It happens to see the real
+    # write today only because the script updates via ORM-enabled update(Entity),
+    # which syncs the identity map -- switch that to text("UPDATE ...") or
+    # synchronize_session=False and this assertion goes silently inert.
+    db_session.expunge_all()
     after = (
         await db_session.execute(
             select(SummerLeagueTeamEntry).where(SummerLeagueTeamEntry.id == entry_id)
@@ -150,8 +160,9 @@ async def test_backfill_leaves_null_nba_team_id_entries_untouched(
 
     report = await run_backfill(db_session)
     assert report.updated == 0
-    assert report.left_null >= 1
+    assert report.left_null == 1
 
+    db_session.expunge_all()
     after = (
         await db_session.execute(
             select(SummerLeagueTeamEntry).where(SummerLeagueTeamEntry.id == entry_id)
@@ -209,6 +220,16 @@ async def test_dry_run_reports_counts_without_writing(db_session: AsyncSession) 
     assert dry_report.eligible == 1
     assert dry_report.updated == 0
 
+    # #799 rewires the map builder but must not change the operator report
+    # shape for the single-program case -- other tickets in this project
+    # cite these exact eligible/updated/unresolvable/left_null counts as
+    # evidence.
+    assert format_report_lines(dry_report, dry_run=True) == [
+        "summer_league_team_entries team_program_id backfill (dry-run): "
+        f"eligible={dry_report.eligible} updated={dry_report.updated} "
+        f"unresolvable={dry_report.unresolvable} left_null={dry_report.left_null}"
+    ]
+
     unchanged = (
         await db_session.execute(
             select(SummerLeagueTeamEntry).where(
@@ -250,6 +271,85 @@ async def test_backfill_reports_unresolvable_when_org_model_not_populated(
     report = await run_backfill(db_session)
     assert report.updated == 0
     assert report.unresolvable == 1
+
+
+@pytest.mark.asyncio
+async def test_backfill_refuses_when_an_organization_owns_two_team_programs(
+    db_session: AsyncSession,
+) -> None:
+    """A franchise organization with two team_programs must not silently pick one.
+
+    Regression for #799: both backfill scripts used to key their franchise
+    map on ``organization_id`` via a plain dict comprehension with no
+    ``ORDER BY`` -- when an organization owned more than one
+    ``team_programs`` row, whichever row Postgres happened to return last
+    silently won, and not even stably across runs. This seeds a second
+    program under the same organization T3 already created and asserts the
+    rewired script refuses (raises ``AmbiguousTeamProgramError``, via the
+    #796 backbone resolver) instead of guessing -- and that no row got an
+    arbitrary target as a side effect of the attempt.
+
+    This test fails against the pre-#799 script (confirmed by running it
+    against the unmodified ``_franchise_team_program_map`` dict-comprehension
+    implementation before this ticket's rewire): that code raises nothing
+    and simply returns one of the two programs.
+    """
+    team_id = await _seed_team_and_program(db_session, slug="test-sl-backfill-ambiguous")
+    comp_id = await _seed_competition(db_session)
+
+    # Raw SQL, not the ORM, per this repo's anti-vacuity guidance: SQLModel
+    # silently discards unknown constructor kwargs, so at least one
+    # assertion here reads real columns directly rather than trusting a
+    # constructed object.
+    organization_id = (
+        await db_session.execute(
+            text("SELECT id FROM organizations WHERE slug = :slug"),
+            {"slug": "nba-test-sl-backfill-ambiguous"},
+        )
+    ).scalar_one()
+
+    db_session.add(
+        TeamProgram(
+            organization_id=organization_id,
+            name="Test SL Backfill Ambiguous G League Affiliate",
+            slug="test-sl-backfill-ambiguous-g-league",
+            level="G_LEAGUE",
+        )
+    )
+    await db_session.commit()
+    # db_session runs with expire_on_commit=False, so a stale ORM identity
+    # map would otherwise mask the row this test just added.
+    db_session.expunge_all()
+
+    db_session.add(
+        SummerLeagueTeamEntry(
+            competition_id=comp_id,
+            nba_team_id=team_id,
+            team_program_id=None,
+            nba_stats_team_id="test-sl-backfill-ambiguous-source-team",
+            raw_team_name="Ambiguous Team",
+            team_slug="ambiguous-team",
+        )
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+
+    with pytest.raises(AmbiguousTeamProgramError):
+        await run_backfill(db_session)
+
+    # No arbitrary write happened as a side effect of the attempt -- read
+    # the real column with raw SQL rather than trusting a possibly-expired
+    # ORM object.
+    unchanged_team_program_id = (
+        await db_session.execute(
+            text(
+                "SELECT team_program_id FROM summer_league_team_entries "
+                "WHERE nba_team_id = :team_id"
+            ),
+            {"team_id": team_id},
+        )
+    ).scalar_one()
+    assert unchanged_team_program_id is None
 
 
 @pytest.mark.asyncio
@@ -309,6 +409,261 @@ async def test_team_entry_can_be_created_with_team_program_id_and_null_nba_team_
 
     resolved = resolve_team_target(persisted)
     assert resolved == TeamProgramRef(team_program_id=program_id)
+
+
+# --------------------------------------------------------------------------- #
+# Strategy 2: nba_stats_team_id resolution (#808)
+# --------------------------------------------------------------------------- #
+#
+# #784's one-off backfill (and #796's ingest-time write) only ever populated
+# nba_team_id; nothing has ever backfilled it for historical rows from the
+# provider id. Measuring dev after #807 found 103 of 622 team entries with
+# nba_team_id NULL, and 82 of those carry a real NBA franchise
+# nba_stats_team_id that was simply never written. These tests seed a real
+# NBA_STATS_TEAM_ID_TO_ABBREVIATION entry (e.g. "1610612737" / Atlanta Hawks)
+# since the resolver keys off that hardcoded map, not any test-only
+# abbreviation.
+
+
+@pytest.mark.asyncio
+async def test_backfill_resolves_null_nba_team_id_entry_from_stats_team_id(
+    db_session: AsyncSession,
+) -> None:
+    """#808: nba_team_id NULL + a real NBA nba_stats_team_id resolves BOTH targets.
+
+    This is the gap #808 exists to close. Must fail against the pre-#808
+    script (confirmed by reverting scripts/backfill_sl_team_entry_team_program.py
+    to its single-strategy form and running this test: it errors with
+    AttributeError since BackfillReport had no ``stats_id`` field, and even a
+    version of this test written against only the old fields would still show
+    the entry's nba_team_id/team_program_id staying NULL).
+    """
+    team = NbaTeam(name="Atlanta Hawks", abbreviation="ATL", slug="test-sl-hawks-808")
+    db_session.add(team)
+    await db_session.commit()
+    team_id = team.id
+    assert team_id is not None
+
+    pop_report = await run_population(db_session)
+    assert pop_report.failed == 0
+
+    comp_id = await _seed_competition(db_session)
+    entry = SummerLeagueTeamEntry(
+        competition_id=comp_id,
+        nba_team_id=None,
+        team_program_id=None,
+        nba_stats_team_id="1610612737",
+        raw_team_name="Atlanta Hawks",
+        team_slug="test-sl-hawks-808-entry",
+    )
+    db_session.add(entry)
+    await db_session.commit()
+    entry_id = entry.id
+
+    backfill_report = await run_backfill(db_session)
+    assert backfill_report.stats_id.eligible == 1
+    assert backfill_report.stats_id.updated == 1
+    assert backfill_report.stats_id.unresolvable == 0
+    assert backfill_report.stats_id.uncovered == 0
+
+    # Raw SQL per this repo's anti-vacuity guidance: confirms the real
+    # columns, not a possibly-stale ORM identity map (db_session runs with
+    # expire_on_commit=False).
+    db_session.expunge_all()
+    nba_team_id, team_program_id = (
+        await db_session.execute(
+            text(
+                "SELECT nba_team_id, team_program_id FROM summer_league_team_entries "
+                "WHERE id = :id"
+            ),
+            {"id": entry_id},
+        )
+    ).one()
+    assert nba_team_id == team_id
+    assert team_program_id is not None
+
+    program = (
+        await db_session.execute(
+            select(TeamProgram).where(TeamProgram.id == team_program_id)
+        )
+    ).scalar_one()
+    organization = (
+        await db_session.execute(
+            select(Organization).where(Organization.id == program.organization_id)
+        )
+    ).scalar_one()
+    assert organization.slug == "nba-test-sl-hawks-808"
+
+
+@pytest.mark.asyncio
+async def test_backfill_leaves_non_nba_stats_id_null_and_reports_it(
+    db_session: AsyncSession,
+) -> None:
+    """A genuinely non-NBA stats id (Team China, "45") stays NULL on both
+    columns and surfaces in the uncovered report -- never silently skipped.
+    """
+    comp_id = await _seed_competition(db_session)
+    entry = SummerLeagueTeamEntry(
+        competition_id=comp_id,
+        nba_team_id=None,
+        team_program_id=None,
+        nba_stats_team_id="45",
+        raw_team_name="Team China Basketball",
+        team_slug="test-sl-team-china-808",
+    )
+    db_session.add(entry)
+    await db_session.commit()
+    entry_id = entry.id
+
+    report = await run_backfill(db_session)
+    assert report.stats_id.eligible == 0
+    assert report.stats_id.updated == 0
+    assert report.stats_id.uncovered == 1
+    assert report.stats_id.uncovered_stats_ids == ["45"]
+
+    lines = format_report_lines(report)
+    assert any("uncovered=1" in line and "uncovered_ids=45" in line for line in lines)
+
+    db_session.expunge_all()
+    after = (
+        await db_session.execute(
+            select(SummerLeagueTeamEntry).where(SummerLeagueTeamEntry.id == entry_id)
+        )
+    ).scalar_one()
+    assert after.nba_team_id is None
+    assert after.team_program_id is None
+
+
+@pytest.mark.asyncio
+async def test_backfill_does_not_repoint_an_already_targeted_entry(
+    db_session: AsyncSession,
+) -> None:
+    """An entry that already carries team_program_id (e.g. a non-NBA org's
+    entry created via #796's ingest-time write) is left untouched by
+    strategy 2, even though its nba_stats_team_id happens to be covered by
+    the map -- D3's "never repoint" rule.
+    """
+    comp_id = await _seed_competition(db_session)
+
+    organization = Organization(
+        org_kind=OrgKind.FEDERATION,
+        name="Test SL 808 Federation",
+        slug="test-sl-808-federation",
+    )
+    db_session.add(organization)
+    await db_session.flush()
+    assert organization.id is not None
+
+    program = TeamProgram(
+        organization_id=organization.id,
+        name="Test SL 808 Federation Squad",
+        slug="test-sl-808-federation-squad",
+        level="U19",
+    )
+    db_session.add(program)
+    await db_session.flush()
+    program_id = program.id
+    assert program_id is not None
+
+    entry = SummerLeagueTeamEntry(
+        competition_id=comp_id,
+        nba_team_id=None,
+        team_program_id=program_id,
+        # Boston Celtics -- a covered id, but must not be applied since
+        # team_program_id is already set.
+        nba_stats_team_id="1610612738",
+        raw_team_name="Already Targeted Entry",
+        team_slug="test-sl-808-already-targeted",
+    )
+    db_session.add(entry)
+    await db_session.commit()
+    entry_id = entry.id
+
+    report = await run_backfill(db_session)
+    assert report.stats_id.eligible == 0
+    assert report.stats_id.updated == 0
+
+    db_session.expunge_all()
+    unchanged_program_id, unchanged_nba_team_id = (
+        await db_session.execute(
+            text(
+                "SELECT team_program_id, nba_team_id FROM summer_league_team_entries "
+                "WHERE id = :id"
+            ),
+            {"id": entry_id},
+        )
+    ).one()
+    assert unchanged_program_id == program_id
+    assert unchanged_nba_team_id is None
+
+
+@pytest.mark.asyncio
+async def test_backfill_stats_id_strategy_is_idempotent_on_rerun(
+    db_session: AsyncSession,
+) -> None:
+    """A second run of the nba_stats_team_id strategy reports zero eligible."""
+    team = NbaTeam(name="Boston Celtics", abbreviation="BOS", slug="test-sl-celtics-808")
+    db_session.add(team)
+    await db_session.commit()
+
+    pop_report = await run_population(db_session)
+    assert pop_report.failed == 0
+
+    comp_id = await _seed_competition(db_session)
+    db_session.add(
+        SummerLeagueTeamEntry(
+            competition_id=comp_id,
+            nba_team_id=None,
+            team_program_id=None,
+            nba_stats_team_id="1610612738",
+            raw_team_name="Boston Celtics",
+            team_slug="test-sl-celtics-808-entry",
+        )
+    )
+    await db_session.commit()
+
+    first = await run_backfill(db_session)
+    assert first.stats_id.updated == 1
+
+    second = await run_backfill(db_session)
+    assert second.stats_id.updated == 0
+    assert second.stats_id.eligible == 0
+
+
+@pytest.mark.asyncio
+async def test_backfill_does_not_crash_on_blank_raw_team_name(
+    db_session: AsyncSession,
+) -> None:
+    """An entry with an empty raw_team_name (the real dev shape for the
+    D-League Select entry, stats id "1612709916") must not crash the
+    resolver or the report -- neither touches raw_team_name.
+    """
+    comp_id = await _seed_competition(db_session)
+    entry = SummerLeagueTeamEntry(
+        competition_id=comp_id,
+        nba_team_id=None,
+        team_program_id=None,
+        nba_stats_team_id="1612709916",
+        raw_team_name="",
+        team_slug="test-sl-808-blank-name",
+    )
+    db_session.add(entry)
+    await db_session.commit()
+    entry_id = entry.id
+
+    report = await run_backfill(db_session)
+    assert report.stats_id.uncovered == 1
+    assert "1612709916" in report.stats_id.uncovered_stats_ids
+
+    db_session.expunge_all()
+    after = (
+        await db_session.execute(
+            select(SummerLeagueTeamEntry).where(SummerLeagueTeamEntry.id == entry_id)
+        )
+    ).scalar_one()
+    assert after.raw_team_name == ""
+    assert after.nba_team_id is None
+    assert after.team_program_id is None
 
 
 # --------------------------------------------------------------------------- #

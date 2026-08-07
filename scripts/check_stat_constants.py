@@ -23,8 +23,8 @@ The rules
    The Hollinger Game Score weights (``0.4``, ``0.7``, ``0.3`` --
    ``app.services.stats.formulas.game_score``) are *not* flagged on a bare sighting:
    unlike 0.44, they double as ordinary scale factors elsewhere in this codebase --
-   test-fixture distributions in ``app/services/summer_league/environment_fixtures.py``
-   and a notability score in ``app/services/summer_league/desk_facts.py``, verified by
+   test-fixture distributions in ``app/services/sources/summer_league/environment_fixtures.py``
+   and a notability score in ``app/services/sources/summer_league/desk_facts.py``, verified by
    grep while building this checker. A single-value rule would flag both and train
    people to bypass it. Instead this checker requires *co-occurrence*: three or more
    of these weights multiplied together inside one connected arithmetic expression

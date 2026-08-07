@@ -135,7 +135,7 @@ bio.ingest:
 	$(PYTHON) scripts/ingest_player_bios.py --file $(BBIO) --cache-dir $(CACHE) $(if $(DRY),--dry-run,) $(if $(VERBOSE),--verbose,) $(if $(OVERWRITE_MASTER),--overwrite-master,) $(if $(CREATE_MISSING),--create-missing,) $(if $(FIX),--fix-ambiguities $(FIX),)
 
 # Lint & format
-.PHONY: fmt lint lint.imports lint.filesize lint.complexity lint.complexity.update lint.migrations lint.stat-constants deploy.freshness fix precommit test coverage coverage.diff visual visual.headed
+.PHONY: fmt lint lint.imports lint.filesize lint.complexity lint.complexity.update lint.migrations lint.stat-constants lint.stale-paths deploy.freshness fix precommit test coverage coverage.diff visual visual.headed
 fmt:
 	ruff format .
 
@@ -175,6 +175,14 @@ lint.entrypoints:
 # app.services.stats.registry.frozen_exemptions(), not hand-written here.
 lint.stat-constants:
 	python scripts/check_stat_constants.py
+
+# Stale module paths from the phase-4 service reorganization (#797). Phase 4 moved
+# app/services/summer_league/ into stats/ backbone/ ingest/ sources/; 37 prose
+# references to the old path survived the move. docs/plans/ is exempt -- those
+# documents describe the move and must name the old path. Whole-tree, and the
+# checker fails rather than passes if it ever scans zero files.
+lint.stale-paths:
+	python scripts/check_stale_service_paths.py
 
 # Index-build safety in new Alembic revisions (docs/plans/programmatic-code-discipline.md §1.7).
 # Diff-scoped against main the way CI is: existing revisions have already run in

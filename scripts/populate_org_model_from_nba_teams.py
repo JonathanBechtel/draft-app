@@ -45,27 +45,21 @@ if str(REPO_ROOT) not in sys.path:
 from app.config import settings  # noqa: E402
 from app.schemas.nba_teams import NbaTeam  # noqa: E402
 from app.schemas.organization import Organization, OrgKind, TeamProgram  # noqa: E402
+
+# Re-exported for tests/unit/test_team_program_resolution.py, which asserts
+# byte-identical output against the backbone copy. The canonical
+# implementation lives in app/services/backbone/ (ticket #796) so ingest can
+# also use it -- app/ cannot import scripts/, so the natural key had to move
+# into the shipped package rather than stay script-only. The two
+# scripts/backfill_* scripts (#799) get it indirectly, via
+# scripts/_franchise_team_program_map.py importing straight from the
+# backbone module rather than through this re-export.
+from app.services.backbone.team_program_resolution import (  # noqa: E402,F401
+    derive_org_slug,
+)
 from app.utils.db_async import _prepare_asyncpg_connection  # noqa: E402
 
-# Distinguishes the NBA-club namespace from a future non-NBA organization
-# whose name-derived slug happens to collide (e.g. a college program also
-# named "Lakers"). Population is closed to one row per franchise, so the
-# same base slug is reused for the organization and its team_program --
-# uniqueness is enforced independently by each table.
-ORG_SLUG_PREFIX = "nba-"
 TEAM_PROGRAM_LEVEL = "NBA"
-
-
-def derive_org_slug(nba_team_slug: str) -> str:
-    """Return the stable ``organizations.slug`` for one NBA franchise.
-
-    Args:
-        nba_team_slug: The immutable ``nba_teams.slug`` value (e.g. ``"lakers"``).
-
-    Returns:
-        The natural key this script keys idempotency on (e.g. ``"nba-lakers"``).
-    """
-    return f"{ORG_SLUG_PREFIX}{nba_team_slug}"
 
 
 def derive_team_program_slug(nba_team_slug: str) -> str:

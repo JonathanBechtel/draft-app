@@ -129,9 +129,24 @@ ROUTE_BUDGETS: dict[str, int] = {
     # Header + schedule + stats roster + announced roster (A4 pre-event preview,
     # one indexed read on summer_league_participation by team_entry_id) = 4.
     "/stats/summer-league/{year}/{venue}/{team}": 4,
-    # Franchise history: header + entries + games + top-performers + career
-    # player aggregates = 5 indexed reads.
-    "/stats/summer-league/teams/{team}": 5,
+    # Franchise history: header + franchise->team_program resolution + entries +
+    # games + top-performers + career player aggregates = 6 indexed reads.
+    #
+    # 5 -> 6 in #795, deliberately. This is the first production read path to
+    # resolve its team target through the journey-graph dual read rather than
+    # filtering on the legacy `nba_team_id` column, and that costs one extra
+    # query: `resolve_franchise_team_program_id` translates the franchise slug
+    # into its `team_programs.id` before the entry clause can name both targets.
+    #
+    # The alternative -- folding organizations/team_programs into the entry
+    # query as an outer join -- keeps the count at 5 but pays for it in the
+    # plan: it turns a two-branch predicate over two indexed columns on one
+    # table into a nullable three-table join, which is exactly the shape phase-4
+    # spec §8 item 4 flagged as this phase's plausible performance regression.
+    # One extra single-row lookup on `organizations.slug` (unique index) ->
+    # `ix_team_programs_organization_id` is the cheaper and far more legible
+    # trade on a franchise-scoped page that is not a hot index.
+    "/stats/summer-league/teams/{team}": 6,
     # Explorer: 7 facet lookups (years/venues/draft-classes/positions/countries/teams/round-types)
     # + 1 COUNT(*) subquery + 1 aggregate rows query. SQL-side pagination (replacing the old
     # Python _paginate(), which fetched every row into memory) requires a separate COUNT to

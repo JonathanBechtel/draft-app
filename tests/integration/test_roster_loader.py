@@ -26,7 +26,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.player_affiliation import (
@@ -63,6 +63,45 @@ T1 = T0 + timedelta(days=1)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+async def _seed_org_model_with_decoy(db: AsyncSession) -> tuple[int, int]:
+    """Seed two franchises, run T3's population, return TEAM_A's ``(team, program)``.
+
+    ``TEAM_A`` ("1610612739") is Cleveland and ``TEAM_B`` ("1610612747") is the
+    Lakers, per ``NBA_STATS_TEAM_ID_TO_ABBREVIATION``. Both are seeded so the
+    assertions below can demand the *specific* Cleveland program: with a single
+    franchise in the database, ``team_program_id is not None`` is satisfied by
+    any implementation that reaches an arbitrary ``team_programs`` row, which
+    is exactly the mistake the dual-read wiring must not make.
+
+    Returns:
+        ``(nba_teams.id, team_programs.id)`` for TEAM_A's franchise, read back
+        with raw SQL so the expectation is the database's own view of what T3
+        created.
+    """
+    from app.schemas.nba_teams import NbaTeam
+    from scripts.populate_org_model_from_nba_teams import run_population
+
+    db.add(NbaTeam(name="Cleveland Cavaliers", abbreviation="CLE", slug="cavaliers"))
+    db.add(NbaTeam(name="Los Angeles Lakers", abbreviation="LAL", slug="lakers"))
+    await db.commit()
+
+    report = await run_population(db)
+    assert report.failed == 0
+    await db.commit()
+
+    row = (
+        await db.execute(
+            text(
+                "SELECT t.id, p.id FROM nba_teams t "
+                "JOIN organizations o ON o.slug = 'nba-' || t.slug "
+                "JOIN team_programs p ON p.organization_id = o.id "
+                "WHERE t.slug = 'cavaliers'"
+            )
+        )
+    ).one()
+    return (row[0], row[1])
 
 
 def _entry(person_id: str, team_id: str = TEAM_A) -> RosterEntry:
@@ -139,7 +178,9 @@ async def _seed_box_score_first_participation(
     competition_row = await _upsert_roster_competition(db, COMPETITION)
     await db.flush()
     competition_id: int = competition_row.id  # type: ignore[assignment]
-    team_row = await _upsert_roster_team_entry(db, competition_id, team_id)
+    team_row, _created_unresolved = await _upsert_roster_team_entry(
+        db, competition_id, team_id
+    )
     await db.flush()
     source_player = await _upsert_roster_source_player(
         db, _entry(person_id, team_id), COMPETITION.year
@@ -402,6 +443,137 @@ async def test_cut_carries_team_program_target_forward(
     )
     assert resolve_team_target(cut) == resolve_team_target(prior)
     assert resolve_team_target(cut) == TeamProgramRef(team_program_id=program.id)
+
+
+@pytest.mark.asyncio
+async def test_first_load_new_affiliation_carries_team_entry_targets(
+    db_session: AsyncSession,
+) -> None:
+    """A brand-new ANNOUNCED affiliation copies its targets from the team entry.
+
+    Ticket #794: ``_announce_player``'s create-path used to hardcode
+    ``nba_team_id=None`` behind a "resolved later (T4 ticket)" comment and
+    never wrote ``team_program_id`` at all, which is why the operator
+    backfill found 0 of 3,330 rows eligible. It must now read both targets
+    from the already-resolved ``SummerLeagueTeamEntry`` -- the same one
+    ``_upsert_roster_team_entry`` (#796) resolves on create -- instead of
+    leaving them for a resolver that was never wired up.
+
+    This is a *newly ingested* affiliation (not a backfilled one), which is
+    the gap the existing ``test_cut_carries_team_program_target_forward``
+    (a supersede-chain test) doesn't cover.
+
+    Asserts the affiliation's targets equal *the team entry's own* targets,
+    with a decoy franchise seeded: asserting only ``is not None`` would pass
+    for any implementation reaching some arbitrary program, which is the
+    failure mode this dual-read wiring is supposed to rule out.
+    """
+    nba_team_id, expected_program_id = await _seed_org_model_with_decoy(db_session)
+
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T0)
+    await db_session.commit()
+
+    affiliation_id = (
+        await db_session.execute(select(PlayerAffiliation))
+    ).scalar_one().id
+
+    # Raw SQL after expunge_all(): the fixture uses expire_on_commit=False, so
+    # an ORM re-read may be answered from the identity map rather than the row.
+    db_session.expunge_all()
+    aff_targets = (
+        await db_session.execute(
+            text(
+                "SELECT nba_team_id, team_program_id FROM player_affiliations "
+                "WHERE id = :id"
+            ),
+            {"id": affiliation_id},
+        )
+    ).one()
+    entry_targets = (
+        await db_session.execute(
+            text(
+                "SELECT nba_team_id, team_program_id FROM summer_league_team_entries "
+                "WHERE nba_stats_team_id = :team_id"
+            ),
+            {"team_id": TEAM_A},
+        )
+    ).one()
+
+    assert tuple(aff_targets) == (nba_team_id, expected_program_id)
+    # The point of the ticket: copied *from the team entry*, not re-derived.
+    assert tuple(aff_targets) == tuple(entry_targets)
+
+
+@pytest.mark.asyncio
+async def test_first_load_unresolved_team_entry_yields_null_targets(
+    db_session: AsyncSession,
+) -> None:
+    """An unresolved team entry produces a new affiliation with both targets NULL.
+
+    No org model is seeded here, so ``resolve_team_targets`` finds nothing
+    for ``TEAM_A`` and the team entry stays fully unresolved -- the
+    newly-created affiliation must land on ``None``/``None`` too, never a
+    guess (this repo's entity-resolution rule).
+    """
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T0)
+    await db_session.commit()
+
+    aff = (await db_session.execute(select(PlayerAffiliation))).scalar_one()
+    assert aff.nba_team_id is None
+    assert aff.team_program_id is None
+
+
+@pytest.mark.asyncio
+async def test_reactivation_resolves_targets_a_null_prior_could_not_supply(
+    db_session: AsyncSession,
+) -> None:
+    """A reactivated player's new assertion falls back to the team entry's targets.
+
+    ``_announce_player``'s reactivation branch creates a *new* ANNOUNCED
+    affiliation superseding the CUT one, inheriting both dual-read targets
+    from the prior row. That is right when the prior carries them -- but every
+    historical affiliation has both targets NULL, so inheriting alone would
+    mint a brand-new unresolved assertion on each reappearance, re-opening one
+    row at a time the very "ingest writes nothing, leave it to a backfill" gap
+    #794/#796 closed at the sibling creation site.
+
+    Here the roster is loaded, the player cut, and the resulting chain hand-
+    nulled to stand in for a historical row. On reappearance the new assertion
+    must carry the team entry's resolved targets, not NULL. Without the
+    fallback this test fails with ``team_program_id`` NULL.
+    """
+    nba_team_id, expected_program_id = await _seed_org_model_with_decoy(db_session)
+
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T0)
+    await db_session.commit()
+    # Cut the player.
+    await load_roster_snapshot(db_session, COMPETITION, [], recorded_at=T1)
+    await db_session.commit()
+
+    # Stand in for a historical row: every affiliation predating phase 4 has
+    # both targets NULL, so there is nothing for the chain to inherit.
+    await db_session.execute(
+        text("UPDATE player_affiliations SET nba_team_id = NULL, team_program_id = NULL")
+    )
+    await db_session.commit()
+
+    # The player reappears on the same team.
+    await load_roster_snapshot(
+        db_session, COMPETITION, [_entry("P1")], recorded_at=T1 + timedelta(days=1)
+    )
+    await db_session.commit()
+
+    db_session.expunge_all()
+    rows = (
+        await db_session.execute(
+            text(
+                "SELECT nba_team_id, team_program_id FROM player_affiliations "
+                "WHERE status = 'ANNOUNCED' AND supersedes_id IS NOT NULL"
+            )
+        )
+    ).all()
+    assert len(rows) == 1, "expected exactly one reactivation assertion"
+    assert tuple(rows[0]) == (nba_team_id, expected_program_id)
 
 
 @pytest.mark.asyncio
