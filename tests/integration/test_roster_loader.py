@@ -407,6 +407,66 @@ async def test_cut_carries_team_program_target_forward(
 
 
 @pytest.mark.asyncio
+async def test_first_load_new_affiliation_carries_team_entry_targets(
+    db_session: AsyncSession,
+) -> None:
+    """A brand-new ANNOUNCED affiliation copies its targets from the team entry.
+
+    Ticket #794: ``_announce_player``'s create-path used to hardcode
+    ``nba_team_id=None`` behind a "resolved later (T4 ticket)" comment and
+    never wrote ``team_program_id`` at all, which is why the operator
+    backfill found 0 of 3,330 rows eligible. It must now read both targets
+    from the already-resolved ``SummerLeagueTeamEntry`` -- the same one
+    ``_upsert_roster_team_entry`` (#796) resolves on create -- instead of
+    leaving them for a resolver that was never wired up.
+
+    This is a *newly ingested* affiliation (not a backfilled one), which is
+    the gap the existing ``test_cut_carries_team_program_target_forward``
+    (a supersede-chain test) doesn't cover.
+    """
+    from app.schemas.nba_teams import NbaTeam
+    from scripts.populate_org_model_from_nba_teams import run_population
+
+    # Seed the org model exactly as an operator would (T3), for the real
+    # franchise TEAM_A resolves to (nba_stats_team_id "1610612739" -> "CLE"
+    # per NBA_STATS_TEAM_ID_TO_ABBREVIATION), so this exercises the real
+    # ``resolve_team_targets`` path -- not a hand-assigned target.
+    nba_team = NbaTeam(name="Cleveland Cavaliers", abbreviation="CLE", slug="cavaliers")
+    db_session.add(nba_team)
+    await db_session.commit()
+    population_report = await run_population(db_session)
+    assert population_report.failed == 0
+    await db_session.commit()
+
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T0)
+    await db_session.commit()
+
+    aff = (await db_session.execute(select(PlayerAffiliation))).scalar_one()
+    assert aff.nba_team_id is not None
+    assert aff.nba_team_id == nba_team.id
+    assert aff.team_program_id is not None
+
+
+@pytest.mark.asyncio
+async def test_first_load_unresolved_team_entry_yields_null_targets(
+    db_session: AsyncSession,
+) -> None:
+    """An unresolved team entry produces a new affiliation with both targets NULL.
+
+    No org model is seeded here, so ``resolve_team_targets`` finds nothing
+    for ``TEAM_A`` and the team entry stays fully unresolved -- the
+    newly-created affiliation must land on ``None``/``None`` too, never a
+    guess (this repo's entity-resolution rule).
+    """
+    await load_roster_snapshot(db_session, COMPETITION, [_entry("P1")], recorded_at=T0)
+    await db_session.commit()
+
+    aff = (await db_session.execute(select(PlayerAffiliation))).scalar_one()
+    assert aff.nba_team_id is None
+    assert aff.team_program_id is None
+
+
+@pytest.mark.asyncio
 async def test_history_reconstruction(db_session: AsyncSession) -> None:
     """Point-in-time roster membership is reconstructable from the assertion stream.
 
