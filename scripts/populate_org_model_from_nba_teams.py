@@ -46,11 +46,14 @@ from app.config import settings  # noqa: E402
 from app.schemas.nba_teams import NbaTeam  # noqa: E402
 from app.schemas.organization import Organization, OrgKind, TeamProgram  # noqa: E402
 
-# Re-exported for scripts/backfill_affiliation_team_program.py and
-# scripts/backfill_sl_team_entry_team_program.py, which import it from here.
-# The canonical implementation lives in app/services/backbone/ (ticket #796)
-# so ingest can also use it -- app/ cannot import scripts/, so the natural
-# key had to move into the shipped package rather than stay script-only.
+# Re-exported for tests/unit/test_team_program_resolution.py, which asserts
+# byte-identical output against the backbone copy. The canonical
+# implementation lives in app/services/backbone/ (ticket #796) so ingest can
+# also use it -- app/ cannot import scripts/, so the natural key had to move
+# into the shipped package rather than stay script-only. The two
+# scripts/backfill_* scripts (#799) get it indirectly, via
+# scripts/_franchise_team_program_map.py importing straight from the
+# backbone module rather than through this re-export.
 from app.services.backbone.team_program_resolution import (  # noqa: E402,F401
     derive_org_slug,
 )
