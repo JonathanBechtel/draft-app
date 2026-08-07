@@ -80,13 +80,14 @@ def derive_org_slug(nba_team_slug: str) -> str:
 
 # Canonical stats.nba.com franchise team ids, keyed to the standard 3-letter
 # abbreviation ``scripts/seed_nba_teams.py`` seeds ``nba_teams.abbreviation``
-# with. Intentionally duplicated from (never imported from)
-# ``app.services.sources.summer_league.team_logos.NBA_FRANCHISE_STATS_IDS``:
-# this module lives in ``app/services/backbone/`` and must not import a
-# Summer League spoke module (import-linter contract 5, "spoke independence").
-# The id set is provider shape, not domain shape (north-star P3) -- a second
-# copy here is the correct boundary, not drift risk, since both copies are
-# the same closed, stable stats.nba.com franchise id set.
+# with. This is the repo's single copy of that id set:
+# ``app.services.sources.summer_league.team_logos.NBA_FRANCHISE_STATS_IDS``
+# derives its frozenset from these keys rather than re-listing them, so the
+# two can never drift. It lives here, not in the spoke, because import-linter
+# contract 5 ("spoke independence") forbids ``app/services/backbone/`` from
+# importing a Summer League module -- a spoke importing the backbone is the
+# legal direction, so the shared constant must sit on this side of the edge.
+# The id set is provider shape, not domain shape (north-star P3).
 NBA_STATS_TEAM_ID_TO_ABBREVIATION: dict[str, str] = {
     "1610612737": "ATL",
     "1610612738": "BOS",

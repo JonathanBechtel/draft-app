@@ -16,41 +16,23 @@ from __future__ import annotations
 
 from typing import Optional
 
-# Canonical NBA franchise stats team ids (stats.nba.com).
-NBA_FRANCHISE_STATS_IDS: frozenset[str] = frozenset(
-    {
-        "1610612737",  # ATL
-        "1610612738",  # BOS
-        "1610612739",  # CLE
-        "1610612740",  # NOP
-        "1610612741",  # CHI
-        "1610612742",  # DAL
-        "1610612743",  # DEN
-        "1610612744",  # GSW
-        "1610612745",  # HOU
-        "1610612746",  # LAC
-        "1610612747",  # LAL
-        "1610612748",  # MIA
-        "1610612749",  # MIL
-        "1610612750",  # MIN
-        "1610612751",  # BKN
-        "1610612752",  # NYK
-        "1610612753",  # ORL
-        "1610612754",  # IND
-        "1610612755",  # PHI
-        "1610612756",  # PHX
-        "1610612757",  # POR
-        "1610612758",  # SAC
-        "1610612759",  # SAS
-        "1610612760",  # OKC
-        "1610612761",  # TOR
-        "1610612762",  # UTA
-        "1610612763",  # MEM
-        "1610612764",  # WAS
-        "1610612765",  # DET
-        "1610612766",  # CHA
-    }
+from app.services.backbone.team_program_resolution import (
+    NBA_STATS_TEAM_ID_TO_ABBREVIATION,
 )
+
+# Canonical NBA franchise stats team ids (stats.nba.com), derived from the
+# backbone's single copy rather than re-listed here. The backbone resolver
+# needs the id -> abbreviation mapping to reach `nba_teams`; this module needs
+# only membership. Two hand-maintained copies of the same closed 30-id set can
+# drift silently -- a franchise added to one and not the other would give a
+# team entry a resolved `team_program_id` but no logo, or the reverse. Deriving
+# the frozenset from the dict's keys makes that impossible.
+#
+# The dependency direction is the legal one: a source spoke may import the
+# backbone. Import-linter contract 5 ("spoke independence") forbids the
+# reverse -- `app/services/backbone/` importing a Summer League module -- which
+# is why the shared constant lives in the backbone and not here.
+NBA_FRANCHISE_STATS_IDS: frozenset[str] = frozenset(NBA_STATS_TEAM_ID_TO_ABBREVIATION)
 
 _LOGO_PATH_TEMPLATE = "/static/logos/nba/{stats_id}.svg"
 
