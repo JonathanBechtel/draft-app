@@ -293,3 +293,67 @@ async def resolve_team_targets(
 
     team_program_id = next(iter(franchise_map.values()), None)
     return (nba_team.id, team_program_id)
+
+
+async def resolve_franchise_team_program_id(
+    db: AsyncSession,
+    *,
+    nba_team_slug: str,
+) -> int | None:
+    """Resolve one franchise's ``team_programs.id`` from its ``nba_teams.slug``.
+
+    The read-side counterpart to :func:`resolve_team_targets` (#795). Ingest
+    starts from a provider team id and needs both targets; a *reader* already
+    holds the canonical franchise row and needs only the program target, so it
+    can hand both to
+    ``app.services.player_affiliation.resolve_team_target_filter``. Both walk
+    the same T3 natural key (:func:`derive_org_slug`) and share the same
+    ambiguity guard, so the two sides can never disagree about which program
+    represents a franchise.
+
+    Issues exactly one query: the ``organizations`` -> ``team_programs`` join
+    is resolved in the database rather than as two round trips, because this
+    runs on a page render, not in a batch job.
+
+    Args:
+        db: Async database session (read-only; issues no writes).
+        nba_team_slug: The immutable ``nba_teams.slug`` (e.g. ``"lakers"``).
+
+    Returns:
+        The franchise's ``team_programs.id``, or ``None`` when the org model
+        has not been populated for it (T3 not yet run for this franchise) or
+        when its organization owns more than one program. Ambiguity is logged
+        and resolved to ``None`` rather than raised: a franchise page must
+        still render off the legacy ``nba_team_id`` target, and per this
+        repo's entity-resolution rule an ambiguous target is refused, never
+        guessed.
+    """
+    org_slug = derive_org_slug(nba_team_slug)
+    result = await db.execute(
+        select(  # type: ignore[call-overload]
+            TeamProgram.id, TeamProgram.slug, TeamProgram.organization_id
+        )
+        .join(Organization, Organization.id == TeamProgram.organization_id)  # type: ignore[arg-type]
+        .where(Organization.slug == org_slug)  # type: ignore[arg-type]
+    )
+    program_rows = [
+        TeamProgramRow(
+            team_program_id=program_id,
+            team_program_slug=program_slug,
+            organization_id=org_id,
+        )
+        for program_id, program_slug, org_id in result.all()
+    ]
+    if not program_rows:
+        return None
+
+    try:
+        franchise_map = build_franchise_team_program_map(program_rows)
+    except AmbiguousTeamProgramError:
+        logger.warning(
+            "team_program_resolution.ambiguous_franchise nba_team_slug=%s org_slug=%s",
+            nba_team_slug,
+            org_slug,
+        )
+        return None
+    return next(iter(franchise_map.values()), None)
