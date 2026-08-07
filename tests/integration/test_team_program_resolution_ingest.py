@@ -18,11 +18,11 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.nba_teams import NbaTeam
-from app.schemas.summer_league import SummerLeagueEdition, SummerLeagueTeamEntry
+from app.schemas.summer_league import SummerLeagueEdition
 from app.services.sources.summer_league.audit import audit_summer_league_raw
 from app.services.sources.summer_league.normalization import (
     normalize_competition_games,
@@ -177,33 +177,84 @@ def _write_fixture(raw_root: Path) -> None:
 
 
 async def _seed_org_model_for_orlando_magic(db: AsyncSession) -> None:
-    """Seed one ``nba_teams`` row and run T3's population, as an operator would."""
-    team = NbaTeam(name="Orlando Magic", abbreviation="ORL", slug="magic")
-    db.add(team)
+    """Seed two ``nba_teams`` rows and run T3's population, as an operator would.
+
+    The Lakers row is a **decoy**, not scenery. With a single franchise seeded,
+    ``team_program_id is not None`` passes for any implementation that reaches
+    *some* program -- "the first ``team_programs`` row", say, or a re-derived
+    lookup that ignores the team entry it was handed. Seeding a second franchise
+    means only a resolver that maps Orlando's provider id to Orlando's program
+    can satisfy the equality assertions below.
+    """
+    db.add(NbaTeam(name="Orlando Magic", abbreviation="ORL", slug="magic"))
+    db.add(NbaTeam(name="Los Angeles Lakers", abbreviation="LAL", slug="lakers"))
     await db.commit()
 
     report = await run_population(db)
     assert report.failed == 0
 
 
-async def _team_entry(
-    db: AsyncSession, *, competition_id: int, nba_stats_team_id: int
-) -> SummerLeagueTeamEntry:
-    result = await db.execute(
-        select(SummerLeagueTeamEntry).where(
-            SummerLeagueTeamEntry.competition_id == competition_id,  # type: ignore[arg-type]
-            SummerLeagueTeamEntry.nba_stats_team_id == str(nba_stats_team_id),  # type: ignore[arg-type]
+async def _franchise_targets(db: AsyncSession, *, slug: str) -> tuple[int, int]:
+    """Return ``(nba_teams.id, team_programs.id)`` for one seeded franchise.
+
+    Read with raw SQL so the expectation is the database's own view of what T3
+    created, never an ORM object this test is also asserting against.
+    """
+    row = (
+        await db.execute(
+            text(
+                "SELECT t.id, p.id FROM nba_teams t "
+                "JOIN organizations o ON o.slug = 'nba-' || t.slug "
+                "JOIN team_programs p ON p.organization_id = o.id "
+                "WHERE t.slug = :slug"
+            ),
+            {"slug": slug},
         )
-    )
-    return result.scalar_one()
+    ).one()
+    return (row[0], row[1])
+
+
+async def _team_entry_targets_raw(
+    db: AsyncSession, *, competition_id: int, nba_stats_team_id: int
+) -> tuple[int | None, int | None]:
+    """Read a team entry's two target columns straight from Postgres.
+
+    The integration ``db_session`` fixture sets ``expire_on_commit=False``, so
+    an ORM re-read in the same session can be answered from the identity map --
+    the value the test just wrote, not the row. SQLModel also discards unknown
+    constructor kwargs silently, so a round-trip through the ORM would still
+    "pass" if a column had been dropped. Naming the columns in SQL removes both
+    failure modes at once.
+    """
+    db.expunge_all()
+    row = (
+        await db.execute(
+            text(
+                "SELECT nba_team_id, team_program_id FROM summer_league_team_entries "
+                "WHERE competition_id = :competition_id "
+                "AND nba_stats_team_id = :nba_stats_team_id"
+            ),
+            {
+                "competition_id": competition_id,
+                "nba_stats_team_id": str(nba_stats_team_id),
+            },
+        )
+    ).one()
+    return (row[0], row[1])
 
 
 @pytest.mark.asyncio
 async def test_normalize_competition_games_resolves_targets_for_a_known_franchise(
     db_session: AsyncSession, tmp_path: Path
 ) -> None:
-    """A fresh ingest against a pre-populated org model sets both targets."""
+    """A fresh ingest against a pre-populated org model sets both targets.
+
+    Asserts the *specific* Orlando targets, not merely non-NULL: a decoy
+    franchise (Lakers) is seeded alongside, so resolving to "some program"
+    fails here.
+    """
     await _seed_org_model_for_orlando_magic(db_session)
+    orl_team_id, orl_program_id = await _franchise_targets(db_session, slug="magic")
     _write_fixture(tmp_path)
 
     await audit_summer_league_raw(
@@ -214,14 +265,14 @@ async def test_normalize_competition_games_resolves_targets_for_a_known_franchis
     )
     await db_session.flush()
 
-    orl_entry = await _team_entry(
+    nba_team_id, team_program_id = await _team_entry_targets_raw(
         db_session,
         competition_id=report.competition_id,
         nba_stats_team_id=ORL_STATS_TEAM_ID,
     )
 
-    assert orl_entry.nba_team_id is not None
-    assert orl_entry.team_program_id is not None
+    assert nba_team_id == orl_team_id
+    assert team_program_id == orl_program_id
     assert report.team_entries_created_unresolved == 1  # only the non-franchise squad
 
 
@@ -241,14 +292,13 @@ async def test_normalize_competition_games_leaves_non_franchise_squad_null_on_bo
     )
     await db_session.flush()
 
-    non_franchise_entry = await _team_entry(
+    targets = await _team_entry_targets_raw(
         db_session,
         competition_id=report.competition_id,
         nba_stats_team_id=NON_FRANCHISE_STATS_TEAM_ID,
     )
 
-    assert non_franchise_entry.nba_team_id is None
-    assert non_franchise_entry.team_program_id is None
+    assert targets == (None, None)
 
 
 @pytest.mark.asyncio
@@ -260,6 +310,16 @@ async def test_backfill_dry_run_reports_zero_eligible_after_a_fresh_ingest(
     Direct evidence for the DoD bullet: re-running
     ``scripts/backfill_sl_team_entry_team_program.py --dry-run`` after an
     ingest reports zero eligible rows.
+
+    ``eligible == 0`` alone does **not** prove that. ``eligible`` counts rows
+    with ``nba_team_id IS NOT NULL AND team_program_id IS NULL``, and before
+    #796 the ingest set *neither* column -- so a pre-#796 ingest also produced
+    ``eligible == 0``, for the opposite reason (nothing for the join to key
+    on). The load-bearing assertion is therefore ``left_null``, which counts
+    rows with a NULL ``nba_team_id``: exactly 1 after #796 (the non-franchise
+    squad, correctly unresolved), but 2 before it (both squads). Asserting
+    both pins the distinction the ticket is about -- the backfill is idle
+    because ingest *resolved* the rows, not because it never reached them.
     """
     await _seed_org_model_for_orlando_magic(db_session)
     _write_fixture(tmp_path)
@@ -276,6 +336,7 @@ async def test_backfill_dry_run_reports_zero_eligible_after_a_fresh_ingest(
     backfill_report = await run_sl_team_entry_backfill(db_session, dry_run=True)
 
     assert backfill_report.eligible == 0
+    assert backfill_report.left_null == 1
 
 
 def _roster_entry(
@@ -305,9 +366,11 @@ async def test_load_roster_snapshot_resolves_targets_at_the_second_creation_site
     Ticket #796 names two team-entry creation sites --
     ``normalization.py``'s box-score path (covered above) and
     ``roster_ingest.py``'s roster-pull path. This proves the second site
-    independently.
+    independently, against the *specific* Orlando targets rather than merely
+    non-NULL ones -- a decoy franchise is seeded alongside.
     """
     await _seed_org_model_for_orlando_magic(db_session)
+    orl_team_id, orl_program_id = await _franchise_targets(db_session, slug="magic")
     competition = CompetitionKey(year=YEAR, league_id=LEAGUE_ID, venue_slug="las_vegas")
     entries = [
         _roster_entry(person_id="900001", team_id=str(ORL_STATS_TEAM_ID)),
@@ -332,19 +395,18 @@ async def test_load_roster_snapshot_resolves_targets_at_the_second_creation_site
     competition_row = edition_result.scalar_one()
     assert competition_row.id is not None
 
-    orl_entry = await _team_entry(
+    competition_id = competition_row.id
+    orl_targets = await _team_entry_targets_raw(
         db_session,
-        competition_id=competition_row.id,
+        competition_id=competition_id,
         nba_stats_team_id=ORL_STATS_TEAM_ID,
     )
-    non_franchise_entry = await _team_entry(
+    non_franchise_targets = await _team_entry_targets_raw(
         db_session,
-        competition_id=competition_row.id,
+        competition_id=competition_id,
         nba_stats_team_id=NON_FRANCHISE_STATS_TEAM_ID,
     )
 
-    assert orl_entry.nba_team_id is not None
-    assert orl_entry.team_program_id is not None
-    assert non_franchise_entry.nba_team_id is None
-    assert non_franchise_entry.team_program_id is None
+    assert orl_targets == (orl_team_id, orl_program_id)
+    assert non_franchise_targets == (None, None)
     assert report.team_entries_created_unresolved == 1
