@@ -210,7 +210,10 @@ async def test_two_open_edges_for_the_same_triple_are_rejected(
             effective_start=date(2022, 1, 1),
         )
     )
-    with pytest.raises(IntegrityError):
+    # Pinned to the index name: a bare IntegrityError is satisfied by any FK or
+    # NOT NULL violation, so it would still pass if the partial unique index --
+    # the thing under test -- were missing entirely.
+    with pytest.raises(IntegrityError, match="uq_organization_relationships_current"):
         await db_session.commit()
     await db_session.rollback()
 

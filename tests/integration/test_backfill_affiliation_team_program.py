@@ -230,6 +230,12 @@ async def test_backfill_resolves_existing_affiliation_to_the_same_franchise(
     assert report.updated == 1
     assert report.unresolvable == 0
 
+    # expunge_all() first: the fixture sets expire_on_commit=False, so an ORM
+    # re-read can be answered from the identity map. It happens to see the real
+    # write today only because the script updates via ORM-enabled update(Entity),
+    # which syncs the identity map -- switch that to text("UPDATE ...") or
+    # synchronize_session=False and this assertion goes silently inert.
+    db_session.expunge_all()
     after = (
         await db_session.execute(
             select(PlayerAffiliation).where(PlayerAffiliation.id == affiliation_id)
@@ -272,8 +278,9 @@ async def test_backfill_leaves_null_nba_team_id_affiliations_untouched(
 
     report = await run_backfill(db_session)
     assert report.updated == 0
-    assert report.left_null >= 1
+    assert report.left_null == 1
 
+    db_session.expunge_all()
     after = (
         await db_session.execute(
             select(PlayerAffiliation).where(PlayerAffiliation.id == affiliation_id)
