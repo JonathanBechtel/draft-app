@@ -16,18 +16,19 @@ These tests run against the live integration-test Postgres schema (via
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.nba_teams import NbaTeam
 from app.schemas.organization import Organization, TeamProgram
 from app.schemas.player_affiliation import AffiliationType, PlayerAffiliation
+from app.services.backbone.team_program_resolution import AmbiguousTeamProgramError
 from app.services.player_affiliation import (
     NbaTeamRef,
     TeamProgramRef,
     resolve_affiliation_target,
 )
-from scripts.backfill_affiliation_team_program import run_backfill
+from scripts.backfill_affiliation_team_program import format_report_lines, run_backfill
 from scripts.populate_org_model_from_nba_teams import run_population
 
 
@@ -185,6 +186,16 @@ async def test_dry_run_reports_counts_without_writing(db_session: AsyncSession) 
     assert dry_report.eligible == 1
     assert dry_report.updated == 0
 
+    # #799 rewires the map builder but must not change the operator report
+    # shape for the single-program case -- other tickets in this project
+    # cite these exact eligible/updated/unresolvable/left_null counts as
+    # evidence.
+    assert format_report_lines(dry_report, dry_run=True) == [
+        "player_affiliations team_program_id backfill (dry-run): "
+        f"eligible={dry_report.eligible} updated={dry_report.updated} "
+        f"unresolvable={dry_report.unresolvable} left_null={dry_report.left_null}"
+    ]
+
     unchanged = (
         await db_session.execute(
             select(PlayerAffiliation).where(
@@ -224,3 +235,80 @@ async def test_backfill_reports_unresolvable_when_org_model_not_populated(
     report = await run_backfill(db_session)
     assert report.updated == 0
     assert report.unresolvable == 1
+
+
+@pytest.mark.asyncio
+async def test_backfill_refuses_when_an_organization_owns_two_team_programs(
+    db_session: AsyncSession,
+) -> None:
+    """A franchise organization with two team_programs must not silently pick one.
+
+    Regression for #799: both backfill scripts used to key their franchise
+    map on ``organization_id`` via a plain dict comprehension with no
+    ``ORDER BY`` -- when an organization owned more than one
+    ``team_programs`` row, whichever row Postgres happened to return last
+    silently won, and not even stably across runs. This seeds a second
+    program under the same organization T3 already created and asserts the
+    rewired script refuses (raises ``AmbiguousTeamProgramError``, via the
+    #796 backbone resolver) instead of guessing -- and that no row got an
+    arbitrary target as a side effect of the attempt.
+
+    This test fails against the pre-#799 script (confirmed by running it
+    against the unmodified ``_franchise_team_program_map`` dict-comprehension
+    implementation before this ticket's rewire): that code raises nothing
+    and simply returns one of the two programs.
+    """
+    team_id = await _seed_team_and_program(db_session, slug="test-backfill-ambiguous")
+
+    # Raw SQL, not the ORM, per this repo's anti-vacuity guidance: SQLModel
+    # silently discards unknown constructor kwargs, so at least one
+    # assertion here reads real columns directly rather than trusting a
+    # constructed object.
+    organization_id = (
+        await db_session.execute(
+            text("SELECT id FROM organizations WHERE slug = :slug"),
+            {"slug": "nba-test-backfill-ambiguous"},
+        )
+    ).scalar_one()
+
+    db_session.add(
+        TeamProgram(
+            organization_id=organization_id,
+            name="Test Backfill Ambiguous G League Affiliate",
+            slug="test-backfill-ambiguous-g-league",
+            level="G_LEAGUE",
+        )
+    )
+    await db_session.commit()
+    # db_session runs with expire_on_commit=False, so a stale ORM identity
+    # map would otherwise mask the row this test just added.
+    db_session.expunge_all()
+
+    db_session.add(
+        PlayerAffiliation(
+            player_id=None,
+            nba_team_id=team_id,
+            team_program_id=None,
+            affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
+            source="nba_summer_league_roster",
+        )
+    )
+    await db_session.commit()
+    db_session.expunge_all()
+
+    with pytest.raises(AmbiguousTeamProgramError):
+        await run_backfill(db_session)
+
+    # No arbitrary write happened as a side effect of the attempt -- read
+    # the real column with raw SQL rather than trusting a possibly-expired
+    # ORM object.
+    unchanged_team_program_id = (
+        await db_session.execute(
+            text(
+                "SELECT team_program_id FROM player_affiliations "
+                "WHERE nba_team_id = :team_id"
+            ),
+            {"team_id": team_id},
+        )
+    ).scalar_one()
+    assert unchanged_team_program_id is None

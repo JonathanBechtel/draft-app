@@ -9,13 +9,16 @@ entry from "``team_program_id`` unset" to "set to the program for its known
 franchise"; an entry with a NULL ``nba_team_id`` stays NULL, because there is
 nothing to derive a target from.
 
-The join reuses the exact natural key ``scripts/populate_org_model_from_nba_teams.py``
-(T3) keyed the organization/team_program population on: ``nba_team_id`` ->
-``nba_teams.slug`` -> ``organizations.slug`` (``"nba-" + slug``) ->
-``team_programs.slug`` (same value) -> ``team_programs.id``. So a franchise's
-team entries resolve to the *same* program T3 created for it -- and the same
-program ``scripts/backfill_affiliation_team_program.py`` (T4) resolves
-``player_affiliations`` rows to.
+The join reuses ``scripts/_franchise_team_program_map.py``'s shared bridge,
+which delegates to the backbone resolver
+(``app.services.backbone.team_program_resolution``, #796): ``nba_team_id`` ->
+``nba_teams.slug`` -> ``organizations.slug`` (``"nba-" + slug``) -> the
+organization's ``team_programs`` row(s) -> ``team_programs.id``, raising
+``AmbiguousTeamProgramError`` rather than guessing if an organization owns
+more than one program. So a franchise's team entries resolve to the *same*
+program T3 created for it -- and the same program
+``scripts/backfill_affiliation_team_program.py`` (T4) resolves
+``player_affiliations`` rows to, via the same shared map builder.
 
 Idempotent -- reruns only touch rows still missing ``team_program_id``, so a
 retry (or a periodic sweep as new SL competitions ingest) creates no
@@ -44,11 +47,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.config import settings  # noqa: E402
-from app.schemas.nba_teams import NbaTeam  # noqa: E402
-from app.schemas.organization import Organization, TeamProgram  # noqa: E402
 from app.schemas.summer_league import SummerLeagueTeamEntry  # noqa: E402
 from app.utils.db_async import _prepare_asyncpg_connection  # noqa: E402
-from scripts.populate_org_model_from_nba_teams import derive_org_slug  # noqa: E402
+from scripts._franchise_team_program_map import (  # noqa: E402
+    franchise_nba_team_id_to_team_program_id,
+)
 
 
 @dataclass
@@ -72,49 +75,6 @@ class BackfillReport:
     """Team entries with a null ``nba_team_id`` -- never a backfill target."""
 
 
-async def _franchise_team_program_map(db: AsyncSession) -> dict[int, int]:
-    """Return ``{nba_team_id: team_program_id}`` for every resolvable franchise.
-
-    Reuses the T3 natural key (``derive_org_slug``) rather than re-deriving it,
-    so this script and the population script can never silently diverge on how
-    an NBA team maps to its organization/team_program pair. Identical to the
-    map built in ``scripts/backfill_affiliation_team_program.py`` (T4).
-    """
-    query = (
-        select(NbaTeam.id, NbaTeam.slug)  # type: ignore[call-overload]
-        .select_from(NbaTeam)
-        .order_by(NbaTeam.id)
-    )
-    teams = (await db.execute(query)).all()
-    if not teams:
-        return {}
-
-    org_slugs = {derive_org_slug(slug): team_id for team_id, slug in teams}
-    org_rows = (
-        await db.execute(
-            select(Organization.id, Organization.slug).where(  # type: ignore[call-overload]
-                Organization.slug.in_(org_slugs)  # type: ignore[attr-defined]
-            )
-        )
-    ).all()
-    org_id_to_team_id = {org_id: org_slugs[org_slug] for org_id, org_slug in org_rows}
-    if not org_id_to_team_id:
-        return {}
-
-    program_rows = (
-        await db.execute(
-            select(TeamProgram.organization_id, TeamProgram.id).where(  # type: ignore[call-overload]
-                TeamProgram.organization_id.in_(org_id_to_team_id)  # type: ignore[attr-defined]
-            )
-        )
-    ).all()
-    return {
-        org_id_to_team_id[organization_id]: program_id
-        for organization_id, program_id in program_rows
-        if organization_id in org_id_to_team_id
-    }
-
-
 async def run_backfill(db: AsyncSession, *, dry_run: bool = False) -> BackfillReport:
     """Backfill ``team_program_id`` for every eligible team entry.
 
@@ -127,7 +87,7 @@ async def run_backfill(db: AsyncSession, *, dry_run: bool = False) -> BackfillRe
         Measured counts. In a dry run, ``updated`` is always 0 and ``eligible``
         reports what a real run would update.
     """
-    franchise_map = await _franchise_team_program_map(db)
+    franchise_map = await franchise_nba_team_id_to_team_program_id(db)
 
     left_null = (
         await db.scalar(
