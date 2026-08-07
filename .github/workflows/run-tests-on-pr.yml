@@ -155,6 +155,13 @@ jobs:
         # hand-written here. See docs/plans/programmatic-code-discipline.md §1.3.
         run: python scripts/check_stat_constants.py
 
+      - name: Stale service paths (phase-4 reorganization)
+        # Phase 4 moved app/services/summer_league/ into stats/ backbone/ ingest/
+        # sources/; #797 swept the 37 prose references the move left behind.
+        # This keeps them from regrowing. docs/plans/ is exempt -- those documents
+        # describe the move. The checker refuses to pass on an empty scan.
+        run: python scripts/check_stale_service_paths.py
+
       - name: File-size ratchet
         # Enforces against the PR merge base, alongside the diff-cover gate the
         # diff-scoped tooling already lives in. Pre-commit runs the same script in
@@ -326,6 +333,13 @@ jobs:
         # place. The one exemption is read from app.services.stats.registry, not
         # hand-written here. See docs/plans/programmatic-code-discipline.md §1.3.
         run: python scripts/check_stat_constants.py
+
+      - name: Stale service paths (phase-4 reorganization)
+        # Phase 4 moved app/services/summer_league/ into stats/ backbone/ ingest/
+        # sources/; #797 swept the 37 prose references the move left behind.
+        # This keeps them from regrowing. docs/plans/ is exempt -- those documents
+        # describe the move. The checker refuses to pass on an empty scan.
+        run: python scripts/check_stale_service_paths.py
 
       - name: File-size ratchet
         # Enforces against the PR merge base, alongside the diff-cover gate the
