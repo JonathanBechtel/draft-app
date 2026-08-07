@@ -36,6 +36,7 @@ from app.schemas.summer_league import (
     SummerLeagueSourceRecord,
     SummerLeagueTeamEntry,
 )
+from app.services.backbone.team_program_resolution import resolve_team_targets
 from app.services.player_mention_service import _normalized_name_key
 from app.services.sources.summer_league.roster_parse import RosterEntry
 
@@ -84,12 +85,18 @@ class RosterDiffReport:
         added: Total players newly added across all teams.
         unchanged: Total players unchanged across all teams.
         cut: Total players cut across all teams.
+        team_entries_created_unresolved: New team entries this run whose
+            franchise resolved to no target at all (#796 drift signal). A
+            positive count for a known NBA franchise abbreviation means the
+            T3 org-model population hasn't run yet; a positive count for a
+            genuinely non-NBA/select squad is expected and not a problem.
     """
 
     per_team: dict[str, TeamDiff] = field(default_factory=dict)
     added: int = 0
     unchanged: int = 0
     cut: int = 0
+    team_entries_created_unresolved: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -175,11 +182,16 @@ async def _upsert_roster_team_entry(
     db: AsyncSession,
     competition_id: int,
     nba_stats_team_id: str,
-) -> SummerLeagueTeamEntry:
+) -> tuple[SummerLeagueTeamEntry, bool]:
     """Get or create a ``SummerLeagueTeamEntry`` keyed on (competition, team_id).
 
     The ``raw_team_name`` is seeded from the NBA Stats team ID as a placeholder
     and is enriched by the normalization pipeline once box-score data arrives.
+
+    On create, both ``nba_team_id`` and ``team_program_id`` are resolved via
+    :func:`resolve_team_targets` (#796). On update, only a currently-``NULL``
+    target is filled -- a target that is already set is never overwritten
+    (spec §5.1 decision D3: no row is ever repointed or nulled).
 
     Args:
         db: Async database session.
@@ -187,7 +199,10 @@ async def _upsert_roster_team_entry(
         nba_stats_team_id: NBA Stats team identifier string.
 
     Returns:
-        The existing or newly-created ``SummerLeagueTeamEntry`` row.
+        ``(team_entry, created_unresolved)`` where ``created_unresolved`` is
+        ``True`` only when this call created a brand-new row and resolution
+        found no franchise target for it at all -- the drift signal a silent
+        NULL previously left undetected.
     """
     result = await db.execute(
         select(SummerLeagueTeamEntry).where(
@@ -196,6 +211,7 @@ async def _upsert_roster_team_entry(
         )
     )
     row = result.scalar_one_or_none()
+    created = row is None
     if row is None:
         row = SummerLeagueTeamEntry(
             competition_id=competition_id,
@@ -205,7 +221,20 @@ async def _upsert_roster_team_entry(
         )
         db.add(row)
     row.updated_at = _utc_now()
-    return row
+
+    if row.nba_team_id is None or row.team_program_id is None:
+        resolved_nba_team_id, resolved_team_program_id = await resolve_team_targets(
+            db, nba_stats_team_id=nba_stats_team_id
+        )
+        if row.nba_team_id is None:
+            row.nba_team_id = resolved_nba_team_id
+        if row.team_program_id is None:
+            row.team_program_id = resolved_team_program_id
+
+    created_unresolved = (
+        created and row.nba_team_id is None and row.team_program_id is None
+    )
+    return row, created_unresolved
 
 
 async def _upsert_roster_source_player(
@@ -582,10 +611,13 @@ async def load_roster_snapshot(
 
     # 3. Upsert team entries and flush to get their PKs.
     team_rows: dict[str, SummerLeagueTeamEntry] = {}
+    team_entries_created_unresolved = 0
     for nba_stats_team_id in by_team:
-        team_row = await _upsert_roster_team_entry(
+        team_row, created_unresolved = await _upsert_roster_team_entry(
             db, competition_id, nba_stats_team_id
         )
+        if created_unresolved:
+            team_entries_created_unresolved += 1
         team_rows[nba_stats_team_id] = team_row
     await db.flush()
 
@@ -612,7 +644,9 @@ async def load_roster_snapshot(
     ]
 
     # 4. Process each team.
-    report = RosterDiffReport()
+    report = RosterDiffReport(
+        team_entries_created_unresolved=team_entries_created_unresolved
+    )
 
     for nba_stats_team_id, team_entries in by_team.items():
         team_entry = team_rows[nba_stats_team_id]

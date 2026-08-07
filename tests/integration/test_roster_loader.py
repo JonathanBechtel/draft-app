@@ -139,7 +139,9 @@ async def _seed_box_score_first_participation(
     competition_row = await _upsert_roster_competition(db, COMPETITION)
     await db.flush()
     competition_id: int = competition_row.id  # type: ignore[assignment]
-    team_row = await _upsert_roster_team_entry(db, competition_id, team_id)
+    team_row, _created_unresolved = await _upsert_roster_team_entry(
+        db, competition_id, team_id
+    )
     await db.flush()
     source_player = await _upsert_roster_source_player(
         db, _entry(person_id, team_id), COMPETITION.year
