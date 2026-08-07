@@ -55,11 +55,18 @@ from app.schemas.organization import Organization, OrgKind, TeamProgram  # noqa:
 # scripts/_franchise_team_program_map.py importing straight from the
 # backbone module rather than through this re-export.
 from app.services.backbone.team_program_resolution import (  # noqa: E402,F401
+    PRIMARY_TEAM_PROGRAM_LEVEL,
     derive_org_slug,
 )
 from app.utils.db_async import _prepare_asyncpg_connection  # noqa: E402
 
-TEAM_PROGRAM_LEVEL = "NBA"
+# Re-exported (not re-derived) so this script and every franchise-keyed
+# lookup in app.services.backbone.team_program_resolution agree byte-for-byte
+# on what "the franchise's primary program" means -- #810 made that agreement
+# load-bearing, since a franchise's sibling second/third-squad TeamProgram
+# rows (scripts/populate_multi_squad_team_programs.py) must never be mistaken
+# for this one.
+TEAM_PROGRAM_LEVEL = PRIMARY_TEAM_PROGRAM_LEVEL
 
 
 def derive_team_program_slug(nba_team_slug: str) -> str:

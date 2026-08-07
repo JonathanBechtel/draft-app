@@ -277,7 +277,8 @@ async def test_backfill_reports_unresolvable_when_org_model_not_populated(
 async def test_backfill_refuses_when_an_organization_owns_two_team_programs(
     db_session: AsyncSession,
 ) -> None:
-    """A franchise organization with two team_programs must not silently pick one.
+    """A franchise organization with two primary-level team_programs must not
+    silently pick one.
 
     Regression for #799: both backfill scripts used to key their franchise
     map on ``organization_id`` via a plain dict comprehension with no
@@ -293,6 +294,13 @@ async def test_backfill_refuses_when_an_organization_owns_two_team_programs(
     against the unmodified ``_franchise_team_program_map`` dict-comprehension
     implementation before this ticket's rewire): that code raises nothing
     and simply returns one of the two programs.
+
+    Level (#810): the second program here shares
+    ``PRIMARY_TEAM_PROGRAM_LEVEL`` ("NBA") with the one T3 created, which is
+    what makes this a genuine same-level duplicate -- and still ambiguous --
+    rather than a legitimate multi-squad sibling (a *different* level, e.g.
+    ``NBA-2``), which the #810 rescoped query now correctly excludes from
+    this guard.
     """
     team_id = await _seed_team_and_program(db_session, slug="test-sl-backfill-ambiguous")
     comp_id = await _seed_competition(db_session)
@@ -311,9 +319,9 @@ async def test_backfill_refuses_when_an_organization_owns_two_team_programs(
     db_session.add(
         TeamProgram(
             organization_id=organization_id,
-            name="Test SL Backfill Ambiguous G League Affiliate",
-            slug="test-sl-backfill-ambiguous-g-league",
-            level="G_LEAGUE",
+            name="Test SL Backfill Ambiguous Duplicate Primary",
+            slug="test-sl-backfill-ambiguous-duplicate-primary",
+            level="NBA",
         )
     )
     await db_session.commit()
