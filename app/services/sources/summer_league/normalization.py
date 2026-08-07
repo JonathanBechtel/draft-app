@@ -39,6 +39,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
     SummerLeagueTeamGameLog,
 )
+from app.services.backbone.team_program_resolution import resolve_team_targets
 from app.services.player_mention_service import _normalized_name_key
 from app.services.sources.summer_league.nba_stats_client import (
     NBAStatsResultSet,
@@ -268,6 +269,15 @@ class SummerLeagueNormalizationReport:
     games_upserted: int
     team_game_logs_upserted: int
     data_quality: SummerLeagueDataQuality
+    team_entries_created_unresolved: int = 0
+    """New team entries this run whose franchise resolved to no target at all.
+
+    A silent NULL is how the ``nba_team_id``/``team_program_id`` write-path
+    gap survived unnoticed (#796) -- this is the drift signal an operator
+    should watch. A positive count for a known NBA franchise abbreviation
+    means the T3 org-model population hasn't run yet; a positive count for a
+    genuinely non-NBA/select squad is expected and not a problem.
+    """
 
 
 @dataclass(frozen=True)
@@ -280,6 +290,30 @@ class SummerLeaguePlayerLogReport:
     source_players_upserted: int
     player_game_logs_upserted: int
     player_game_logs_skipped: int
+
+
+async def _upsert_team_entries(
+    db: AsyncSession,
+    competition_id: int,
+    team_gamelog_rows: list[ParsedTeamGamelogRow],
+    teams_by_source_id: dict[str, SummerLeagueTeamEntry],
+) -> int:
+    """Upsert every team gamelog row's team entry; return the unresolved-create count.
+
+    Mutates ``teams_by_source_id`` in place (keyed by ``nba_stats_team_id``)
+    so callers keep using it as a lookup for the rest of the normalization
+    pass. Extracted from :func:`normalize_competition_games` to keep that
+    orchestrator's statement count from growing with #796's target
+    resolution -- see :func:`_upsert_team_entry`.
+    """
+    team_entries_created_unresolved = 0
+    for row in team_gamelog_rows:
+        team, created_unresolved = await _upsert_team_entry(db, competition_id, row)
+        if created_unresolved:
+            team_entries_created_unresolved += 1
+        await db.flush()
+        teams_by_source_id[row.nba_stats_team_id] = team
+    return team_entries_created_unresolved
 
 
 async def normalize_competition_games(
@@ -326,10 +360,9 @@ async def normalize_competition_games(
     # that particular game yet.
     teams_by_source_id = await _teams_by_source_id(db, competition.id)
     games_by_source_id = await _games_by_source_id(db, competition.id)
-    for row in team_gamelog_rows:
-        team = await _upsert_team_entry(db, competition.id, row)
-        await db.flush()
-        teams_by_source_id[row.nba_stats_team_id] = team
+    team_entries_created_unresolved = await _upsert_team_entries(
+        db, competition.id, team_gamelog_rows, teams_by_source_id
+    )
 
     game_rows = _group_game_rows(team_gamelog_rows)
     for game_id, rows in game_rows.items():
@@ -428,6 +461,7 @@ async def normalize_competition_games(
         games_upserted=len(games_by_source_id),
         team_game_logs_upserted=team_log_count,
         data_quality=quality,
+        team_entries_created_unresolved=team_entries_created_unresolved,
     )
 
 
@@ -1597,7 +1631,20 @@ async def _upsert_team_entry(
     db: AsyncSession,
     competition_id: int,
     row_data: ParsedTeamGamelogRow,
-) -> SummerLeagueTeamEntry:
+) -> tuple[SummerLeagueTeamEntry, bool]:
+    """Get or create a ``SummerLeagueTeamEntry`` and resolve its dual-read targets.
+
+    On create, both ``nba_team_id`` and ``team_program_id`` are resolved via
+    :func:`resolve_team_targets` (#796). On update, only a currently-``NULL``
+    target is filled -- a target that is already set is never overwritten
+    (spec §5.1 decision D3: no row is ever repointed or nulled).
+
+    Returns:
+        ``(team_entry, created_unresolved)`` where ``created_unresolved`` is
+        ``True`` only when this call created a brand-new row and resolution
+        found no franchise target for it at all -- the drift signal a silent
+        NULL previously left undetected.
+    """
     result = await db.execute(
         select(SummerLeagueTeamEntry).where(
             SummerLeagueTeamEntry.competition_id == competition_id,  # type: ignore[arg-type]
@@ -1605,6 +1652,7 @@ async def _upsert_team_entry(
         )
     )
     row = result.scalar_one_or_none()
+    created = row is None
     if row is None:
         row = SummerLeagueTeamEntry(
             competition_id=competition_id,
@@ -1617,7 +1665,20 @@ async def _upsert_team_entry(
     row.raw_team_abbreviation = row_data.raw_team_abbreviation
     row.team_slug = team_slug(row_data.raw_team_name, row_data.raw_team_abbreviation)
     row.updated_at = _utc_now_naive()
-    return row
+
+    if row.nba_team_id is None or row.team_program_id is None:
+        nba_team_id, team_program_id = await resolve_team_targets(
+            db, nba_stats_team_id=row_data.nba_stats_team_id
+        )
+        if row.nba_team_id is None:
+            row.nba_team_id = nba_team_id
+        if row.team_program_id is None:
+            row.team_program_id = team_program_id
+
+    created_unresolved = (
+        created and row.nba_team_id is None and row.team_program_id is None
+    )
+    return row, created_unresolved
 
 
 def resolve_game_status(
