@@ -409,16 +409,38 @@ async def _announce_player(
             prior_id: Optional[int] = existing.affiliation_id
             prior_affiliation = await _fetch_affiliation(db, prior_id)
 
+            # Both dual-read targets (spec §5.1 D3) travel together down a
+            # supersede chain: carrying one but not the other would silently
+            # un-resolve a backfilled row on the next roster pull. Inherit
+            # whatever the prior assertion carried, and fall back to the team
+            # entry for anything it did not.
+            #
+            # The fallback is not cosmetic. Every historical affiliation has
+            # both targets NULL, so a previously-CUT player reappearing would
+            # inherit NULL from that prior row and create a *fresh* unresolved
+            # assertion -- re-opening, one row at a time, exactly the
+            # ingest-writes-nothing gap #794/#796 closed at the sibling
+            # creation site below. `team_entry` is already resolved and is by
+            # construction the same team this participation is keyed to, so
+            # its targets are the correct ones. Only NULLs are filled: a prior
+            # value is never repointed (D3).
+            prior_nba_team_id = (
+                prior_affiliation.nba_team_id if prior_affiliation else None
+            )
+            prior_team_program_id = (
+                prior_affiliation.team_program_id if prior_affiliation else None
+            )
             new_affiliation = PlayerAffiliation(
                 player_id=prior_affiliation.player_id if prior_affiliation else None,
                 nba_team_id=(
-                    prior_affiliation.nba_team_id if prior_affiliation else None
+                    prior_nba_team_id
+                    if prior_nba_team_id is not None
+                    else team_entry.nba_team_id
                 ),
-                # Both dual-read targets (spec §5.1 D3) travel together down a
-                # supersede chain: carrying one but not the other would silently
-                # un-resolve a backfilled row on the next roster pull.
                 team_program_id=(
-                    prior_affiliation.team_program_id if prior_affiliation else None
+                    prior_team_program_id
+                    if prior_team_program_id is not None
+                    else team_entry.team_program_id
                 ),
                 affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
                 status=AffiliationStatus.ANNOUNCED,
