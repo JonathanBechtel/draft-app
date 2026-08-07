@@ -100,7 +100,7 @@ Backfill report artifacts:
 
 ## Regression Fixes
 
-- Imported `NbaTeam` in `app/services/summer_league/normalization.py` so CLI
+- Imported `NbaTeam` in `app/services/sources/summer_league/normalization.py` so CLI
   backfill processes register the `nba_teams` table before creating normalized
   Summer League rows with foreign-key metadata.
 - Added season-gamelog fallback team logs for historical games where

@@ -1,6 +1,6 @@
 r"""Print a read-only announced-vs-played reconcile report for a Summer League.
 
-Wraps ``reconcile_competition`` (``app/services/summer_league/roster_reconcile.py``)
+Wraps ``reconcile_competition`` (``app/services/sources/summer_league/roster_reconcile.py``)
 in a CLI: resolves ``--year``/``--league-id`` to the matching
 ``SummerLeagueEdition`` row(s), runs the reconcile, and prints totals plus
 the two flagged lists (announced-but-never-played, played-but-never-announced).

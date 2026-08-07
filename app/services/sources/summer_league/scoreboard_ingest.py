@@ -19,7 +19,7 @@ source, not just a state-machine anchor -- the date window is now opt-in via
   scraper uses to get past stats.nba.com's bot-management.
 * :func:`~app.services.sources.summer_league.endpoints.build_schedule_params` and the
   ``scheduleleaguev2`` endpoint — already wired for bracket-round enrichment
-  (``app/services/summer_league/bracket.py``). That feed *is* the scoreboard
+  (``app/services/sources/summer_league/bracket.py``). That feed *is* the scoreboard
   for Summer League: each game carries a ``gameStatus`` code plus
   ``gameDateTimeUTC`` for the whole season, kept live-updated for the current
   date, so no separate NBA Stats endpoint is needed.

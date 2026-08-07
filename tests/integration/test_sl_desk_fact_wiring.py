@@ -3,7 +3,7 @@
 `app/cli/sl_desk_tick.py`'s commentary step (#516) originally wired only
 ``detect_percentile`` -- the other seven detectors were implemented and
 unit-tested (#520) but never invoked because no ticket supplied their
-caller-fetched peer populations. `app/services/summer_league/desk_fact_queries.py`
+caller-fetched peer populations. `app/services/sources/summer_league/desk_fact_queries.py`
 (#524) is that read layer; this file proves the end-to-end wiring:
 
 * a seeded multi-player, multi-game fixture persists **more than one distinct

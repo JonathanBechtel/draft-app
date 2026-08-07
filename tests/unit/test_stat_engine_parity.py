@@ -4,7 +4,7 @@ Exercises ``compute_metrics`` directly against a hand-built box line, no
 database involved, and asserts its box-derived ("recombinable" — see
 ``docs/plans/summer-league-phase2-stat-engine-tickets.md`` T1/T7) outputs
 against literal expected values worked out by hand from the formulas
-documented in ``app/services/summer_league/metrics.py``.
+documented in ``app/services/sources/summer_league/metrics.py``.
 
 This is one leg of the four-surface parity chain; the other three (stored
 column, Explorer cell, leaderboard value) are checked against the *same*
@@ -152,7 +152,7 @@ def test_uper_matches_hand_computed_literal_for_a_real_pool_context() -> None:
     """``compute_uper`` against a non-degenerate pool, pinned to a captured literal.
 
     Added by the Phase 2 QA gate (#731). T2 physically lifted ``compute_uper``
-    out of ``app/services/summer_league/metrics.py`` into
+    out of ``app/services/sources/summer_league/metrics.py`` into
     ``app/services/stats/formulas.py``, and a transcription slip in that move is
     exactly what this harness exists to catch — but no test pinned a PER *value*.
     The integration leg's ``EXPECTED_PER = 15.0`` cannot serve: every player in
