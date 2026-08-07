@@ -750,3 +750,63 @@ async def test_bridge_refuses_conflicting_participation_targets(
         )
     ).scalar_one()
     assert unchanged is None
+
+
+@pytest.mark.asyncio
+async def test_bridge_dry_run_reports_without_writing(
+    db_session: AsyncSession,
+) -> None:
+    """``--dry-run`` counts what the bridge would do and writes nothing.
+
+    The existing dry-run test seeds no ``SummerLeagueParticipation`` rows, so
+    the bridge is inert there and ``report.bridge`` is never asserted under
+    ``dry_run=True`` anywhere else in this file. That left the ``not dry_run``
+    guard in ``run_backfill`` untested: deleting it would make ``--dry-run``
+    silently write every eligible affiliation in production -- a preview
+    command mutating 3,000+ rows -- with the whole suite still green.
+
+    This is the test that fails if that guard is removed.
+    """
+    team_id = await _seed_team_and_program(db_session, slug="test-bridge-dry")
+    team_program_id = await _team_program_id_for(db_session, team_id)
+
+    edition_id = await _seed_edition(db_session)
+    team_entry_id = await _seed_team_entry(
+        db_session,
+        competition_id=edition_id,
+        nba_stats_team_id="9007",
+        nba_team_id=team_id,
+        team_program_id=team_program_id,
+    )
+    source_player_id = await _seed_source_player(db_session, nba_stats_person_id="BR6")
+    affiliation_id = await _seed_affiliation(db_session)
+    await _seed_participation(
+        db_session,
+        competition_id=edition_id,
+        team_entry_id=team_entry_id,
+        source_player_id=source_player_id,
+        affiliation_id=affiliation_id,
+    )
+
+    report = await run_backfill(db_session, dry_run=True)
+
+    # Reports what a real run would do...
+    assert report.bridge.eligible == 1
+    # ...but claims no writes.
+    assert report.bridge.updated == 0
+
+    # And made none. Raw SQL after expunge_all(), so the identity map cannot
+    # answer with the pre-run in-memory object and mask a write.
+    db_session.expunge_all()
+    still_null = (
+        await db_session.execute(
+            text("SELECT team_program_id FROM player_affiliations WHERE id = :id"),
+            {"id": affiliation_id},
+        )
+    ).scalar_one()
+    assert still_null is None
+
+    # A real run afterwards still finds the row, proving the dry run did not
+    # merely fail to resolve it.
+    real = await run_backfill(db_session)
+    assert real.bridge.updated == 1
