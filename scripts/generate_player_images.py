@@ -214,7 +214,7 @@ async def get_summer_league_cohort_players(
     """Fetch resolved players in the Summer League rostered cohort (T0 selector).
 
     Delegates scope resolution to `summer_league_cohort`
-    (`app/services/summer_league/cohort.py`); only source players resolved to
+    (`app/services/backbone/cohort.py`); only source players resolved to
     a canonical `player_id` are eligible for image generation.
 
     Args:
@@ -982,7 +982,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "Target the Summer League rostered cohort "
-            "(app/services/summer_league/cohort.py); scope with "
+            "(app/services/backbone/cohort.py); scope with "
             "--summer-league-year/--summer-league-league-id/--summer-league-venue-slug"
         ),
     )

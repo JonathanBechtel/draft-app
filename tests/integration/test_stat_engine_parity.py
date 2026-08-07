@@ -3,7 +3,7 @@
 This is the gate for the whole Phase 2 consolidation
 (``docs/plans/summer-league-phase2-stat-engine-tickets.md``): ten downstream
 tickets delete duplicated formula copies and repoint call sites at the single
-engine in ``app/services/summer_league/metrics.py``. This test is the only
+engine in ``app/services/sources/summer_league/metrics.py``. This test is the only
 thing that will notice if one of those deletions quietly changes a
 user-visible number.
 

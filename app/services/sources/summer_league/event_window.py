@@ -35,7 +35,7 @@ def default_roster_year() -> int:
     """Return the current Eastern calendar year as the roster-poll default.
 
     Mirrors the today's-year fallback ``resolve_target_competitions`` already
-    uses (``app/services/summer_league/scoreboard_ingest.py``) so the cron
+    uses (``app/services/sources/summer_league/scoreboard_ingest.py``) so the cron
     follows the calendar without a code change each season -- no more
     hard-coded season year to bump every summer.
     """

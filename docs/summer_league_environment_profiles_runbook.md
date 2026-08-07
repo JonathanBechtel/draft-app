@@ -17,7 +17,7 @@ particular §8 (rebuild/backfill/publication locking).
   backbone/shot/PBP normalization) and advanced metrics
   (`rebuild_sl_metrics`) are materialized, and while the transaction still
   holds the shared Summer League writer lock —
-  `app.services.summer_league.environment_refresh.resolve_environment_refresh_scope`
+  `app.services.sources.summer_league.environment_refresh.resolve_environment_refresh_scope`
   decides whether this cycle's configured year (`SL_INGEST_YEAR`) needs a
   refresh (any venue found games, or a prior deferral is pending), and
   `refresh_environment_profiles_for_year` reuses that same session/lock to
@@ -31,7 +31,7 @@ particular §8 (rebuild/backfill/publication locking).
 
 Every publish (rebuild, or the rollback in §4) acquires the shared,
 transaction-scoped Summer League writer lock
-(`app.services.summer_league.write_lock.acquire_summer_league_writer_lock`,
+(`app.services.ingest.write_lock.acquire_summer_league_writer_lock`,
 `pg_advisory_xact_lock`) **before its first source read**, and holds that
 same transaction through calculation, validation, version insertion, and the
 atomic `is_current` switch. The lock is re-entrant within one transaction, so
@@ -90,7 +90,7 @@ scripts/with-db-env.sh conda run -n draftguru \
 (`season:<year>` or `competition:<competition_id>`) — never a display label
 or a row ID (contract §2: "Projection row IDs are never public URL
 identifiers"). This calls
-`app.services.summer_league.environment_refresh.rollback_environment_profile`,
+`app.services.sources.summer_league.environment_refresh.rollback_environment_profile`,
 which acquires the writer lock, demotes the current row, and promotes the
 target version to current in one transaction (same atomic-switch guarantee
 as a rebuild). A rollback to the version that is already current is a
@@ -157,7 +157,7 @@ WHERE job = 'environment_refresh';
 Public reads compare a profile's `calculated_at` against
 `settings.summer_league_environment_stale_after_hours` (default **48**,
 override via `SUMMER_LEAGUE_ENVIRONMENT_STALE_AFTER_HOURS`) via
-`app.services.summer_league.environment_refresh.is_environment_profile_stale`
+`app.services.sources.summer_league.environment_refresh.is_environment_profile_stale`
 — the single shared helper every consumer should call rather than
 re-deriving the threshold. Past the threshold, the profile is still the last
 good, fully readable version; it only gains a stale badge in the UI. It is
@@ -178,7 +178,7 @@ they're looking at is, without claiming freshness it doesn't have.
 1. **Check the durable state** (§5's `summer_league_pipeline_states` query,
    job `environment_refresh`) and the pipeline logs for
    `environment_refresh_run` / `environment_refresh_scope_failed` structured
-   log lines (`app/services/summer_league/environment_refresh.py`), which
+   log lines (`app/services/sources/summer_league/environment_refresh.py`), which
    report requested/built/skipped/failed scope counts, metric coverage,
    input watermark, and duration for every attempt.
 2. **A single bad cycle** (e.g. the writer lock was contended, or a

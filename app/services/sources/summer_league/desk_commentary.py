@@ -145,7 +145,7 @@ def _humanize_cohort_suffix(suffix: str) -> str:
     Shared between the ``slot:``/``round:``/``status:`` (event-grain) and
     ``debut:`` prefixes since #502's ``cohort_key_for`` mirrors the exact
     same suffix grammar under both (module docstring,
-    `app/services/summer_league/cohort_baselines.py`).
+    `app/services/sources/summer_league/cohort_baselines.py`).
     """
     if suffix == "undrafted":
         return "undrafted cohort"

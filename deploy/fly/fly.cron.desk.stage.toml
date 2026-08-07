@@ -18,7 +18,7 @@
 # the displayed freshness promise false.
 #
 # Cost note (per #517 investigation): each active-window tick that finds new
-# raw data to normalize triggers `app.services.summer_league.metrics.rebuild`
+# raw data to normalize triggers `app.services.sources.summer_league.metrics.rebuild`
 # (scoped persistence, but `compute()` underneath always loads and fits over
 # the *entire* raw Summer League dataset -- see that module's docstring).
 # This sounds expensive, but it already runs hourly in production today via

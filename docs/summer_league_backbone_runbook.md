@@ -171,7 +171,7 @@ pattern:
   not contain NBA Stats result-set row counts by design.
 - `RECONCILE_ANNOUNCED_NOT_PLAYED` and `RECONCILE_PLAYED_NOT_ANNOUNCED` —
   informational per-competition counts from the announced-vs-played reconcile
-  service (`app/services/summer_league/roster_reconcile.py`). A roster player
+  service (`app/services/sources/summer_league/roster_reconcile.py`). A roster player
   who never suits up (DNP/cut) or a box-score player never on the announced
   roster (late-add) are both expected in a live event and never flip the
   harness's blocking exit on their own.

@@ -56,7 +56,7 @@ _SCANNED_PACKAGES = (
 def _summer_league_modules() -> set[str]:
     """Return the dotted name of every Summer League module the contract should name.
 
-    Packages (``app/services/summer_league/``) are returned as the package itself: naming a
+    Packages (``app/services/sources/summer_league/``) are returned as the package itself: naming a
     package in a forbidden contract covers its descendants, so listing submodules would be
     redundant.
     """

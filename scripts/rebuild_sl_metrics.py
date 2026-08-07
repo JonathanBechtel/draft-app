@@ -31,7 +31,7 @@ from app.utils.db_async import SessionLocal, engine
 # which could hang indefinitely behind a long-running holder with no
 # feedback. The bounded acquire fails loudly with a clear timeout instead --
 # the same pattern the Desk tick classes use (see
-# `app/services/summer_league/desk_tick/shared.py`).
+# `app/services/sources/summer_league/desk_tick/shared.py`).
 DEFAULT_REBUILD_LOCK_MAX_WAIT_SECONDS = 30.0
 
 

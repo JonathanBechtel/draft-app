@@ -7,7 +7,7 @@ events took 87.7 minutes, almost entirely round-trip latency rather than
 query cost. ``normalize_shot_events``/``normalize_pbp_events`` were rewritten
 to preload identities once per call and write via chunked
 ``INSERT ... ON CONFLICT`` instead (see
-``app/services/summer_league/normalization.py``).
+``app/services/sources/summer_league/normalization.py``).
 
 This test builds a synthetic 70-game, ~10k-shot-event fixture (the same
 order of magnitude as the incident) and asserts the rewritten function's

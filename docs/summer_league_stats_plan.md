@@ -24,7 +24,7 @@ The product extends DraftGuru's positioning naturally: from "pre-draft prospect 
 ### Architecture principles
 - Snapshot raw responses to S3 so re-parsing is free.
 - Pipeline stages: `raw → normalized → derived`. Scraper writes to raw store; normalization is a separate step. Never write directly to player tables from the scraper.
-- Module location: `app/services/summer_league/` with clear separation between fetch, parse, resolve, and persist.
+- Module location: `app/services/sources/summer_league/` with clear separation between fetch, parse, resolve, and persist.
 
 ### Granularity tiers (what data unlocks what stats)
 
