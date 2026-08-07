@@ -353,7 +353,7 @@ async def _supersede_affiliation(
 async def _announce_player(
     db: AsyncSession,
     competition_id: int,
-    team_entry_id: int,
+    team_entry: SummerLeagueTeamEntry,
     source_player: SummerLeagueSourceRecord,
     entry: RosterEntry,
     recorded_at: datetime,
@@ -366,10 +366,17 @@ async def _announce_player(
     preserves the append-only contract while preventing a duplicate
     participation row that would collide on the stint uniqueness constraint.
 
+    A brand-new assertion (no reactivation) copies its ``nba_team_id`` /
+    ``team_program_id`` straight from ``team_entry`` -- the team entry is
+    already resolved (on create) by ``_upsert_roster_team_entry`` (#796), so
+    reading its targets here keeps a single resolution path instead of
+    re-deriving one. An unresolved team entry (both targets ``None``)
+    produces an affiliation with both targets ``None`` -- never a guess.
+
     Args:
         db: Async database session.
         competition_id: PK of the parent competition.
-        team_entry_id: PK of the team entry.
+        team_entry: The resolved (or newly-created) team entry row.
         source_player: The resolved (or newly-created) source-player row.
         entry: Parsed roster entry supplying bio and position fields.
         recorded_at: Timestamp to stamp on the new assertion.
@@ -377,6 +384,7 @@ async def _announce_player(
     Returns:
         The newly-created or reactivated ``SummerLeagueParticipation`` row.
     """
+    team_entry_id: int = team_entry.id  # type: ignore[assignment]
     source_player_id: int = source_player.id  # type: ignore[assignment]
 
     # Check for any existing participation (including CUT) before inserting.
@@ -436,7 +444,8 @@ async def _announce_player(
 
     affiliation = PlayerAffiliation(
         player_id=source_player.canonical_player_id,
-        nba_team_id=None,  # resolved later (T4 ticket)
+        nba_team_id=team_entry.nba_team_id,
+        team_program_id=team_entry.team_program_id,
         affiliation_type=AffiliationType.SUMMER_LEAGUE_ROSTER,
         status=AffiliationStatus.ANNOUNCED,
         recorded_at=recorded_at,
@@ -689,7 +698,7 @@ async def load_roster_snapshot(
             )
             await db.flush()
             await _announce_player(
-                db, competition_id, team_entry_id, source_player, entry, recorded_at
+                db, competition_id, team_entry, source_player, entry, recorded_at
             )
             team_diff.added += 1
 
