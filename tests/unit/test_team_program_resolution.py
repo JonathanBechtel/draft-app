@@ -15,7 +15,10 @@ import pytest
 
 from app.services.backbone import team_program_resolution as resolution
 from app.services.backbone.team_program_resolution import (
+    NBA_STATS_MULTI_SQUAD_TEAM_IDS,
     NBA_STATS_TEAM_ID_TO_ABBREVIATION,
+    SECOND_SQUAD_LEVEL,
+    THIRD_SQUAD_LEVEL,
     AmbiguousTeamProgramError,
     TeamProgramRow,
     build_franchise_team_program_map,
@@ -290,3 +293,203 @@ async def test_resolve_team_targets_ambiguous_organization_leaves_program_null(
     result = await resolve_team_targets(object(), nba_stats_team_id="1610612747")
 
     assert result == (5, None)
+
+
+# ---------------------------------------------------------------------------
+# NBA_STATS_MULTI_SQUAD_TEAM_IDS (#810)
+# ---------------------------------------------------------------------------
+
+
+def test_multi_squad_map_covers_all_eight_second_and_third_squad_ids() -> None:
+    """The four multi-squad franchises contribute exactly one 2nd + one 3rd squad id."""
+    assert len(NBA_STATS_MULTI_SQUAD_TEAM_IDS) == 8
+
+    by_franchise: dict[str, list[str]] = {}
+    for stats_id, multi_squad in NBA_STATS_MULTI_SQUAD_TEAM_IDS.items():
+        by_franchise.setdefault(multi_squad.nba_team_slug, []).append(stats_id)
+
+    assert set(by_franchise) == {"warriors", "magic", "kings", "jazz"}
+    for slug, ids in by_franchise.items():
+        assert len(ids) == 2, f"{slug} should have exactly a 2nd and 3rd squad id"
+
+
+def test_multi_squad_ids_are_disjoint_from_the_primary_franchise_map() -> None:
+    """A 17…/18… id is never also a key in the 30-franchise primary map."""
+    assert NBA_STATS_MULTI_SQUAD_TEAM_IDS.keys().isdisjoint(
+        NBA_STATS_TEAM_ID_TO_ABBREVIATION
+    )
+
+
+def test_multi_squad_ids_differ_from_their_16_prefixed_parent() -> None:
+    """Every 17…/18… id, read at face value, is not itself a primary franchise id.
+
+    Guards against a copy-paste error that accidentally reused a "16…" id.
+    """
+    for stats_id in NBA_STATS_MULTI_SQUAD_TEAM_IDS:
+        assert stats_id[:2] in ("17", "18")
+        assert stats_id not in NBA_STATS_TEAM_ID_TO_ABBREVIATION
+
+
+def test_multi_squad_slugs_are_all_unique() -> None:
+    """No two sibling squads (even across franchises) collide on slug_suffix.
+
+    A collision here would violate ``team_programs.slug``'s unique constraint
+    once population runs.
+    """
+    suffixes = [m.slug_suffix for m in NBA_STATS_MULTI_SQUAD_TEAM_IDS.values()]
+    assert len(suffixes) == len(set(suffixes))
+
+
+def test_multi_squad_levels_are_second_or_third_only() -> None:
+    """Every sibling squad is tagged with exactly one of the two ordinal levels."""
+    levels = {m.level for m in NBA_STATS_MULTI_SQUAD_TEAM_IDS.values()}
+    assert levels == {SECOND_SQUAD_LEVEL, THIRD_SQUAD_LEVEL}
+
+
+# ---------------------------------------------------------------------------
+# resolve_team_targets -- multi-squad dispatch (#810)
+# ---------------------------------------------------------------------------
+
+
+class _FakeNbaTeamBySlug:
+    def __init__(self, *, id: int, slug: str) -> None:
+        self.id = id
+        self.slug = slug
+
+
+@pytest.mark.asyncio
+async def test_resolve_team_targets_dispatches_a_second_squad_id_to_the_sibling_program(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 17… id resolves nba_team_id to the franchise, team_program_id to the sibling.
+
+    Must never touch build_franchise_team_program_map's ambiguity guard: this
+    monkeypatches ``_find_team_program_rows`` to explode if called, proving
+    the multi-squad path is a direct slug lookup, not a franchise-map lookup.
+    """
+
+    async def fake_find_nba_team_by_slug(
+        _db: Any, slug: str
+    ) -> _FakeNbaTeamBySlug | None:
+        assert slug == "warriors"
+        return _FakeNbaTeamBySlug(id=44, slug="warriors")
+
+    async def fake_find_organization_id(_db: Any, org_slug: str) -> int | None:
+        assert org_slug == "nba-warriors"
+        return 900
+
+    async def fake_find_team_program_id_by_slug(_db: Any, slug: str) -> int | None:
+        assert slug == "nba-warriors-gold"
+        return 5001
+
+    def fail_find_team_program_rows(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError(
+            "multi-squad resolution must never call the franchise-map lookup"
+        )
+
+    monkeypatch.setattr(
+        resolution, "_find_nba_team_by_slug", fake_find_nba_team_by_slug
+    )
+    monkeypatch.setattr(resolution, "_find_organization_id", fake_find_organization_id)
+    monkeypatch.setattr(
+        resolution, "_find_team_program_id_by_slug", fake_find_team_program_id_by_slug
+    )
+    monkeypatch.setattr(
+        resolution, "_find_team_program_rows", fail_find_team_program_rows
+    )
+
+    result = await resolve_team_targets(object(), nba_stats_team_id="1710612744")
+
+    assert result == (44, 5001)
+
+
+@pytest.mark.asyncio
+async def test_resolve_team_targets_second_and_third_squad_resolve_to_different_programs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two sibling ids for one franchise resolve to two distinct programs.
+
+    The case prefix-stripping onto one program would have corrupted.
+    """
+
+    async def fake_find_nba_team_by_slug(
+        _db: Any, slug: str
+    ) -> _FakeNbaTeamBySlug | None:
+        return _FakeNbaTeamBySlug(id=44, slug="warriors")
+
+    async def fake_find_organization_id(_db: Any, org_slug: str) -> int | None:
+        return 900
+
+    program_ids_by_slug = {"nba-warriors-gold": 5001, "nba-warriors-blue": 5002}
+
+    async def fake_find_team_program_id_by_slug(_db: Any, slug: str) -> int | None:
+        return program_ids_by_slug[slug]
+
+    monkeypatch.setattr(
+        resolution, "_find_nba_team_by_slug", fake_find_nba_team_by_slug
+    )
+    monkeypatch.setattr(resolution, "_find_organization_id", fake_find_organization_id)
+    monkeypatch.setattr(
+        resolution, "_find_team_program_id_by_slug", fake_find_team_program_id_by_slug
+    )
+
+    gold = await resolve_team_targets(object(), nba_stats_team_id="1710612744")
+    blue = await resolve_team_targets(object(), nba_stats_team_id="1810612744")
+
+    assert gold == (44, 5001)
+    assert blue == (44, 5002)
+    assert gold[1] != blue[1]
+    # Both siblings still identify the same parent franchise.
+    assert gold[0] == blue[0] == 44
+
+
+@pytest.mark.asyncio
+async def test_resolve_team_targets_multi_squad_id_null_program_when_sibling_unpopulated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A recognized sibling id with no team_program row yet fills nba_team_id only."""
+
+    async def fake_find_nba_team_by_slug(
+        _db: Any, slug: str
+    ) -> _FakeNbaTeamBySlug | None:
+        return _FakeNbaTeamBySlug(id=44, slug="warriors")
+
+    async def fake_find_organization_id(_db: Any, org_slug: str) -> int | None:
+        return 900
+
+    async def fake_find_team_program_id_by_slug(_db: Any, slug: str) -> None:
+        return None
+
+    monkeypatch.setattr(
+        resolution, "_find_nba_team_by_slug", fake_find_nba_team_by_slug
+    )
+    monkeypatch.setattr(resolution, "_find_organization_id", fake_find_organization_id)
+    monkeypatch.setattr(
+        resolution, "_find_team_program_id_by_slug", fake_find_team_program_id_by_slug
+    )
+
+    result = await resolve_team_targets(object(), nba_stats_team_id="1710612744")
+
+    assert result == (44, None)
+
+
+@pytest.mark.asyncio
+async def test_resolve_team_targets_genuinely_non_nba_ids_stay_null_on_both(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Team China (45), Croatia (70), D-League Select (1612709916) stay NULL/NULL.
+
+    None of these ids appear in either the primary or multi-squad map, so no
+    DB lookup should even run.
+    """
+
+    def fail(*_args: Any, **_kwargs: Any) -> None:
+        raise AssertionError("no DB lookup should run for a genuinely non-NBA id")
+
+    monkeypatch.setattr(resolution, "_find_nba_team_by_abbreviation", fail)
+    monkeypatch.setattr(resolution, "_find_nba_team_by_slug", fail)
+
+    for stats_id in ("45", "70", "1612709916"):
+        assert await resolve_team_targets(
+            object(), nba_stats_team_id=stats_id
+        ) == (None, None)

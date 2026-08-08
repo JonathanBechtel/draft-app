@@ -36,6 +36,7 @@ from app.schemas.summer_league import (
     SummerLeagueTeamEntry,
 )
 from app.services.backbone.team_program_resolution import (
+    PRIMARY_TEAM_PROGRAM_LEVEL,
     derive_org_slug,
     resolve_franchise_team_program_id,
 )
@@ -388,6 +389,12 @@ async def _seed_program(
     fixture and the production resolver share one definition of the natural
     key -- if that key ever changes these tests move with it, instead of
     silently exercising a franchise the reader can no longer find.
+
+    ``level=PRIMARY_TEAM_PROGRAM_LEVEL`` mirrors what T3's population always
+    writes (#810): ``resolve_franchise_team_program_id`` now scopes its query
+    to that level so a franchise's second/third-squad sibling programs never
+    make the ambiguity guard fire on the *primary* program lookup, so this
+    fixture's program must carry the same level real T3 output does.
     """
     org = Organization(
         org_kind=OrgKind.CLUB,
@@ -400,6 +407,7 @@ async def _seed_program(
         organization_id=org.id,
         name=f"{nba_team_slug} senior",
         slug=program_slug or derive_org_slug(nba_team_slug),
+        level=PRIMARY_TEAM_PROGRAM_LEVEL,
     )
     db.add(program)
     await db.flush()
@@ -628,11 +636,18 @@ async def test_franchise_history_when_the_org_model_has_no_program_yet(
 async def test_franchise_history_when_the_organization_is_ambiguous(
     db_session: AsyncSession,
 ) -> None:
-    """An organization owning two programs resolves to ``None``, never a guess.
+    """An organization owning two primary-level programs resolves to ``None``,
+    never a guess.
 
     Per this repo's entity-resolution rule the reader refuses to pick one, and
     the page still renders off the legacy target rather than 404ing or showing
     an arbitrary half of the franchise's history.
+
+    Both programs share ``PRIMARY_TEAM_PROGRAM_LEVEL`` ("NBA") (#810): that is
+    what makes this a genuine same-level duplicate the ambiguity guard must
+    still refuse, as opposed to a legitimate multi-squad sibling at a
+    different level, which the #810 rescoped query now excludes from this
+    guard entirely.
     """
     org = Organization(
         org_kind=OrgKind.CLUB, name="Lakers org", slug=derive_org_slug("lakers")
@@ -641,8 +656,18 @@ async def test_franchise_history_when_the_organization_is_ambiguous(
     await db_session.flush()
     db_session.add_all(
         [
-            TeamProgram(organization_id=org.id, name="Lakers senior", slug="nba-lakers"),
-            TeamProgram(organization_id=org.id, name="Lakers G", slug="nba-lakers-g"),
+            TeamProgram(
+                organization_id=org.id,
+                name="Lakers senior",
+                slug="nba-lakers",
+                level=PRIMARY_TEAM_PROGRAM_LEVEL,
+            ),
+            TeamProgram(
+                organization_id=org.id,
+                name="Lakers senior duplicate",
+                slug="nba-lakers-duplicate",
+                level=PRIMARY_TEAM_PROGRAM_LEVEL,
+            ),
         ]
     )
     await db_session.flush()

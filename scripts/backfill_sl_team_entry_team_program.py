@@ -29,10 +29,12 @@ strategy resolves those 82 via
 exact function #796 already calls at ingest time -- which maps
 ``nba_stats_team_id`` -> ``NBA_STATS_TEAM_ID_TO_ABBREVIATION`` -> ``nba_teams``
 -> the same ``"nba-" + slug`` organization key -> ``team_programs``. Every id
-present in ``summer_league_team_entries`` that the map does *not* cover is
-reported by name, not silently skipped -- a silent skip here is exactly how
-the original 103 went unnoticed in the first place (#784 assumed all 103 were
-non-NBA without measuring).
+present in ``summer_league_team_entries`` that neither that map nor
+``NBA_STATS_MULTI_SQUAD_TEAM_IDS`` (#810, the second/third Summer League
+squad ids) covers is reported by name, not silently skipped -- a silent skip
+here is exactly how the original 103 went unnoticed in the first place
+(#784 assumed all 103 were non-NBA without measuring), and it is exactly how
+#810's 8 multi-squad ids were *found*.
 
 Both strategies are strictly additive and idempotent -- reruns only touch
 rows still missing both ``nba_team_id`` and ``team_program_id``. Their
@@ -74,6 +76,7 @@ if str(REPO_ROOT) not in sys.path:
 from app.config import settings  # noqa: E402
 from app.schemas.summer_league import SummerLeagueTeamEntry  # noqa: E402
 from app.services.backbone.team_program_resolution import (  # noqa: E402
+    NBA_STATS_MULTI_SQUAD_TEAM_IDS,
     NBA_STATS_TEAM_ID_TO_ABBREVIATION,
     resolve_team_targets,
 )
@@ -159,12 +162,14 @@ async def _stats_id_targets(
         maps ``nba_stats_team_id`` -> ``(nba_team_id, team_program_id)`` for
         ids the backbone resolver fully resolved. ``eligible`` counts rows
         (not distinct ids) whose id is covered by
-        ``NBA_STATS_TEAM_ID_TO_ABBREVIATION``. ``unresolvable`` counts the
-        subset of those rows whose id is covered but the resolver still
-        could not produce a ``team_program_id`` (nba_teams unseeded, T3 not
-        yet populated for the franchise, or an ambiguous organization).
-        ``uncovered_ids`` lists the distinct ids (sorted) the map does not
-        cover at all -- reported, never silently skipped, per #808.
+        ``NBA_STATS_TEAM_ID_TO_ABBREVIATION`` or ``NBA_STATS_MULTI_SQUAD_TEAM_IDS``
+        (#810). ``unresolvable`` counts the subset of those rows whose id is
+        covered but the resolver still could not produce a
+        ``team_program_id`` (nba_teams unseeded, T3/multi-squad population
+        not yet run for the franchise, or an ambiguous organization).
+        ``uncovered_ids`` lists the distinct ids (sorted) neither map covers
+        at all -- reported, never silently skipped, per #808. This is exactly
+        the report that surfaced #810's 8 multi-squad ids in the first place.
     """
     rows = (
         await db.execute(
@@ -186,7 +191,10 @@ async def _stats_id_targets(
     uncovered_ids: list[str] = []
 
     for stats_id, row_count in rows:
-        if stats_id not in NBA_STATS_TEAM_ID_TO_ABBREVIATION:
+        if (
+            stats_id not in NBA_STATS_TEAM_ID_TO_ABBREVIATION
+            and stats_id not in NBA_STATS_MULTI_SQUAD_TEAM_IDS
+        ):
             uncovered_ids.append(stats_id)
             continue
         eligible += row_count

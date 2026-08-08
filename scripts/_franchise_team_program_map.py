@@ -15,6 +15,19 @@ ambiguity guard to
 ``app.services.backbone.team_program_resolution.build_franchise_team_program_map``
 (#796): an organization with more than one program raises
 ``AmbiguousTeamProgramError`` instead of guessing.
+
+#810: four franchises (Golden State Warriors, Orlando Magic, Sacramento
+Kings, Utah Jazz) now legitimately own more than one ``team_programs`` row --
+a second/third Summer League squad, modelled as a sibling program under the
+same organization rather than collapsed onto it. Both backfill scripts still
+ask "which program is this franchise's *primary* squad", so the bulk query
+below is scoped to ``PRIMARY_TEAM_PROGRAM_LEVEL`` before it reaches the
+ambiguity guard -- the guard itself is unchanged and still fires for a
+genuine same-level duplicate. A ``17…``/``18…`` sibling squad's own
+``team_program_id`` is resolved by
+``app.services.backbone.team_program_resolution.resolve_team_targets``
+(strategy 2 in ``scripts/backfill_sl_team_entry_team_program.py``), not by
+this bulk franchise-keyed bridge.
 """
 
 from __future__ import annotations
@@ -25,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.nba_teams import NbaTeam
 from app.schemas.organization import Organization, TeamProgram
 from app.services.backbone.team_program_resolution import (
+    PRIMARY_TEAM_PROGRAM_LEVEL,
     TeamProgramRow,
     build_franchise_team_program_map,
     derive_org_slug,
@@ -95,7 +109,12 @@ async def franchise_nba_team_id_to_team_program_id(db: AsyncSession) -> dict[int
                 ).where(
                     TeamProgram.organization_id.in_(  # type: ignore[attr-defined]
                         organization_id_to_nba_team_id
-                    )
+                    ),
+                    # #810: scope to the primary program so a franchise that
+                    # also owns a second/third-squad sibling under the same
+                    # organization does not make the ambiguity guard below
+                    # fire on every multi-squad franchise.
+                    TeamProgram.level == PRIMARY_TEAM_PROGRAM_LEVEL,  # type: ignore[arg-type]
                 )
             )
         ).all()
